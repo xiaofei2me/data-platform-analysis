@@ -8,6 +8,8 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE = PROJECT_ROOT / ".env"
 
 class WorkspaceSettings(BaseModel):
     """单个 DataWorks Workspace 配置。"""
@@ -27,12 +29,11 @@ class WorkspaceSettings(BaseModel):
         min_length=1,
     )
 
-
 class Settings(BaseSettings):
     """项目运行配置。"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -105,7 +106,6 @@ class Settings(BaseSettings):
         workspace_id 为 None 时返回全部；
         指定但未配置的 id 直接报错（fail-fast）。
         """
-
         if workspace_id is None:
             return list(self.dataworks_workspaces)
 
@@ -116,10 +116,7 @@ class Settings(BaseSettings):
         ]
 
         if not matched:
-            raise ValueError(
-                f"未配置的 Workspace id：{workspace_id}"
-                "（不在 DATAWORKS_WORKSPACES 中）"
-            )
+            raise ValueError(f"未配置的 Workspace id：{workspace_id}（不在 DATAWORKS_WORKSPACES 中）")
 
         return matched
 

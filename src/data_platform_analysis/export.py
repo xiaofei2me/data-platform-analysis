@@ -101,9 +101,7 @@ class SnapshotExporter:
     ) -> None:
         """执行 DataWorks + MaxCompute 全量采集。"""
 
-        logger.info(
-            "开始执行完整 Snapshot 采集"
-        )
+        logger.info("开始执行完整 Snapshot 采集")
 
         self.export_dataworks(workspace_id)
         self.export_maxcompute()
@@ -112,9 +110,7 @@ class SnapshotExporter:
         if workspace_id is None:
             self.write_manifest()
 
-        logger.info(
-            "完整 Snapshot 采集完成"
-        )
+        logger.info("完整 Snapshot 采集完成")
 
     def export_dataworks(
         self,
@@ -128,33 +124,18 @@ class SnapshotExporter:
         """
 
         # 校验在任何采集动作之前完成（fail-fast）。
-        workspaces = settings.select_workspaces(
-            workspace_id
-        )
+        workspaces = settings.select_workspaces(workspace_id)
 
-        logger.info(
-            "开始采集 DataWorks（%s 个 Workspace）",
-            len(workspaces),
-        )
+        logger.info("开始采集 DataWorks（%s 个 Workspace）",len(workspaces),)
 
-        index_entries: list[
-            dict[str, Any]
-        ] = []
+        index_entries: list[dict[str, Any]] = []
 
         for workspace in workspaces:
             # Workspace 级错误边界：失败不阻断其余 Workspace。
             try:
-                entry = (
-                    self._export_dataworks_workspace(
-                        workspace
-                    )
-                )
-
+                entry = (self._export_dataworks_workspace(workspace))
             except Exception as exc:
-                logger.exception(
-                    "Workspace 采集失败：workspace=%s",
-                    workspace.id,
-                )
+                logger.exception("Workspace 采集失败：workspace=%s",workspace.id,)
 
                 entry = _workspace_entry(
                     workspace,
@@ -175,10 +156,7 @@ class SnapshotExporter:
         # 根级 Workspace 注册表（读-改-写 upsert）。
         self._write_workspaces_index(index_entries)
 
-        logger.info(
-            "DataWorks 采集完成：%s 个 Workspace",
-            len(index_entries),
-        )
+        logger.info("DataWorks 采集完成：%s 个 Workspace", len(index_entries),)
 
     def _export_dataworks_workspace(
         self,
@@ -187,78 +165,42 @@ class SnapshotExporter:
         """
         采集单个 Workspace 并返回其注册表条目。
         """
-
         base_dir = (
             self.source_dir
             / "dataworks"
             / "workspaces"
             / str(workspace.id)
         )
-
-        nodes_dir = (
-            base_dir / "nodes"
-        )
-
-        sql_dir = (
-            base_dir / "sql"
-        )
-
-        lineage_dir = (
-            base_dir / "lineage"
-        )
+        nodes_dir = (base_dir / "nodes")
+        sql_dir = (base_dir / "sql")
+        lineage_dir = (base_dir / "lineage")
 
         ensure_dir(nodes_dir)
         ensure_dir(sql_dir)
         ensure_dir(lineage_dir)
 
-        nodes = self.dataworks.list_nodes(
+        # 获取文件列表
+        nodes = self.dataworks.list_files(
             workspace.id
         )
 
-        node_index: list[
-            dict[str, Any]
-        ] = []
+        node_index: list[dict[str, Any]] = []
+        lineage_records: list[dict[str, Any]] = []
+        failed_nodes: list[dict[str, Any]] = []
 
-        lineage_records: list[
-            dict[str, Any]
-        ] = []
-
-        failed_nodes: list[
-            dict[str, Any]
-        ] = []
-
-        for node in track(
-            nodes,
-            description=(
-                f"正在采集 {workspace.name} 节点"
-            ),
-        ):
-            node_id = extract_node_id(
-                node
-            )
-
+        for node in track(nodes, description=f"正在采集 {workspace.name} 节点", ):
+            node_id = extract_node_id(node)
             if node_id is None:
-                logger.warning(
-                    "发现没有 Node ID 的节点，跳过：%s",
-                    node,
-                )
+                logger.warning("发现没有 Node ID 的节点，跳过：%s", node,)
                 continue
 
-            node_name = extract_node_name(
-                node
-            )
-
-            node_type = extract_node_type(
-                node
-            )
+            node_name = extract_node_name(node)
+            node_type = extract_node_type(node)
 
             try:
                 # 获取节点完整详情。
                 detail = (
-                    self.dataworks.get_node(
-                        workspace.id,
-                        node_id,
-                    )
+                    self.dataworks.get_file(workspace.id,node_id,)
                 )
 
             except Exception:
@@ -276,7 +218,6 @@ class SnapshotExporter:
             # ==================================================
             # 保存原始节点 JSON
             # ==================================================
-
             raw_path = (
                 nodes_dir
                 / (
@@ -295,7 +236,6 @@ class SnapshotExporter:
             # ==================================================
             # 提取 SQL
             # ==================================================
-
             sql_candidates = (
                 extract_sql_candidates(
                     detail
@@ -635,7 +575,6 @@ class SnapshotExporter:
                     ),
                 }
             )
-
         # 保存所有 MaxCompute 表的索引。
         write_json(
             metadata_dir
@@ -667,7 +606,6 @@ class SnapshotExporter:
 
         用于记录本次 Snapshot 的来源和生成时间。
         """
-
         manifest = {
             "generated_at": utc_now(),
             "tool": "data-platform-analysis",
@@ -736,22 +674,12 @@ class SnapshotExporter:
             ↓
         target_table
         """
-
         return {
             "workspace_id": workspace_id,
-            "node_id": extract_node_id(
-                node
-            ),
-            "node_name": extract_node_name(
-                node
-            ),
-            "node_type": extract_node_type(
-                node
-            ),
-            "sql_count": len(
-                sql_candidates
-            ),
-
+            "node_id": extract_node_id(node),
+            "node_name": extract_node_name(node),
+            "node_type": extract_node_type(node),
+            "sql_count": len(sql_candidates),
             # 当前直接保存完整节点详情。
             # 后续分析阶段可以从这里提取更多字段。
             "raw_detail": detail,
@@ -760,7 +688,4 @@ class SnapshotExporter:
 
 def utc_now() -> str:
     """返回当前 UTC 时间。"""
-
-    return datetime.now(
-        UTC
-    ).isoformat()
+    return datetime.now(UTC).isoformat()

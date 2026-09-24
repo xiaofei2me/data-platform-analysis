@@ -14,9 +14,6 @@ def test_invalid_workspaces_json_fails_fast(
 ) -> None:
     """DATAWORKS_WORKSPACES 不是合法 JSON → 启动即失败。"""
 
-    # 旧字段一并提供：确保旧实现能跑通（exit 0），
-    # 红灯必须来自新校验而非旧必填项缺失。
-    monkeypatch.setenv("DATAWORKS_PROJECT_ID", "9001")
     monkeypatch.setenv("DATAWORKS_WORKSPACES", "{not-json")
 
     assert run_cli("config") != 0
@@ -29,7 +26,6 @@ def test_duplicate_workspace_id_fails_fast(
 ) -> None:
     """重复 workspace id → 启动即失败。"""
 
-    monkeypatch.setenv("DATAWORKS_PROJECT_ID", "9001")
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
         workspaces_env(
@@ -48,7 +44,6 @@ def test_duplicate_workspace_name_fails_fast(
 ) -> None:
     """重复 workspace name → 启动即失败。"""
 
-    monkeypatch.setenv("DATAWORKS_PROJECT_ID", "9001")
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
         workspaces_env(

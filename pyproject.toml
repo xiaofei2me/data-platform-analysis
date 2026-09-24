@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 
 dependencies = [
-    "alibabacloud-dataworks-public20240518>=1.0.0,<2.0.0",
+    "alibabacloud-dataworks-public20200518>=10.1.1",
     "pydantic>=2.9,<3.0",
     "pydantic-settings>=2.6,<3.0",
     "pyodps>=0.12,<1.0",

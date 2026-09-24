@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from alibabacloud_dataworks_public20240518 import models
-from alibabacloud_dataworks_public20240518.client import Client
+from alibabacloud_dataworks_public20200518 import models
+from alibabacloud_dataworks_public20200518.client import Client
 from alibabacloud_tea_openapi.models import Config
 from tenacity import (
     RetryCallState,
@@ -83,29 +83,27 @@ class DataWorksClient:
         ),
         reraise=True,
     )
-    def _list_nodes_page(
-        self,
-        project_id: int,
-        page_number: int,
-    ) -> dict[str, Any]:
-        """获取 DataWorks 指定页的节点。"""
 
-        request = models.ListNodesRequest(
-            project_id=project_id,
+    def _list_files_page(
+            self,
+            workspace_id: int,
+            page_number: int,
+    ) -> dict[str, Any]:
+        """获取 DataWorks 指定页的文件。"""
+        request = models.ListFilesRequest(
+            project_id=workspace_id,
             page_number=page_number,
             page_size=settings.dataworks_page_size,
         )
 
         logger.debug(
-            "调用 DataWorks ListNodes：project_id=%s，page=%s，page_size=%s",
-            project_id,
+            "调用 DataWorks ListFiles：workspace_id=%s，page=%s，page_size=%s",
+            workspace_id,
             page_number,
             settings.dataworks_page_size,
         )
 
-        response = self.client.list_nodes(
-            request
-        )
+        response = self.client.list_files(request)
 
         return response.body.to_map()
 
@@ -119,58 +117,50 @@ class DataWorksClient:
         ),
         reraise=True,
     )
-    def get_node(
-        self,
-        project_id: int,
-        node_id: str,
+    def get_file(
+            self,
+            workspace_id: int,
+            file_id: int,
     ) -> dict[str, Any]:
-        """获取 DataWorks 单个节点的完整详情。"""
+        """获取 DataWorks 单个文件的完整详情。"""
 
-        request = models.GetNodeRequest(
-            project_id=project_id,
-            id=node_id,
+        request = models.GetFileRequest(
+            project_id=workspace_id,
+            file_id=file_id,
         )
 
         logger.debug(
-            "调用 DataWorks GetNode：project_id=%s，node_id=%s",
-            project_id,
-            node_id,
+            "调用 DataWorks GetFile：workspace_id=%s，file_id=%s",
+            workspace_id,
+            file_id,
         )
 
-        response = self.client.get_node(
+        response = self.client.get_file(
             request
         )
 
         return response.body.to_map()
 
-    def list_nodes(
+    def list_files(
         self,
         project_id: int,
     ) -> list[dict[str, Any]]:
         """
         获取指定 DataWorks Workspace 的全部节点。
-
         这里统一处理分页，调用方不需要关心分页逻辑。
         """
 
         all_nodes: list[dict[str, Any]] = []
-
         page_number = 1
 
         while True:
-            response = self._list_nodes_page(
-                project_id,
-                page_number,
-            )
+            response = self._list_files_page(project_id, page_number,)
 
             # 不同接口返回结构可能存在差异。
             # 优先寻找 Data/data，如果不存在则直接使用 Response。
             data = self._find_first_dict(
                 response,
-                keys={
-                    "Data",
-                    "data",
-                },
+                keys={"Data", "data",},
             )
 
             if data is None:
@@ -180,11 +170,7 @@ class DataWorksClient:
                 data
             )
 
-            logger.info(
-                "DataWorks 第 %s 页获取到 %s 个节点",
-                page_number,
-                len(page_nodes),
-            )
+            logger.info("DataWorks 第 %s 页获取到 %s 个节点", page_number, len(page_nodes),)
 
             if not page_nodes:
                 break
@@ -219,13 +205,13 @@ class DataWorksClient:
 
             page_number += 1
 
-        logger.info(
-            "DataWorks Workspace %s 节点采集完成，共 %s 个节点",
-            project_id,
-            len(all_nodes),
-        )
+            logger.info(
+                "DataWorks Workspace %s 节点采集完成，共 %s 个节点",
+                project_id,
+                len(all_nodes),
+            )
 
-        return all_nodes
+            return all_nodes
 
     @staticmethod
     def _extract_node_list(
@@ -393,16 +379,12 @@ def extract_node_id(
     """从节点对象中提取 Node ID。"""
 
     for key in (
-        "NodeId",
-        "nodeId",
-        "Id",
-        "id",
+        "FileId",
     ):
         value = node.get(key)
 
         if value is not None:
             return str(value)
-
     return None
 
 
@@ -412,13 +394,9 @@ def extract_node_name(
     """从节点对象中提取节点名称。"""
 
     for key in (
-        "NodeName",
-        "nodeName",
-        "Name",
-        "name",
+        "FileName",
     ):
         value = node.get(key)
-
         if value is not None:
             return str(value)
 

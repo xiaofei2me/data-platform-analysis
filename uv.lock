@@ -162,25 +162,18 @@ wheels = [
 ]
 
 [[package]]
-name = "alibabacloud-dataworks-public20240518"
-version = "1.1.0"
+name = "alibabacloud-dataworks-public20200518"
+version = "10.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "alibabacloud-endpoint-util" },
-    { name = "alibabacloud-openapi-util" },
+    { name = "alibabacloud-credentials" },
     { name = "alibabacloud-tea-openapi" },
-    { name = "alibabacloud-tea-util" },
+    { name = "darabonba-core" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6c/71/26b443ce15ef528b1cd18105e8e3819ace15eabb0635275e1196464978dd/alibabacloud_dataworks-public20240518-1.1.0.tar.gz", hash = "sha256:cef639487802797cf8ab8c9831ad223b9c6c402a86aaed055cdc41916eee3602", size = 41642, upload-time = "2024-10-10T17:18:27.918Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/20/b1398001b7335f844013b18c348caa67eb9f1de5de61fc2cb41d0abd903f/alibabacloud_dataworks_public20200518-10.1.1.tar.gz", hash = "sha256:80f507a04c94d35ad1e481a9651c3e3511c699cd0bfaf91b960bc3a39ee61889", size = 440992, upload-time = "2026-09-20T18:03:29.008Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/26/1624426999e3519e5e62ab060e4554a7dc2d7d88bc7f0bfb007f778e653b/alibabacloud_dataworks_public20240518-1.1.0-py3-none-any.whl", hash = "sha256:287de4e91380214e2b67b4817928241c2a3f1720b872e75add00d38991718ec6", size = 40843, upload-time = "2024-10-10T17:18:26.205Z" },
+    { url = "https://files.pythonhosted.org/packages/77/a3/df998e87ff24fddb8d2ac8780a2ad6d03d8c6a04d20e6153d645a2dc339a/alibabacloud_dataworks_public20200518-10.1.1-py3-none-any.whl", hash = "sha256:6f729c03777044769670933e3d620cee41f47d38709b7ea5cda770afb0a30311", size = 1177727, upload-time = "2026-09-20T18:03:27.373Z" },
 ]
-
-[[package]]
-name = "alibabacloud-endpoint-util"
-version = "0.0.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/92/7d/8cc92a95c920e344835b005af6ea45a0db98763ad6ad19299d26892e6c8d/alibabacloud_endpoint_util-0.0.4.tar.gz", hash = "sha256:a593eb8ddd8168d5dc2216cd33111b144f9189fcd6e9ca20e48f358a739bbf90", size = 2813, upload-time = "2025-06-12T07:20:52.572Z" }
 
 [[package]]
 name = "alibabacloud-gateway-spi"
@@ -192,19 +185,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cd/67/7cd36a36bf0ec53efd3fe31eaf398713f375b7b1cdcd32c51b6c0fdc09e2/alibabacloud_gateway_spi-0.0.4.tar.gz", hash = "sha256:73d6e20d65b54eed26d89c19640d3a7572e18c45ecada627f806f5dbe8ed2130", size = 4253, upload-time = "2026-06-25T06:34:08.238Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/45/85/81170c45e9d1240736f9776a1c690b958c975509381221b5f8d960b5376d/alibabacloud_gateway_spi-0.0.4-py3-none-any.whl", hash = "sha256:0d5256e95d8719da8ec9611b7ffbb12c2d26fdf7ce52c8f64e4e06350731e893", size = 4290, upload-time = "2026-06-25T06:34:07.22Z" },
-]
-
-[[package]]
-name = "alibabacloud-openapi-util"
-version = "0.2.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "alibabacloud-tea-util" },
-    { name = "cryptography" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f6/51/be5802851a4ed20ac2c6db50ac8354a6e431e93db6e714ca39b50983626f/alibabacloud_openapi_util-0.2.4.tar.gz", hash = "sha256:87022b9dcb7593a601f7a40ca698227ac3ccb776b58cb7b06b8dc7f510995c34", size = 7981, upload-time = "2026-01-15T08:05:03.947Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/46/9b217343648b366eb93447f5d93116e09a61956005794aed5ef95a2e9e2e/alibabacloud_openapi_util-0.2.4-py3-none-any.whl", hash = "sha256:a2474f230b5965ae9a8c286e0dc86132a887928d02d20b8182656cf6b1b6c5bd", size = 7661, upload-time = "2026-01-15T08:05:01.374Z" },
 ]
 
 [[package]]
@@ -643,7 +623,7 @@ name = "data-platform-analysis"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "alibabacloud-dataworks-public20240518" },
+    { name = "alibabacloud-dataworks-public20200518" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyodps" },
@@ -660,7 +640,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "alibabacloud-dataworks-public20240518", specifier = ">=1.0.0,<2.0.0" },
+    { name = "alibabacloud-dataworks-public20200518", specifier = ">=10.1.1" },
     { name = "pydantic", specifier = ">=2.9,<3.0" },
     { name = "pydantic-settings", specifier = ">=2.6,<3.0" },
     { name = "pyodps", specifier = ">=0.12,<1.0" },
