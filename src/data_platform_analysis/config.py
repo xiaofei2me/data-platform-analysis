@@ -2,14 +2,67 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
+# ============================================================
+# Project paths
+# ============================================================
+
+# 当前文件：
+#
+#   project-root/
+#   └── src/
+#       └── data_platform_analysis/
+#           └── config.py
+#
+# parents[0] -> data_platform_analysis/
+# parents[1] -> src/
+# parents[2] -> project-root/
+#
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# 项目根目录下的 .env。
+#
+# 不依赖当前 Working Directory。
 ENV_FILE = PROJECT_ROOT / ".env"
+
+
+def resolve_project_path(path: Path | str) -> Path:
+    """
+    将项目路径解析为绝对路径。
+
+    相对路径：
+        相对于项目根目录解析。
+
+    绝对路径：
+        保持原路径不变。
+
+    Examples:
+        resolve_project_path("source")
+        -> /project-root/source
+
+        resolve_project_path("./source")
+        -> /project-root/source
+
+        resolve_project_path("snapshot/dataworks")
+        -> /project-root/snapshot/dataworks
+
+        resolve_project_path("/data/snapshot")
+        -> /data/snapshot
+    """
+    path = Path(path)
+
+    if path.is_absolute():
+        return path
+
+    return PROJECT_ROOT / path
+
 
 class WorkspaceSettings(BaseModel):
     """单个 DataWorks Workspace 配置。"""
@@ -28,6 +81,7 @@ class WorkspaceSettings(BaseModel):
         ...,
         min_length=1,
     )
+
 
 class Settings(BaseSettings):
     """项目运行配置。"""
@@ -69,6 +123,36 @@ class Settings(BaseSettings):
         ...,
         min_length=1,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_json_environment_values(
+        cls,
+        values: Any,
+    ) -> Any:
+        """
+        解析通过环境变量传入的 JSON 配置。
+
+        例如：
+
+            DATAWORKS_WORKSPACES='[
+                {"id": 123, "name": "workspace-a"}
+            ]'
+
+        Pydantic Settings 在环境变量场景下会将其读取为字符串，
+        这里统一转换成 Python 对象。
+        """
+        if not isinstance(values, dict):
+            return values
+
+        workspaces = values.get("dataworks_workspaces")
+
+        if isinstance(workspaces, str):
+            values["dataworks_workspaces"] = json.loads(
+                workspaces
+            )
+
+        return values
 
     @model_validator(mode="after")
     def _validate_workspaces(self) -> Settings:
@@ -116,7 +200,10 @@ class Settings(BaseSettings):
         ]
 
         if not matched:
-            raise ValueError(f"未配置的 Workspace id：{workspace_id}（不在 DATAWORKS_WORKSPACES 中）")
+            raise ValueError(
+                f"未配置的 Workspace id：{workspace_id}"
+                "（不在 DATAWORKS_WORKSPACES 中）"
+            )
 
         return matched
 
@@ -159,11 +246,36 @@ class Settings(BaseSettings):
     # ========================================================
 
     # Snapshot 输出目录。
+    #
+    # 这里保留相对路径的配置语义：
+    #
+    #     SOURCE_DIR=source
+    #
+    # 具体的绝对路径在 _resolve_paths() 中统一解析。
     source_dir: Path = Path("source")
 
     # 是否覆盖已经存在的文件。
     export_overwrite: bool = True
 
+    @model_validator(mode="after")
+    def _resolve_paths(self) -> Settings:
+        """
+        将项目相关路径统一解析为绝对路径。
+
+        这样业务代码拿到的 settings.source_dir
+        永远是绝对路径，不再依赖当前 Working Directory。
+        """
+
+        self.source_dir = resolve_project_path(
+            self.source_dir
+        )
+
+        return self
+
+
+# ============================================================
+# Settings lifecycle
+# ============================================================
 
 _instance: Settings | None = None
 
