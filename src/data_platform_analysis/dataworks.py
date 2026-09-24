@@ -470,54 +470,43 @@ def recursively_find_strings(
     return results
 
 
-def extract_sql_candidates(
-    node_detail: dict[str, Any],
-) -> list[str]:
+def extract_file_content(
+    file_detail: dict[str, Any],
+) -> str | None:
+    """从 DataWorks File 详情中递归提取 Content。
+
+    一个 File 最终只保留一个 Content。
     """
-    从节点详情中提取 SQL / Script 候选内容。
+    result: str | None = None
 
-    不同 DataWorks 节点类型的代码字段可能不同，
-    所以这里采用多个候选字段进行递归搜索。
+    def walk(value: Any) -> None:
+        nonlocal result
 
-    注意：
-    原始节点 JSON 会完整保存。
-    即使这里没有成功提取 SQL，
-    后续也可以重新基于原始 JSON 进行分析。
-    """
+        if result is not None:
+            return
 
-    candidates = recursively_find_strings(
-        node_detail,
-        {
-            "Script",
-            "script",
-            "Sql",
-            "sql",
-            "Code",
-            "code",
-            "Content",
-            "content",
-            "ScriptContent",
-            "scriptContent",
-            "SqlScript",
-            "sqlScript",
-        },
-    )
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in {
+                    "Content",
+                    "content",
+                }:
+                    if isinstance(item, str) and item.strip():
+                        result = item.strip()
+                        return
 
-    # 去重，同时保持原始出现顺序。
-    seen: set[str] = set()
+                walk(item)
 
-    result: list[str] = []
+                if result is not None:
+                    return
 
-    for candidate in candidates:
-        normalized = candidate.strip()
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
 
-        if not normalized:
-            continue
+                if result is not None:
+                    return
 
-        if normalized in seen:
-            continue
-
-        seen.add(normalized)
-        result.append(normalized)
+    walk(file_detail)
 
     return result
