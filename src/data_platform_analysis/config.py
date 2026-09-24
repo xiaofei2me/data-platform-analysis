@@ -1,9 +1,31 @@
 """项目配置。"""
 
-from pathlib import Path
+from __future__ import annotations
 
-from pydantic import Field
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class WorkspaceSettings(BaseModel):
+    """单个 DataWorks Workspace 配置。"""
+
+    # DataWorks Workspace ID（稳定主键）。
+    id: int
+
+    # 人类可读名称（数组内唯一）。
+    name: str = Field(
+        ...,
+        min_length=1,
+    )
+
+    # 1:1 绑定的 MaxCompute 项目（仅作环境映射元数据）。
+    maxcompute_project: str = Field(
+        ...,
+        min_length=1,
+    )
 
 
 class Settings(BaseSettings):
@@ -39,14 +61,39 @@ class Settings(BaseSettings):
     # DataWorks 所在地域。
     dataworks_region: str = "cn-shanghai"
 
-    # DataWorks 工作空间 / 项目 ID。
-    dataworks_project_id: int
-
-    # DataWorks 工作空间标识。
+    # DataWorks Workspace 列表（JSON 数组）。
     #
-    # 当前版本暂时保留，后续如果某些 API 需要 ProjectIdentifier，
-    # 可以直接使用这个配置。
-    dataworks_project_identifier: str | None = None
+    # 单 Workspace 即长度为 1 的数组，不存在单独模式。
+    dataworks_workspaces: list[WorkspaceSettings] = Field(
+        ...,
+        min_length=1,
+    )
+
+    @model_validator(mode="after")
+    def _validate_workspaces(self) -> Settings:
+        """Workspace id 与 name 在列表内必须唯一。"""
+
+        ids = [
+            workspace.id
+            for workspace in self.dataworks_workspaces
+        ]
+
+        names = [
+            workspace.name
+            for workspace in self.dataworks_workspaces
+        ]
+
+        if len(ids) != len(set(ids)):
+            raise ValueError(
+                "DATAWORKS_WORKSPACES 中存在重复的 id"
+            )
+
+        if len(names) != len(set(names)):
+            raise ValueError(
+                "DATAWORKS_WORKSPACES 中存在重复的 name"
+            )
+
+        return self
 
     # DataWorks API 每页返回的数据量。
     dataworks_page_size: int = Field(
@@ -93,5 +140,36 @@ class Settings(BaseSettings):
     export_overwrite: bool = True
 
 
-# 全局配置实例。
-settings = Settings()
+_instance: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """返回全局配置实例，首次访问时从环境加载。"""
+
+    global _instance
+
+    if _instance is None:
+        _instance = Settings()  # type: ignore[call-arg]
+
+    return _instance
+
+
+def reset_settings() -> None:
+    """丢弃已缓存的配置实例，供测试在切换环境后重新加载。"""
+
+    global _instance
+
+    _instance = None
+
+
+class _SettingsProxy:
+    """惰性配置代理：属性访问时才触发加载。"""
+
+    __slots__ = ()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_settings(), name)
+
+
+# 全局配置实例（惰性）。
+settings = _SettingsProxy()

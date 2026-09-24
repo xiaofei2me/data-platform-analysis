@@ -9,15 +9,38 @@ from alibabacloud_dataworks_public20240518 import models
 from alibabacloud_dataworks_public20240518.client import Client
 from alibabacloud_tea_openapi.models import Config
 from tenacity import (
+    RetryCallState,
     retry,
     retry_if_exception_type,
-    stop_after_attempt,
     wait_exponential,
 )
+from tenacity.stop import stop_base
 
-from .config import settings
+from .config import get_settings, settings
 
 logger = logging.getLogger(__name__)
+
+
+class _stop_after_configured_retries(stop_base):
+    """按当前配置的最大重试次数停止。
+
+    在调用时读取配置（而非 import 时），
+    以配合惰性配置加载。
+    """
+
+    def __call__(
+        self,
+        retry_state: RetryCallState,
+    ) -> bool:
+        return (
+            retry_state.attempt_number
+            >= get_settings().dataworks_max_retries + 1
+        )
+
+
+_stop_after_configured_retries_instance = (
+    _stop_after_configured_retries()
+)
 
 
 class DataWorksClient:
@@ -52,9 +75,7 @@ class DataWorksClient:
 
     @retry(
         retry=retry_if_exception_type(Exception),
-        stop=stop_after_attempt(
-            settings.dataworks_max_retries + 1
-        ),
+        stop=_stop_after_configured_retries_instance,
         wait=wait_exponential(
             multiplier=1,
             min=1,
@@ -64,18 +85,20 @@ class DataWorksClient:
     )
     def _list_nodes_page(
         self,
+        project_id: int,
         page_number: int,
     ) -> dict[str, Any]:
         """获取 DataWorks 指定页的节点。"""
 
         request = models.ListNodesRequest(
-            project_id=settings.dataworks_project_id,
+            project_id=project_id,
             page_number=page_number,
             page_size=settings.dataworks_page_size,
         )
 
         logger.debug(
-            "调用 DataWorks ListNodes：page=%s，page_size=%s",
+            "调用 DataWorks ListNodes：project_id=%s，page=%s，page_size=%s",
+            project_id,
             page_number,
             settings.dataworks_page_size,
         )
@@ -88,9 +111,7 @@ class DataWorksClient:
 
     @retry(
         retry=retry_if_exception_type(Exception),
-        stop=stop_after_attempt(
-            settings.dataworks_max_retries + 1
-        ),
+        stop=_stop_after_configured_retries_instance,
         wait=wait_exponential(
             multiplier=1,
             min=1,
@@ -100,17 +121,19 @@ class DataWorksClient:
     )
     def get_node(
         self,
+        project_id: int,
         node_id: str,
     ) -> dict[str, Any]:
         """获取 DataWorks 单个节点的完整详情。"""
 
         request = models.GetNodeRequest(
-            project_id=settings.dataworks_project_id,
-            node_id=node_id,
+            project_id=project_id,
+            id=node_id,
         )
 
         logger.debug(
-            "调用 DataWorks GetNode：node_id=%s",
+            "调用 DataWorks GetNode：project_id=%s，node_id=%s",
+            project_id,
             node_id,
         )
 
@@ -120,9 +143,12 @@ class DataWorksClient:
 
         return response.body.to_map()
 
-    def list_nodes(self) -> list[dict[str, Any]]:
+    def list_nodes(
+        self,
+        project_id: int,
+    ) -> list[dict[str, Any]]:
         """
-        获取当前 DataWorks 项目的全部节点。
+        获取指定 DataWorks Workspace 的全部节点。
 
         这里统一处理分页，调用方不需要关心分页逻辑。
         """
@@ -133,7 +159,8 @@ class DataWorksClient:
 
         while True:
             response = self._list_nodes_page(
-                page_number
+                project_id,
+                page_number,
             )
 
             # 不同接口返回结构可能存在差异。
@@ -193,7 +220,8 @@ class DataWorksClient:
             page_number += 1
 
         logger.info(
-            "DataWorks 节点采集完成，共 %s 个节点",
+            "DataWorks Workspace %s 节点采集完成，共 %s 个节点",
+            project_id,
             len(all_nodes),
         )
 

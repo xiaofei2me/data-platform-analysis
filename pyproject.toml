@@ -33,3 +33,25 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = [
+    "odps",
+    "odps.*",
+    "alibabacloud_dataworks_public20240518",
+    "alibabacloud_dataworks_public20240518.*",
+    "alibabacloud_tea_openapi",
+    "alibabacloud_tea_openapi.*",
+]
+ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]

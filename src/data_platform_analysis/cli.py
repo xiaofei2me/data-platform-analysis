@@ -47,9 +47,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # 只采集 DataWorks。
-    subparsers.add_parser(
+    sub_dataworks = subparsers.add_parser(
         "dataworks",
         help="采集 DataWorks 节点、SQL 和任务信息。",
+    )
+    sub_dataworks.add_argument(
+        "--workspace",
+        type=int,
+        default=None,
+        help="只采集指定 Workspace（id 必须已在配置中）。",
     )
 
     # 只采集 MaxCompute。
@@ -59,9 +65,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # 同时采集 DataWorks 和 MaxCompute。
-    subparsers.add_parser(
+    sub_export = subparsers.add_parser(
         "export",
         help="同时采集 DataWorks 和 MaxCompute。",
+    )
+    sub_export.add_argument(
+        "--workspace",
+        type=int,
+        default=None,
+        help="DataWorks 只采集指定 Workspace（id 必须已在配置中）。",
     )
 
     # 查看当前配置。
@@ -87,8 +99,11 @@ def print_config() -> None:
         "DATAWORKS_REGION": (
             settings.dataworks_region
         ),
-        "DATAWORKS_PROJECT_ID": str(
-            settings.dataworks_project_id
+        "DATAWORKS_WORKSPACES": ", ".join(
+            f"{workspace.id} ({workspace.name})"
+            for workspace in (
+                settings.dataworks_workspaces
+            )
         ),
         "DATAWORKS_PAGE_SIZE": str(
             settings.dataworks_page_size
@@ -120,12 +135,17 @@ def print_config() -> None:
     console.print(table)
 
 
-def run_dataworks() -> None:
+def run_dataworks(
+    workspace_id: int | None = None,
+) -> None:
     """执行 DataWorks 数据采集。"""
 
     exporter = SnapshotExporter()
 
-    exporter.export_dataworks()
+    exporter.export_dataworks(workspace_id)
+
+    if exporter.had_failures:
+        sys.exit(1)
 
 
 def run_maxcompute() -> None:
@@ -136,12 +156,17 @@ def run_maxcompute() -> None:
     exporter.export_maxcompute()
 
 
-def run_export() -> None:
+def run_export(
+    workspace_id: int | None = None,
+) -> None:
     """执行完整 Snapshot 采集。"""
 
     exporter = SnapshotExporter()
 
-    exporter.export_all()
+    exporter.export_all(workspace_id)
+
+    if exporter.had_failures:
+        sys.exit(1)
 
 
 def main() -> None:
@@ -161,7 +186,7 @@ def main() -> None:
             return
 
         if args.command == "dataworks":
-            run_dataworks()
+            run_dataworks(args.workspace)
             return
 
         if args.command == "maxcompute":
@@ -169,7 +194,7 @@ def main() -> None:
             return
 
         if args.command == "export":
-            run_export()
+            run_export(args.workspace)
             return
 
         parser.error(
