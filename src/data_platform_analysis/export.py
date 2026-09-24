@@ -43,11 +43,6 @@ def _build_snapshot_filename(
 
         <id>__<name>.<suffix>
 
-    如果同一个实体存在多个文件：
-
-        <id>__<name>_1.<suffix>
-        <id>__<name>_2.<suffix>
-
     ID 用于保证稳定引用；
     Name 用于提高 Snapshot 的人工可读性。
     """
