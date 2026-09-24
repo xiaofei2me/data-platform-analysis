@@ -22,11 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class _stop_after_configured_retries(stop_base):
-    """按当前配置的最大重试次数停止。
-
-    在调用时读取配置，而不是 import 时读取，
-    以配合惰性配置加载。
-    """
+    """按当前配置的最大重试次数停止。"""
 
     def __call__(
         self,
@@ -52,7 +48,7 @@ class DataWorksClient:
     1. 获取 Workspace 下的 File 列表
     2. 获取单个 File 详情
 
-    这里不会过早对 DataWorks 数据做业务分析。
+    使用 DataWorks Public API 2020-05-18。
 
     原始 API Response 会完整保存，
     后续可以基于 Snapshot 重新分析。
@@ -72,6 +68,10 @@ class DataWorksClient:
         )
 
         self.client = Client(config)
+
+    # ========================================================
+    # ListFiles
+    # ========================================================
 
     @retry(
         retry=retry_if_exception_type(Exception),
@@ -94,19 +94,30 @@ class DataWorksClient:
             project_id=workspace_id,
             page_number=page_number,
             page_size=settings.dataworks_page_size,
+            use_type=settings.dataworks_use_type,
         )
 
         logger.debug(
             "调用 DataWorks ListFiles："
-            "workspace_id=%s，page=%s，page_size=%s",
+            "workspace_id=%s，"
+            "page=%s，"
+            "page_size=%s，"
+            "use_type=%s",
             workspace_id,
             page_number,
             settings.dataworks_page_size,
+            settings.dataworks_use_type,
         )
 
-        response = self.client.list_files(request)
+        response = self.client.list_files(
+            request
+        )
 
         return response.body.to_map()
+
+    # ========================================================
+    # GetFile
+    # ========================================================
 
     @retry(
         retry=retry_if_exception_type(Exception),
@@ -132,14 +143,21 @@ class DataWorksClient:
 
         logger.debug(
             "调用 DataWorks GetFile："
-            "workspace_id=%s，file_id=%s",
+            "workspace_id=%s，"
+            "file_id=%s",
             workspace_id,
             file_id,
         )
 
-        response = self.client.get_file(request)
+        response = self.client.get_file(
+            request
+        )
 
         return response.body.to_map()
+
+    # ========================================================
+    # ListFiles 全量分页
+    # ========================================================
 
     def list_files(
         self,
@@ -148,10 +166,11 @@ class DataWorksClient:
         """
         获取指定 DataWorks Workspace 的全部 File。
 
-        这里统一处理分页，调用方不需要关心分页逻辑。
+        UseType 已经在 ListFiles API 层进行过滤。
         """
 
         all_files: list[dict[str, Any]] = []
+
         page_number = 1
 
         while True:
@@ -160,8 +179,6 @@ class DataWorksClient:
                 page_number,
             )
 
-            # 不同 API Response 结构可能存在差异。
-            # 优先寻找 Data/data，如果不存在则直接使用 Response。
             data = self._find_first_dict(
                 response,
                 keys={
@@ -173,7 +190,9 @@ class DataWorksClient:
             if data is None:
                 data = response
 
-            page_files = self._extract_file_list(data)
+            page_files = self._extract_file_list(
+                data
+            )
 
             logger.info(
                 "DataWorks 第 %s 页获取到 %s 个文件",
@@ -184,7 +203,9 @@ class DataWorksClient:
             if not page_files:
                 break
 
-            all_files.extend(page_files)
+            all_files.extend(
+                page_files
+            )
 
             total_count = self._extract_int(
                 data,
@@ -196,16 +217,12 @@ class DataWorksClient:
                 },
             )
 
-            # 如果 API 返回总数量，并且已经获取完毕，
-            # 则不需要继续请求下一页。
             if (
                 total_count is not None
                 and len(all_files) >= total_count
             ):
                 break
 
-            # 如果当前页不足 page_size，
-            # 说明已经到最后一页。
             if (
                 len(page_files)
                 < settings.dataworks_page_size
@@ -215,9 +232,11 @@ class DataWorksClient:
             page_number += 1
 
         logger.info(
-            "DataWorks Workspace %s 文件采集完成，共 %s 个文件",
+            "DataWorks Workspace %s 文件采集完成："
+            "共 %s 个文件，UseType=%s",
             workspace_id,
             len(all_files),
+            settings.dataworks_use_type,
         )
 
         return all_files
@@ -226,12 +245,7 @@ class DataWorksClient:
     def _extract_file_list(
         data: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        """
-        从 DataWorks Response 中提取 File 列表。
-
-        优先使用常见字段。
-        如果没有找到，则进行递归搜索。
-        """
+        """从 DataWorks Response 中提取 File 列表。"""
 
         candidate_keys = (
             "Files",
@@ -252,7 +266,6 @@ class DataWorksClient:
                     if isinstance(item, dict)
                 ]
 
-        # 兼容实际 API 返回的其它结构。
         result = DataWorksClient._find_list_of_dicts(
             data,
             required_any_keys={
@@ -378,6 +391,11 @@ class DataWorksClient:
         return None
 
 
+# ============================================================
+# File 字段提取
+# ============================================================
+
+
 def extract_file_id(
     file: dict[str, Any],
 ) -> str | None:
@@ -423,30 +441,36 @@ def extract_file_type(
     return None
 
 
+def extract_use_type(
+    file: dict[str, Any],
+) -> str | None:
+    """从 DataWorks File 对象中提取 UseType。"""
+
+    value = file.get("UseType")
+
+    if value is None:
+        return None
+
+    return str(value)
+
+
+# ============================================================
+# File Content
+# ============================================================
+
+
 def extract_file_content(
     file_detail: dict[str, Any],
 ) -> str | None:
     """
     从 GetFile 返回结果中提取 File.Content。
 
-    兼容不同 Response 包装结构：
+    兼容：
 
-    1. Data.File.Content
-    2. File.Content
-    3. Content
+        Data.File.Content
+        File.Content
+        Content
     """
-
-    # ========================================================
-    # 结构 1
-    #
-    # {
-    #     "Data": {
-    #         "File": {
-    #             "Content": "..."
-    #         }
-    #     }
-    # }
-    # ========================================================
 
     data = file_detail.get("Data")
 
@@ -459,16 +483,6 @@ def extract_file_content(
             if isinstance(content, str):
                 return content
 
-    # ========================================================
-    # 结构 2
-    #
-    # {
-    #     "File": {
-    #         "Content": "..."
-    #     }
-    # }
-    # ========================================================
-
     file_data = file_detail.get("File")
 
     if isinstance(file_data, dict):
@@ -476,14 +490,6 @@ def extract_file_content(
 
         if isinstance(content, str):
             return content
-
-    # ========================================================
-    # 结构 3
-    #
-    # {
-    #     "Content": "..."
-    # }
-    # ========================================================
 
     content = file_detail.get("Content")
 

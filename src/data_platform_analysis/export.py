@@ -17,6 +17,7 @@ from .dataworks import (
     extract_file_id,
     extract_file_name,
     extract_file_type,
+    extract_use_type,
 )
 from .dataworks_types import DataWorksFileType, get_file_type
 from .io_utils import (
@@ -349,6 +350,7 @@ class SnapshotExporter:
             # --------------------------------------------------
 
             file_type = extract_file_type(file)
+            use_type = extract_use_type(file)
 
             # ==================================================
             # File 属于当前 ListFiles 权威集合
@@ -371,10 +373,11 @@ class SnapshotExporter:
             )
 
             logger.debug(
-                "DataWorks File 类型："
+                "DataWorks File："
                 "workspace=%s，"
                 "file_id=%s，"
                 "file_name=%s，"
+                "use_type=%s，"
                 "file_type=%s，"
                 "file_type_name=%s，"
                 "task_type=%s，"
@@ -384,6 +387,7 @@ class SnapshotExporter:
                 workspace.id,
                 file_id,
                 file_name,
+                use_type,
                 file_type,
                 file_type_info.name,
                 file_type_info.task_type,
@@ -545,6 +549,7 @@ class SnapshotExporter:
                     "workspace_id": workspace.id,
                     "file_id": file_id,
                     "file_name": file_name,
+                    "use_type": use_type,
                     "file_type": file_type,
                     "task_type": (
                         file_type_info.task_type
@@ -1065,6 +1070,7 @@ class SnapshotExporter:
 
             "file_id": extract_file_id(file),
             "file_name": extract_file_name(file),
+            "use_type": extract_use_type(file),
             "file_type": extract_file_type(file),
 
             # --------------------------------------------------

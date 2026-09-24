@@ -28,7 +28,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # 项目根目录下的 .env。
-#
 # 不依赖当前 Working Directory。
 ENV_FILE = PROJECT_ROOT / ".env"
 
@@ -219,6 +218,11 @@ class Settings(BaseSettings):
         default=3,
         ge=0,
         le=10,
+    )
+    # 需要获取的节点文件类型UseType
+    dataworks_use_type: str = Field(
+        default="NORMAL",
+        min_length=1,
     )
 
     # ========================================================
