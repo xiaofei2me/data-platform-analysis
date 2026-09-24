@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class _stop_after_configured_retries(stop_base):
     """按当前配置的最大重试次数停止。
 
-    在调用时读取配置（而非 import 时），
+    在调用时读取配置，而不是 import 时读取，
     以配合惰性配置加载。
     """
 
@@ -47,10 +47,10 @@ class DataWorksClient:
     """
     DataWorks OpenAPI 客户端。
 
-    当前版本只负责：
+    当前版本负责：
 
-    1. 获取节点列表
-    2. 获取节点详情
+    1. 获取 Workspace 下的 File 列表
+    2. 获取单个 File 详情
 
     这里不会过早对 DataWorks 数据做业务分析。
 
@@ -83,13 +83,13 @@ class DataWorksClient:
         ),
         reraise=True,
     )
-
     def _list_files_page(
-            self,
-            workspace_id: int,
-            page_number: int,
+        self,
+        workspace_id: int,
+        page_number: int,
     ) -> dict[str, Any]:
         """获取 DataWorks 指定页的文件。"""
+
         request = models.ListFilesRequest(
             project_id=workspace_id,
             page_number=page_number,
@@ -97,7 +97,8 @@ class DataWorksClient:
         )
 
         logger.debug(
-            "调用 DataWorks ListFiles：workspace_id=%s，page=%s，page_size=%s",
+            "调用 DataWorks ListFiles："
+            "workspace_id=%s，page=%s，page_size=%s",
             workspace_id,
             page_number,
             settings.dataworks_page_size,
@@ -118,9 +119,9 @@ class DataWorksClient:
         reraise=True,
     )
     def get_file(
-            self,
-            workspace_id: int,
-            file_id: int,
+        self,
+        workspace_id: int,
+        file_id: int,
     ) -> dict[str, Any]:
         """获取 DataWorks 单个文件的完整详情。"""
 
@@ -130,52 +131,60 @@ class DataWorksClient:
         )
 
         logger.debug(
-            "调用 DataWorks GetFile：workspace_id=%s，file_id=%s",
+            "调用 DataWorks GetFile："
+            "workspace_id=%s，file_id=%s",
             workspace_id,
             file_id,
         )
 
-        response = self.client.get_file(
-            request
-        )
+        response = self.client.get_file(request)
 
         return response.body.to_map()
 
     def list_files(
         self,
-        project_id: int,
+        workspace_id: int,
     ) -> list[dict[str, Any]]:
         """
-        获取指定 DataWorks Workspace 的全部节点。
+        获取指定 DataWorks Workspace 的全部 File。
+
         这里统一处理分页，调用方不需要关心分页逻辑。
         """
 
-        all_nodes: list[dict[str, Any]] = []
+        all_files: list[dict[str, Any]] = []
         page_number = 1
 
         while True:
-            response = self._list_files_page(project_id, page_number,)
+            response = self._list_files_page(
+                workspace_id,
+                page_number,
+            )
 
-            # 不同接口返回结构可能存在差异。
+            # 不同 API Response 结构可能存在差异。
             # 优先寻找 Data/data，如果不存在则直接使用 Response。
             data = self._find_first_dict(
                 response,
-                keys={"Data", "data",},
+                keys={
+                    "Data",
+                    "data",
+                },
             )
 
             if data is None:
                 data = response
 
-            page_nodes = self._extract_node_list(
-                data
+            page_files = self._extract_file_list(data)
+
+            logger.info(
+                "DataWorks 第 %s 页获取到 %s 个文件",
+                page_number,
+                len(page_files),
             )
 
-            logger.info("DataWorks 第 %s 页获取到 %s 个节点", page_number, len(page_nodes),)
-
-            if not page_nodes:
+            if not page_files:
                 break
 
-            all_nodes.extend(page_nodes)
+            all_files.extend(page_files)
 
             total_count = self._extract_int(
                 data,
@@ -191,44 +200,44 @@ class DataWorksClient:
             # 则不需要继续请求下一页。
             if (
                 total_count is not None
-                and len(all_nodes) >= total_count
+                and len(all_files) >= total_count
             ):
                 break
 
             # 如果当前页不足 page_size，
             # 说明已经到最后一页。
             if (
-                len(page_nodes)
+                len(page_files)
                 < settings.dataworks_page_size
             ):
                 break
 
             page_number += 1
 
-            logger.info(
-                "DataWorks Workspace %s 节点采集完成，共 %s 个节点",
-                project_id,
-                len(all_nodes),
-            )
+        logger.info(
+            "DataWorks Workspace %s 文件采集完成，共 %s 个文件",
+            workspace_id,
+            len(all_files),
+        )
 
-            return all_nodes
+        return all_files
 
     @staticmethod
-    def _extract_node_list(
+    def _extract_file_list(
         data: dict[str, Any],
     ) -> list[dict[str, Any]]:
         """
-        从 DataWorks Response 中提取节点列表。
+        从 DataWorks Response 中提取 File 列表。
 
         优先使用常见字段。
         如果没有找到，则进行递归搜索。
         """
 
         candidate_keys = (
-            "Nodes",
-            "nodes",
-            "NodeList",
-            "nodeList",
+            "Files",
+            "files",
+            "FileList",
+            "fileList",
             "Items",
             "items",
         )
@@ -243,16 +252,14 @@ class DataWorksClient:
                     if isinstance(item, dict)
                 ]
 
-        # 兜底：递归寻找包含节点特征字段的对象列表。
+        # 兼容实际 API 返回的其它结构。
         result = DataWorksClient._find_list_of_dicts(
             data,
             required_any_keys={
-                "NodeId",
-                "nodeId",
-                "NodeName",
-                "nodeName",
-                "Name",
-                "name",
+                "FileId",
+                "fileId",
+                "FileName",
+                "fileName",
             },
         )
 
@@ -304,7 +311,7 @@ class DataWorksClient:
         *,
         required_any_keys: set[str],
     ) -> list[dict[str, Any]] | None:
-        """递归寻找可能的节点对象列表。"""
+        """递归寻找可能的 File 对象列表。"""
 
         if isinstance(value, dict):
             for child in value.values():
@@ -326,8 +333,6 @@ class DataWorksClient:
             ]
 
             if dictionaries:
-                # 只要列表中的对象有一个包含节点特征字段，
-                # 就认为它可能是节点列表。
                 if any(
                     any(
                         key in item
@@ -373,140 +378,116 @@ class DataWorksClient:
         return None
 
 
-def extract_node_id(
-    node: dict[str, Any],
+def extract_file_id(
+    file: dict[str, Any],
 ) -> str | None:
-    """从节点对象中提取 Node ID。"""
+    """从 DataWorks File 对象中提取 File ID。"""
 
-    for key in (
-        "FileId",
-    ):
-        value = node.get(key)
+    value = file.get("FileId")
 
-        if value is not None:
-            return str(value)
-    return None
-
-
-def extract_node_name(
-    node: dict[str, Any],
-) -> str | None:
-    """从节点对象中提取节点名称。"""
-
-    for key in (
-        "FileName",
-    ):
-        value = node.get(key)
-        if value is not None:
-            return str(value)
+    if value is not None:
+        return str(value)
 
     return None
 
 
-def extract_node_type(
-    node: dict[str, Any],
+def extract_file_name(
+    file: dict[str, Any],
 ) -> str | None:
-    """从节点对象中提取节点类型。"""
+    """从 DataWorks File 对象中提取 File Name。"""
 
-    for key in (
-        "NodeType",
-        "nodeType",
-        "Type",
-        "type",
-    ):
-        value = node.get(key)
+    value = file.get("FileName")
 
-        if value is not None:
-            return str(value)
+    if value is not None:
+        return str(value)
 
     return None
 
 
-def recursively_find_strings(
-    value: Any,
-    target_keys: set[str],
-) -> list[str]:
-    """
-    递归查找指定字段下面的字符串。
+def extract_file_type(
+    file: dict[str, Any],
+) -> int | None:
+    """从 DataWorks File 对象中提取 FileType。"""
 
-    主要用于寻找 DataWorks 节点中的 SQL、Script、Code 等内容。
-    """
+    value = file.get("FileType")
 
-    results: list[str] = []
+    if isinstance(value, int):
+        return value
 
-    normalized_target_keys = {
-        item.lower()
-        for item in target_keys
-    }
+    if (
+        isinstance(value, str)
+        and value.isdigit()
+    ):
+        return int(value)
 
-    if isinstance(value, dict):
-        for key, child in value.items():
-            if (
-                key.lower()
-                in normalized_target_keys
-            ):
-                if (
-                    isinstance(child, str)
-                    and child.strip()
-                ):
-                    results.append(child)
-
-            results.extend(
-                recursively_find_strings(
-                    child,
-                    target_keys,
-                )
-            )
-
-    elif isinstance(value, list):
-        for child in value:
-            results.extend(
-                recursively_find_strings(
-                    child,
-                    target_keys,
-                )
-            )
-
-    return results
+    return None
 
 
 def extract_file_content(
     file_detail: dict[str, Any],
 ) -> str | None:
-    """从 DataWorks File 详情中递归提取 Content。
-
-    一个 File 最终只保留一个 Content。
     """
-    result: str | None = None
+    从 GetFile 返回结果中提取 File.Content。
 
-    def walk(value: Any) -> None:
-        nonlocal result
+    兼容不同 Response 包装结构：
 
-        if result is not None:
-            return
+    1. Data.File.Content
+    2. File.Content
+    3. Content
+    """
 
-        if isinstance(value, dict):
-            for key, item in value.items():
-                if key in {
-                    "Content",
-                    "content",
-                }:
-                    if isinstance(item, str) and item.strip():
-                        result = item.strip()
-                        return
+    # ========================================================
+    # 结构 1
+    #
+    # {
+    #     "Data": {
+    #         "File": {
+    #             "Content": "..."
+    #         }
+    #     }
+    # }
+    # ========================================================
 
-                walk(item)
+    data = file_detail.get("Data")
 
-                if result is not None:
-                    return
+    if isinstance(data, dict):
+        file_data = data.get("File")
 
-        elif isinstance(value, list):
-            for item in value:
-                walk(item)
+        if isinstance(file_data, dict):
+            content = file_data.get("Content")
 
-                if result is not None:
-                    return
+            if isinstance(content, str):
+                return content
 
-    walk(file_detail)
+    # ========================================================
+    # 结构 2
+    #
+    # {
+    #     "File": {
+    #         "Content": "..."
+    #     }
+    # }
+    # ========================================================
 
-    return result
+    file_data = file_detail.get("File")
+
+    if isinstance(file_data, dict):
+        content = file_data.get("Content")
+
+        if isinstance(content, str):
+            return content
+
+    # ========================================================
+    # 结构 3
+    #
+    # {
+    #     "Content": "..."
+    # }
+    # ========================================================
+
+    content = file_detail.get("Content")
+
+    if isinstance(content, str):
+        return content
+
+    return None
