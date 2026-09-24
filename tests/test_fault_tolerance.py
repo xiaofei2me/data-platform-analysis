@@ -6,27 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-
-def _workspaces_env() -> str:
-    return json.dumps(
-        [
-            {
-                "id": 9001,
-                "name": "ws-a",
-                "maxcompute_project": "mc_a",
-            },
-            {
-                "id": 9002,
-                "name": "ws-b",
-                "maxcompute_project": "mc_b",
-            },
-            {
-                "id": 9003,
-                "name": "ws-c",
-                "maxcompute_project": "mc_c",
-            },
-        ]
-    )
+from helpers import make_node, make_workspace, workspaces_env
 
 
 def test_workspace_failure_continues_and_writes_manifest(
@@ -38,25 +18,27 @@ def test_workspace_failure_continues_and_writes_manifest(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        _workspaces_env(),
+        workspaces_env(
+            make_workspace(9001, "ws-a", "mc_a"),
+            make_workspace(9002, "ws-b", "mc_b"),
+            make_workspace(9003, "ws-c", "mc_c"),
+        ),
     )
 
     cli_env.failing_projects.add(9002)
     cli_env.nodes_by_project[9001] = [
-        {
-            "NodeId": "101",
-            "NodeName": "a_etl",
-            "NodeType": "Shell",
-            "Script": "SELECT 1;",
-        },
+        make_node(
+            "101",
+            "SELECT 1;",
+            name="a_etl",
+        ),
     ]
     cli_env.nodes_by_project[9003] = [
-        {
-            "NodeId": "301",
-            "NodeName": "c_etl",
-            "NodeType": "Shell",
-            "Script": "SELECT 3;",
-        },
+        make_node(
+            "301",
+            "SELECT 3;",
+            name="c_etl",
+        ),
     ]
 
     code = run_cli("export")
@@ -130,30 +112,22 @@ def test_node_failure_recorded_as_failed_nodes(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        json.dumps(
-            [
-                {
-                    "id": 9001,
-                    "name": "ws-a",
-                    "maxcompute_project": "mc_a",
-                }
-            ]
+        workspaces_env(
+            make_workspace(9001, "ws-a", "mc_a"),
         ),
     )
 
     cli_env.nodes_by_project[9001] = [
-        {
-            "NodeId": "101",
-            "NodeName": "ok_node",
-            "NodeType": "Shell",
-            "Script": "SELECT 1;",
-        },
-        {
-            "NodeId": "102",
-            "NodeName": "bad_node",
-            "NodeType": "Shell",
-            "Script": "SELECT 2;",
-        },
+        make_node(
+            "101",
+            "SELECT 1;",
+            name="ok_node",
+        ),
+        make_node(
+            "102",
+            "SELECT 2;",
+            name="bad_node",
+        ),
     ]
     cli_env.failing_node_ids[9001] = {"102"}
 

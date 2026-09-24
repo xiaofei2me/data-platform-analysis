@@ -6,22 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-
-def _workspaces_env() -> str:
-    return json.dumps(
-        [
-            {
-                "id": 9001,
-                "name": "ws-a",
-                "maxcompute_project": "mc_a",
-            },
-            {
-                "id": 9002,
-                "name": "ws-b",
-                "maxcompute_project": "mc_b",
-            },
-        ]
-    )
+from helpers import make_node, make_workspace, workspaces_env
 
 
 def test_export_dual_workspace_snapshot(
@@ -33,30 +18,31 @@ def test_export_dual_workspace_snapshot(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        _workspaces_env(),
+        workspaces_env(
+            make_workspace(9001, "ws-a", "mc_a"),
+            make_workspace(9002, "ws-b", "mc_b"),
+        ),
     )
 
     cli_env.nodes_by_project[9001] = [
-        {
-            "NodeId": "101",
-            "NodeName": "daily_etl",
-            "NodeType": "Shell",
-            "Script": "INSERT OVERWRITE TABLE a SELECT 1;",
-        },
+        make_node(
+            "101",
+            "INSERT OVERWRITE TABLE a SELECT 1;",
+            name="daily_etl",
+        ),
     ]
     cli_env.nodes_by_project[9002] = [
-        {
-            "NodeId": "201",
-            "NodeName": "dim_load",
-            "NodeType": "Python",
-            "Script": "print('b')",
-        },
-        {
-            "NodeId": "202",
-            "NodeName": "ads_build",
-            "NodeType": "Shell",
-            "Script": "SELECT 2;",
-        },
+        make_node(
+            "201",
+            "print('b')",
+            name="dim_load",
+            node_type="Python",
+        ),
+        make_node(
+            "202",
+            "SELECT 2;",
+            name="ads_build",
+        ),
     ]
 
     code = run_cli("export")
@@ -163,23 +149,16 @@ def test_export_single_entry_workspace_list(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        json.dumps(
-            [
-                {
-                    "id": 7,
-                    "name": "only",
-                    "maxcompute_project": "mc_demo",
-                }
-            ]
+        workspaces_env(
+            make_workspace(7, "only"),
         ),
     )
     cli_env.nodes_by_project[7] = [
-        {
-            "NodeId": "701",
-            "NodeName": "only_node",
-            "NodeType": "Shell",
-            "Script": "SELECT 7;",
-        },
+        make_node(
+            "701",
+            "SELECT 7;",
+            name="only_node",
+        ),
     ]
 
     assert run_cli("export") == 0

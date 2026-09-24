@@ -6,36 +6,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+from helpers import make_node, make_workspace, workspaces_env
 
-def _three_workspaces() -> str:
-    return json.dumps(
-        [
-            {
-                "id": 9001,
-                "name": "ws-a",
-                "maxcompute_project": "mc_a",
-            },
-            {
-                "id": 9002,
-                "name": "ws-b",
-                "maxcompute_project": "mc_b",
-            },
-            {
-                "id": 9003,
-                "name": "ws-c",
-                "maxcompute_project": "mc_c",
-            },
-        ]
-    )
-
-
-def _node(node_id: str, script: str) -> dict[str, Any]:
-    return {
-        "NodeId": node_id,
-        "NodeName": f"node_{node_id}",
-        "NodeType": "Shell",
-        "Script": script,
-    }
+THREE_WORKSPACES = workspaces_env(
+    make_workspace(9001, "ws-a", "mc_a"),
+    make_workspace(9002, "ws-b", "mc_b"),
+    make_workspace(9003, "ws-c", "mc_c"),
+)
 
 
 def test_workspace_filter_partial_upsert(
@@ -47,11 +24,11 @@ def test_workspace_filter_partial_upsert(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        _three_workspaces(),
+        THREE_WORKSPACES,
     )
     for ws_id in (9001, 9002, 9003):
         cli_env.nodes_by_project[ws_id] = [
-            _node(f"{ws_id}1", f"SELECT {ws_id};")
+            make_node(f"{ws_id}1", f"SELECT {ws_id};")
         ]
 
     # 基线：全量采集。
@@ -83,8 +60,8 @@ def test_workspace_filter_partial_upsert(
 
     # 仅重跑 9001。
     cli_env.nodes_by_project[9001] = [
-        _node("90011", "SELECT 'updated';"),
-        _node("90012", "SELECT 'new';"),
+        make_node("90011", "SELECT 'updated';"),
+        make_node("90012", "SELECT 'new';"),
     ]
     assert (
         run_cli("dataworks", "--workspace", "9001") == 0
@@ -138,7 +115,7 @@ def test_workspace_filter_unconfigured_id(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        _three_workspaces(),
+        THREE_WORKSPACES,
     )
 
     code = run_cli("dataworks", "--workspace", "999")
@@ -156,10 +133,10 @@ def test_export_with_workspace_filter_skips_manifest(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        _three_workspaces(),
+        THREE_WORKSPACES,
     )
     cli_env.nodes_by_project[9002] = [
-        _node("90021", "SELECT 2;")
+        make_node("90021", "SELECT 2;")
     ]
 
     assert (

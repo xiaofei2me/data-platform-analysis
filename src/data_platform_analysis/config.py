@@ -95,6 +95,34 @@ class Settings(BaseSettings):
 
         return self
 
+    def select_workspaces(
+        self,
+        workspace_id: int | None = None,
+    ) -> list[WorkspaceSettings]:
+        """
+        解析本次要采集的 Workspace 列表。
+
+        workspace_id 为 None 时返回全部；
+        指定但未配置的 id 直接报错（fail-fast）。
+        """
+
+        if workspace_id is None:
+            return list(self.dataworks_workspaces)
+
+        matched = [
+            workspace
+            for workspace in self.dataworks_workspaces
+            if workspace.id == workspace_id
+        ]
+
+        if not matched:
+            raise ValueError(
+                f"未配置的 Workspace id：{workspace_id}"
+                "（不在 DATAWORKS_WORKSPACES 中）"
+            )
+
+        return matched
+
     # DataWorks API 每页返回的数据量。
     dataworks_page_size: int = Field(
         default=100,

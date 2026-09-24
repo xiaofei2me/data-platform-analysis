@@ -135,6 +135,15 @@ def print_config() -> None:
     console.print(table)
 
 
+def _exit_on_failures(
+    exporter: SnapshotExporter,
+) -> None:
+    """存在 Workspace / 节点级失败时以非零码退出。"""
+
+    if exporter.had_failures:
+        sys.exit(1)
+
+
 def run_dataworks(
     workspace_id: int | None = None,
 ) -> None:
@@ -144,8 +153,7 @@ def run_dataworks(
 
     exporter.export_dataworks(workspace_id)
 
-    if exporter.had_failures:
-        sys.exit(1)
+    _exit_on_failures(exporter)
 
 
 def run_maxcompute() -> None:
@@ -165,8 +173,7 @@ def run_export(
 
     exporter.export_all(workspace_id)
 
-    if exporter.had_failures:
-        sys.exit(1)
+    _exit_on_failures(exporter)
 
 
 def main() -> None:

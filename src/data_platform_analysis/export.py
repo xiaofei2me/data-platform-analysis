@@ -30,6 +30,42 @@ from .maxcompute import MaxComputeClient
 logger = logging.getLogger(__name__)
 
 
+def _workspace_identity(
+    workspace: WorkspaceSettings,
+) -> dict[str, Any]:
+    """Workspace 身份三元组（id / name / maxcompute_project）。"""
+
+    return {
+        "id": workspace.id,
+        "name": workspace.name,
+        "maxcompute_project": workspace.maxcompute_project,
+    }
+
+
+def _workspace_entry(
+    workspace: WorkspaceSettings,
+    *,
+    status: str,
+    node_count: int,
+    failed_node_count: int,
+    error: str | None = None,
+) -> dict[str, Any]:
+    """构建 workspaces-index 注册表条目。"""
+
+    entry: dict[str, Any] = {
+        **_workspace_identity(workspace),
+        "status": status,
+        "node_count": node_count,
+        "failed_node_count": failed_node_count,
+        "generated_at": utc_now(),
+    }
+
+    if error is not None:
+        entry["error"] = error
+
+    return entry
+
+
 class SnapshotExporter:
     """
     Snapshot 导出器。
@@ -80,33 +116,6 @@ class SnapshotExporter:
             "完整 Snapshot 采集完成"
         )
 
-    def _select_workspaces(
-        self,
-        workspace_id: int | None,
-    ) -> list[WorkspaceSettings]:
-        """解析本次要采集的 Workspace 列表。"""
-
-        if workspace_id is None:
-            return list(
-                settings.dataworks_workspaces
-            )
-
-        matched = [
-            workspace
-            for workspace in (
-                settings.dataworks_workspaces
-            )
-            if workspace.id == workspace_id
-        ]
-
-        if not matched:
-            raise ValueError(
-                f"未配置的 Workspace id：{workspace_id}"
-                "（不在 DATAWORKS_WORKSPACES 中）"
-            )
-
-        return matched
-
     def export_dataworks(
         self,
         workspace_id: int | None = None,
@@ -119,7 +128,7 @@ class SnapshotExporter:
         """
 
         # 校验在任何采集动作之前完成（fail-fast）。
-        workspaces = self._select_workspaces(
+        workspaces = settings.select_workspaces(
             workspace_id
         )
 
@@ -147,21 +156,13 @@ class SnapshotExporter:
                     workspace.id,
                 )
 
-                entry = {
-                    "id": workspace.id,
-                    "name": workspace.name,
-                    "maxcompute_project": (
-                        workspace.maxcompute_project
-                    ),
-                    "status": "failed",
-                    "node_count": 0,
-                    "failed_node_count": 0,
-                    "generated_at": utc_now(),
-                    "error": (
-                        str(exc)
-                        or type(exc).__name__
-                    ),
-                }
+                entry = _workspace_entry(
+                    workspace,
+                    status="failed",
+                    node_count=0,
+                    failed_node_count=0,
+                    error=str(exc) or type(exc).__name__,
+                )
 
             if entry.get("status") == "failed":
                 self.had_failures = True
@@ -378,13 +379,9 @@ class SnapshotExporter:
             base_dir / "nodes-index.json",
             {
                 "generated_at": utc_now(),
-                "workspace": {
-                    "id": workspace.id,
-                    "name": workspace.name,
-                    "maxcompute_project": (
-                        workspace.maxcompute_project
-                    ),
-                },
+                "workspace": _workspace_identity(
+                    workspace
+                ),
                 "count": len(node_index),
                 "nodes": node_index,
                 "failed_nodes": failed_nodes,
@@ -425,17 +422,12 @@ class SnapshotExporter:
             },
         )
 
-        return {
-            "id": workspace.id,
-            "name": workspace.name,
-            "maxcompute_project": (
-                workspace.maxcompute_project
-            ),
-            "status": "ok",
-            "node_count": len(node_index),
-            "failed_node_count": len(failed_nodes),
-            "generated_at": utc_now(),
-        }
+        return _workspace_entry(
+            workspace,
+            status="ok",
+            node_count=len(node_index),
+            failed_node_count=len(failed_nodes),
+        )
 
     def _cleanup_workspace_files(
         self,
@@ -687,13 +679,7 @@ class SnapshotExporter:
                         settings.dataworks_region
                     ),
                     "workspaces": [
-                        {
-                            "id": workspace.id,
-                            "name": workspace.name,
-                            "maxcompute_project": (
-                                workspace.maxcompute_project
-                            ),
-                        }
+                        _workspace_identity(workspace)
                         for workspace in (
                             settings.dataworks_workspaces
                         )

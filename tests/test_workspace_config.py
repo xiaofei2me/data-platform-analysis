@@ -2,24 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
-
-def _workspaces(*entries: dict[str, Any]) -> str:
-    return json.dumps(list(entries))
-
-
-def _entry(
-    workspace_id: int,
-    name: str,
-    maxcompute_project: str = "mc_demo",
-) -> dict[str, Any]:
-    return {
-        "id": workspace_id,
-        "name": name,
-        "maxcompute_project": maxcompute_project,
-    }
+from helpers import make_workspace, workspaces_env
 
 
 def test_invalid_workspaces_json_fails_fast(
@@ -47,9 +32,9 @@ def test_duplicate_workspace_id_fails_fast(
     monkeypatch.setenv("DATAWORKS_PROJECT_ID", "9001")
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        _workspaces(
-            _entry(1, "ws-a"),
-            _entry(1, "ws-b"),
+        workspaces_env(
+            make_workspace(1, "ws-a"),
+            make_workspace(1, "ws-b"),
         ),
     )
 
@@ -66,9 +51,9 @@ def test_duplicate_workspace_name_fails_fast(
     monkeypatch.setenv("DATAWORKS_PROJECT_ID", "9001")
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        _workspaces(
-            _entry(1, "same"),
-            _entry(2, "same"),
+        workspaces_env(
+            make_workspace(1, "same"),
+            make_workspace(2, "same"),
         ),
     )
 
@@ -85,9 +70,9 @@ def test_config_subcommand_shows_workspaces(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        _workspaces(
-            _entry(9001, "ws-a"),
-            _entry(9002, "ws-b"),
+        workspaces_env(
+            make_workspace(9001, "ws-a"),
+            make_workspace(9002, "ws-b"),
         ),
     )
 

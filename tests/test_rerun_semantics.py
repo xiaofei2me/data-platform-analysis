@@ -6,13 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-
-def _ws(workspace_id: int, name: str) -> dict[str, Any]:
-    return {
-        "id": workspace_id,
-        "name": name,
-        "maxcompute_project": "mc_demo",
-    }
+from helpers import make_workspace, workspaces_env
 
 
 def _two_nodes() -> list[dict[str, Any]]:
@@ -41,7 +35,7 @@ def test_ghost_node_files_cleaned_on_rerun(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        json.dumps([_ws(9001, "ws-a")]),
+        workspaces_env(make_workspace(9001, "ws-a")),
     )
 
     cli_env.nodes_by_project[9001] = _two_nodes()
@@ -75,7 +69,7 @@ def test_failed_node_old_files_kept(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        json.dumps([_ws(9001, "ws-a")]),
+        workspaces_env(make_workspace(9001, "ws-a")),
     )
 
     cli_env.nodes_by_project[9001] = _two_nodes()
@@ -118,11 +112,9 @@ def test_failed_workspace_no_cleanup(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        json.dumps(
-            [
-                _ws(9001, "ws-a"),
-                _ws(9002, "ws-b"),
-            ]
+        workspaces_env(
+            make_workspace(9001, "ws-a"),
+            make_workspace(9002, "ws-b"),
         ),
     )
 
@@ -170,11 +162,9 @@ def test_workspaces_index_upsert_preserves_unlisted_entries(
 
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        json.dumps(
-            [
-                _ws(9001, "ws-a"),
-                _ws(9002, "ws-b"),
-            ]
+        workspaces_env(
+            make_workspace(9001, "ws-a"),
+            make_workspace(9002, "ws-b"),
         ),
     )
     cli_env.nodes_by_project[9001] = _two_nodes()[:1]
@@ -184,7 +174,7 @@ def test_workspaces_index_upsert_preserves_unlisted_entries(
     # 从配置中移除 9002 后重跑 9001。
     monkeypatch.setenv(
         "DATAWORKS_WORKSPACES",
-        json.dumps([_ws(9001, "ws-a-renamed")]),
+        workspaces_env(make_workspace(9001, "ws-a-renamed")),
     )
     assert run_cli("dataworks") == 0
 
