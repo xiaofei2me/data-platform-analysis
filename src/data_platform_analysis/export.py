@@ -29,6 +29,38 @@ from .maxcompute import MaxComputeClient
 
 logger = logging.getLogger(__name__)
 
+def _build_snapshot_filename(
+    entity_id: str,
+    entity_name: str,
+    *,
+    suffix: str,
+    index: int | None = None,
+) -> str:
+    """
+    构建 Snapshot 文件名。
+
+    文件名格式：
+
+        <id>__<name>.<suffix>
+
+    如果同一个实体存在多个文件：
+
+        <id>__<name>_1.<suffix>
+        <id>__<name>_2.<suffix>
+
+    ID 用于保证稳定引用；
+    Name 用于提高 Snapshot 的人工可读性。
+    """
+
+    safe_id = safe_filename(entity_id)
+    safe_name = safe_filename(entity_name)
+
+    filename = f"{safe_id}__{safe_name}"
+
+    if index is not None:
+        filename = f"{filename}"
+
+    return f"{filename}.{suffix}"
 
 def _workspace_identity(
     workspace: WorkspaceSettings,
@@ -219,10 +251,12 @@ class SnapshotExporter:
             # 保存原始节点 JSON
             # ==================================================
             raw_path = (
-                nodes_dir
-                / (
-                    f"{safe_filename(node_id)}.json"
-                )
+                    nodes_dir
+                    / _build_snapshot_filename(
+                node_id,
+                node_name,
+                suffix="json",
+            )
             )
 
             write_json(
@@ -248,9 +282,11 @@ class SnapshotExporter:
                 sql_candidates,
                 start=1,
             ):
-                filename = (
-                    f"{safe_filename(node_id)}"
-                    f"_{index}.sql"
+                filename = _build_snapshot_filename(
+                    node_id,
+                    node_name,
+                    suffix="sql",
+                    index=index,
                 )
 
                 sql_path = (
@@ -370,40 +406,64 @@ class SnapshotExporter:
         )
 
     def _cleanup_workspace_files(
-        self,
-        *,
-        nodes_dir: Path,
-        sql_dir: Path,
-        authoritative_node_ids: set[str],
+            self,
+            *,
+            nodes_dir: Path,
+            sql_dir: Path,
+            authoritative_files: dict[str, str],
     ) -> None:
         """
-        删除不属于权威节点集合的 nodes / sql 文件。
+        清理 Workspace Snapshot 中已经失效或文件名发生变化的文件。
 
-        权威集合 = 本次 ListNodes 返回的节点 id。
-        仅在整个 Workspace 采集完整跑完后调用；
-        failed 节点仍在权威集合内，其旧文件不会被删除。
+        authoritative_files:
+            {
+                file_id: current raw JSON filename
+            }
+
+        清理规则：
+
+        1. File ID 不存在：
+           删除旧文件。
+
+        2. File ID 存在但 File Name 发生变化：
+           删除旧文件。
+
+        3. File ID + File Name 都匹配：
+           保留。
+
+        SQL 文件只根据 File ID 保留，
+        因为同一个 File 可能对应多个 SQL 文件。
         """
 
-        keep_node_files = {
-            f"{safe_filename(node_id)}.json"
-            for node_id in authoritative_node_ids
-        }
+        # ======================================================
+        # 当前有效 JSON 文件
+        # ======================================================
 
-        keep_sql_prefixes = tuple(
-            f"{safe_filename(node_id)}_"
-            for node_id in authoritative_node_ids
+        keep_node_files = set(
+            authoritative_files.values()
         )
 
         for path in nodes_dir.glob("*.json"):
             if path.name not in keep_node_files:
                 logger.info(
-                    "清理幽灵节点文件：%s",
+                    "清理过期节点文件：%s",
                     path.name,
                 )
                 path.unlink()
 
+        # ======================================================
+        # 当前有效 File ID
+        # ======================================================
+
+        authoritative_prefixes = tuple(
+            f"{safe_filename(node_id)}__"
+            for node_id in authoritative_files
+        )
+
         for path in sql_dir.glob("*.sql"):
-            if not path.name.startswith(keep_sql_prefixes):
+            if not path.name.startswith(
+                    authoritative_prefixes
+            ):
                 logger.info(
                     "清理幽灵 SQL 文件：%s",
                     path.name,
