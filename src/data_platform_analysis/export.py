@@ -547,7 +547,7 @@ class SnapshotExporter:
             # ==================================================
 
             try:
-                detail = self.dataworks.get_file(
+                detail = self.dataworks.get_node(
                     workspace.id,
                     int(file_id),
                 )
