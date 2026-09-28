@@ -83,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     # 只采集 DataWorks。
     sub_dataworks = subparsers.add_parser(
         "dataworks",
-        help="采集 DataWorks 文件和任务信息。",
+        help="采集 DataWorks 文件、Raw 详情与内容。",
     )
 
     sub_dataworks.add_argument(

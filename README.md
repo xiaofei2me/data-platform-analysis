@@ -8,75 +8,148 @@
 
 当前整体目标：
 
+```
 DataWorks + MaxCompute
         ↓
-    数据资产采集
+    Collection（采集）
         ↓
-   本地 Snapshot
+   Raw Snapshot（时点快照）
         ↓
-    数据仓库现状分析
+    数据仓库现状分析（Analysis）
         ↓
        DWS 设计
         ↓
   Semantic Layer 设计
+```
 
-当前阶段只负责：
+当前阶段只负责 **Collection**：
 
-- DataWorks 数据采集
-- MaxCompute 数据采集
-- 原始数据保存
-- SQL 保存
-- 基础任务关系保存
+- DataWorks 文件采集（ListFiles / GetFile）
+- MaxCompute 表元数据采集（ListTables / GetTable）
+- Raw 响应与 Content 原样保存为本地 Snapshot
+- Snapshot 索引（files-index / tables-index）与重复采集清理
 
-暂时不负责：
+当前阶段明确不负责（属于后续 Analysis 阶段）：
 
+- Task Dependency（任务级依赖）分析
+- Table-level / Column-level Lineage（表级 / 列级血缘）
+- ODS / DWD / ADS 自动分类、DWS Candidate
+- Semantic Layer
+- SQLGlot / SQL 解析
+- LLM / AI Agent / MCP
 - QuickBI
-- LLM 分析
-- AI Agent
-- DWS 自动生成
-- Semantic Layer 实现
 - 数据迁移
-
----
 
 ## 2. 当前采集范围
 
 ### DataWorks
 
-采集：
+```
+DataWorks Workspace
+        ↓  ListFiles
+      File 列表
+        ↓  GetFile（逐个）
+Raw File Detail（完整响应）
+   +
+File Content（SQL / Script / JSON …）
+        ↓
+   files-index.json
+```
 
-- DataWorks Project
-- 数据开发节点
-- 节点 ID
-- 节点名称
-- 节点类型
-- 节点详情
-- SQL / Script
-- 节点原始 JSON
-- 基础任务依赖信息
+采集内容：
+
+- Workspace 列表（`WORKSPACES` 配置）
+- File 列表（分页合并，支持 `DATAWORKS_USE_TYPES` 过滤）
+- 单个 File 的完整 Raw GetFile 响应
+- File Content（按 `FileType` 决定扩展名）
+- `files-index.json`（导航信息 + `failed_files`）
 
 ### MaxCompute
 
-采集：
+```
+DataWorks Workspace.name
+        ↓
+  MaxCompute Project
+        ↓  ListTables
+      Table 列表
+        ↓  GetTable（逐个）
+   Table Metadata
+        ↓
+   tables-index.json
+```
 
-- Project
-- Schema
-- Table
-- Table Comment
-- Column
-- Column Type
-- Column Comment
-- Partition Column
-- Table Size
-- Lifecycle
-- Create Time
-- Last Modified Time
+采集内容：
 
-默认不采集实际分区实例。
+- Workspace 与 MaxCompute Project 的映射（`Workspace.name` 即 Project 名称）
+- 表列表与单表完整元数据（注释、字段、分区字段、大小、生命周期、创建/修改时间等）
+- `tables-index.json`（导航信息 + `failed_tables`）
+- 默认不采集实际分区实例（`MAXCOMPUTE_INCLUDE_PARTITIONS=false`）
 
----
+## 3. Snapshot 布局
 
-## 3. 项目结构
+```
+source/
+├── manifest.json                              # 仅全量 export 写入
+├── dataworks/
+│   ├── workspaces-index.json                  # Workspace 注册表（upsert）
+│   └── workspaces/<workspace_id>/
+│       ├── files-index.json
+│       ├── files/<file_id>__<file_name>.json  # Raw GetFile 响应
+│       └── content/<file_id>__<file_name>.<ext>
+└── maxcompute/
+    └── workspaces/<workspace_id>/
+        ├── tables-index.json
+        └── tables/<table_name>.json           # Table Metadata
+```
+
+- 目录使用稳定的 Workspace `id`（不是可变的 `name`）。
+- Raw 文件是唯一真相源，index 只承担导航。
+
+## 4. 命令
+
+```bash
+# 全部 Workspace：DataWorks + MaxCompute
+uv run data-platform-analysis export
+
+# 单个 Workspace
+uv run data-platform-analysis export --workspace 123456
+
+# 只采集 DataWorks / 只采集 MaxCompute
+uv run data-platform-analysis dataworks
+uv run data-platform-analysis maxcompute
+
+# 限制模式：每个 Workspace 最多 N 个对象
+uv run data-platform-analysis dataworks --limit 10
+uv run data-platform-analysis maxcompute --limit 10
+uv run data-platform-analysis export --limit 10
+
+# 查看当前生效的非敏感配置
+uv run data-platform-analysis config
+```
+
+退出码：
+
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 全部成功 |
+| 1 | 存在 Workspace / 文件 / 表级失败，或命令执行失败 |
+| 130 | 用户中断 |
+
+详细参数说明见 [docs/COMMANDS.md](docs/COMMANDS.md)。
+
+## 5. Cleanup 安全规则
+
+```
+limit is None     → 完整集合 → 允许 Cleanup
+limit is not None → 部分集合 → 禁止 Cleanup（Cleanup = SKIP）
+```
+
+- 成功的 `ListFiles` / `ListTables` 是当前对象集合的权威来源，据此清理远端已删除的本地 Snapshot。
+- 单个对象（File / Table）获取失败：保留旧 Snapshot，成功对象正常更新。
+- 整个 List API 失败：不执行 Cleanup，不覆盖旧 index。
+- 不提供 `--no-cleanup`，limit 模式下 Cleanup 一律跳过。
+
+## 6. 项目结构
 
 ```text
 data-platform-analysis/
@@ -89,24 +162,53 @@ data-platform-analysis/
 │   └── data_platform_analysis/
 │       ├── __init__.py
 │       ├── __main__.py
-│       ├── cli.py
-│       ├── config.py
-│       ├── logging_utils.py
-│       ├── io_utils.py
-│       ├── dataworks.py
-│       ├── maxcompute.py
-│       └── export.py
+│       ├── cli.py              # CLI 入口与子命令
+│       ├── config.py           # WORKSPACES 等配置与校验
+│       ├── logging_utils.py    # Rich 日志
+│       ├── io_utils.py         # 文件读写
+│       ├── dataworks.py        # DataWorks OpenAPI 客户端与字段提取
+│       ├── dataworks_types.py  # DataWorks FileType 注册表
+│       ├── maxcompute.py       # MaxCompute 只读元数据客户端
+│       └── export.py           # Snapshot 导出与 Cleanup
 │
-├── source/
-│   └── .gitkeep
+├── source/                     # Snapshot 输出目录（gitignore）
+├── analysis/                   # 后续 Analysis 阶段产物
+├── output/                     # 导出产物
 │
-├── analysis/
-│   └── .gitkeep
+├── docs/
+│   ├── COMMANDS.md             # 命令参考
+│   └── adr/                    # 架构决策记录
 │
-├── output/
-│   └── .gitkeep
-│
-└── tests/
-    └── .gitkeep
+└── tests/                      # CLI 黑盒测试（只在 SDK 边界 stub）
 ```
 
+## 7. 配置
+
+配置来源是项目根目录的 `.env`，模板见 `.env.example`。
+
+关键配置：
+
+```bash
+# Workspace 列表（唯一 Workspace 配置来源）
+# id 唯一、name 唯一、至少一个；name 同时是对应 MaxCompute Project 名称
+WORKSPACES=[{"id": 123456, "name": "ods"}, {"id": 234567, "name": "dwd"}]
+
+# DataWorks UseType 过滤（空 = 全部）
+DATAWORKS_USE_TYPES=NORMAL
+
+# MaxCompute（无需单独配置 Project）
+MAXCOMPUTE_ENDPOINT=https://service.cn-shanghai.maxcompute.aliyun.com/api
+```
+
+不存在 `DATAWORKS_PROJECT_ID`、`DATAWORKS_PROJECT_IDENTIFIER`、`MAXCOMPUTE_PROJECT` 等废弃配置项。
+
+## 8. 开发
+
+```bash
+uv run ruff format .
+uv run ruff check .
+uv run mypy
+uv run pytest
+```
+
+测试约定：唯一测试接缝是 CLI 黑盒，只在 SDK 调用边界（DataWorks OpenAPI Client、PyODPS ODPS）打桩。

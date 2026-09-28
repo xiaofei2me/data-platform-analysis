@@ -225,8 +225,21 @@ class SnapshotExporter:
             并禁止 Snapshot Cleanup。
 
         manifest.json 仅在完整 Workspace 采集时生成。
+
+        export_all 只做编排：
+
+            export_all()
+                ↓
+            export_dataworks()
+            export_maxcompute()
+                ↓
+            write_manifest()
+
+        DataWorks / MaxCompute 的采集逻辑分别由两个子方法负责，
+        这里不重复实现。
         """
 
+        # 先校验 Workspace 选择，配置错误时在任何采集开始前失败。
         workspaces = settings.select_workspaces(workspace_id)
 
         logger.info(
@@ -234,63 +247,15 @@ class SnapshotExporter:
             len(workspaces),
         )
 
-        _log_limit_mode(limit, scope="DataWorks + MaxCompute")
+        self.export_dataworks(
+            workspace_id=workspace_id,
+            limit=limit,
+        )
 
-        dataworks_entries: list[dict[str, Any]] = []
-
-        for workspace in workspaces:
-            logger.info(
-                "开始采集 Workspace：id=%s，name=%s",
-                workspace.id,
-                workspace.name,
-            )
-
-            # --------------------------------------------------
-            # DataWorks
-            # --------------------------------------------------
-            try:
-                dataworks_entry = self._export_dataworks_workspace(
-                    workspace,
-                    limit=limit,
-                )
-
-            except Exception as exc:
-                logger.exception(
-                    "DataWorks Workspace 采集失败：workspace=%s",
-                    workspace.id,
-                )
-
-                dataworks_entry = _workspace_entry(
-                    workspace,
-                    status="failed",
-                    file_count=0,
-                    failed_file_count=0,
-                    error=(str(exc) or type(exc).__name__),
-                )
-
-                self.had_failures = True
-
-            dataworks_entries.append(dataworks_entry)
-
-            if dataworks_entry.get("failed_file_count"):
-                self.had_failures = True
-
-            # --------------------------------------------------
-            # MaxCompute
-            # --------------------------------------------------
-            self._export_maxcompute_workspace(
-                workspace,
-                limit=limit,
-            )
-
-            logger.info(
-                "Workspace 采集完成：id=%s，name=%s",
-                workspace.id,
-                workspace.name,
-            )
-
-        # DataWorks Workspace 注册表。
-        self._write_workspaces_index(dataworks_entries)
+        self.export_maxcompute(
+            workspace_id=workspace_id,
+            limit=limit,
+        )
 
         # manifest 仅由完整 export 写入。
         if workspace_id is None:
@@ -398,10 +363,32 @@ class SnapshotExporter:
         _log_limit_mode(limit, scope="MaxCompute")
 
         for workspace in workspaces:
-            self._export_maxcompute_workspace(
-                workspace,
-                limit=limit,
-            )
+            # --------------------------------------------------
+            # Workspace 级错误边界：
+            #
+            # 单个 Workspace 的 MaxCompute 采集失败
+            # （客户端初始化、写盘、元数据读取等）
+            # 不能阻断其他 Workspace，
+            # 也不能影响 manifest / index 的生成。
+            #
+            # ListTables / GetTable 失败已在
+            # _export_maxcompute_workspace 内部处理，
+            # 这里兜住其余异常。
+            # --------------------------------------------------
+            try:
+                self._export_maxcompute_workspace(
+                    workspace,
+                    limit=limit,
+                )
+
+            except Exception:
+                logger.exception(
+                    "MaxCompute Workspace 采集失败：workspace=%s，project=%s",
+                    workspace.id,
+                    workspace.name,
+                )
+
+                self.had_failures = True
 
         logger.info(
             "MaxCompute 采集完成：%s 个 Workspace",

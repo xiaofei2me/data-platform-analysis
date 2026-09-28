@@ -19,9 +19,9 @@ def test_workspace_failure_continues_and_writes_manifest(
     monkeypatch.setenv(
         "WORKSPACES",
         workspaces_env(
-            make_workspace(9001, "ws-a", "mc_a"),
-            make_workspace(9002, "ws-b", "mc_b"),
-            make_workspace(9003, "ws-c", "mc_c"),
+            make_workspace(9001, "ws-a"),
+            make_workspace(9002, "ws-b"),
+            make_workspace(9003, "ws-c"),
         ),
     )
 
@@ -84,7 +84,7 @@ def test_file_failure_recorded_as_failed_files(
     monkeypatch.setenv(
         "WORKSPACES",
         workspaces_env(
-            make_workspace(9001, "ws-a", "mc_a"),
+            make_workspace(9001, "ws-a"),
         ),
     )
 
@@ -126,3 +126,135 @@ def test_file_failure_recorded_as_failed_files(
     assert entry["status"] == "failed"
     assert entry["file_count"] == 1
     assert entry["failed_file_count"] == 1
+
+
+# ============================================================
+# MaxCompute 失败语义
+# ============================================================
+
+
+def test_get_table_failure_keeps_old_snapshot(
+    cli_env: Any,
+    fake_odps: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """单表 GetTable 失败：保留旧 Snapshot，成功表照常更新，exit 1。"""
+
+    monkeypatch.setenv(
+        "WORKSPACES",
+        workspaces_env(make_workspace(9001, "ws-a")),
+    )
+    fake_odps.set_table_names("t1", "t2")
+
+    assert run_cli("maxcompute") == 0
+
+    tables_dir = Path("source") / "maxcompute" / "workspaces" / "9001" / "tables"
+    assert (tables_dir / "t1.json").exists()
+    assert (tables_dir / "t2.json").exists()
+
+    # t2 的 GetTable 开始失败。
+    fake_odps.failing_table_names = {"t2"}
+    assert run_cli("maxcompute") == 1
+
+    # 失败表保留旧 Snapshot，成功表正常更新。
+    assert (tables_dir / "t1.json").exists()
+    assert (tables_dir / "t2.json").exists()
+
+    index = json.loads(
+        (Path("source") / "maxcompute" / "workspaces" / "9001" / "tables-index.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert index["count"] == 1
+    assert [table["table"] for table in index["tables"]] == ["t1"]
+    assert index["failed_tables"] == [{"table": "t2"}]
+
+
+def test_list_tables_failure_skips_cleanup(
+    cli_env: Any,
+    fake_odps: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """ListTables 失败：不 Cleanup、不覆盖旧 index、exit 1。"""
+
+    monkeypatch.setenv(
+        "WORKSPACES",
+        workspaces_env(make_workspace(9001, "ws-a")),
+    )
+    fake_odps.set_table_names("t1", "t2")
+
+    assert run_cli("maxcompute") == 0
+
+    base = Path("source") / "maxcompute" / "workspaces" / "9001"
+    before = sorted(path.name for path in (base / "tables").glob("*.json"))
+    assert len(before) == 2
+
+    # ListTables 开始失败（project = workspace.name）。
+    fake_odps.failing_projects.add("ws-a")
+    assert run_cli("maxcompute") == 1
+
+    # 旧 Snapshot 全部保留，旧 index 未被覆盖。
+    assert sorted(path.name for path in (base / "tables").glob("*.json")) == before
+    index = json.loads((base / "tables-index.json").read_text(encoding="utf-8"))
+    assert index["count"] == 2
+
+
+def test_maxcompute_workspace_failure_does_not_block_others(
+    cli_env: Any,
+    fake_odps: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """单 Workspace 的 MaxCompute 初始化失败：其余照采，manifest 仍生成，exit 1。"""
+
+    monkeypatch.setenv(
+        "WORKSPACES",
+        workspaces_env(
+            make_workspace(9001, "ws-a"),
+            make_workspace(9002, "ws-b"),
+            make_workspace(9003, "ws-c"),
+        ),
+    )
+    for workspace_id in (9001, 9002, 9003):
+        cli_env.files_by_project[workspace_id] = [
+            make_file(
+                f"{workspace_id}1",
+                f"file_{workspace_id}",
+            ),
+        ]
+
+    # ws-b 的 MaxCompute 客户端构造失败。
+    fake_odps.failing_init_projects.add("ws-b")
+
+    assert run_cli("export") == 1
+
+    # DataWorks 全部照采。
+    dataworks_dir = Path("source") / "dataworks" / "workspaces"
+    for workspace_id in (9001, 9002, 9003):
+        assert (
+            dataworks_dir
+            / str(workspace_id)
+            / "files"
+            / f"{workspace_id}1__file_{workspace_id}.json"
+        ).exists()
+
+    # 其余 Workspace 的 MaxCompute 照采，失败 Workspace 不产生 Table Snapshot。
+    maxcompute_dir = Path("source") / "maxcompute" / "workspaces"
+    assert (
+        json.loads((maxcompute_dir / "9001" / "tables-index.json").read_text(encoding="utf-8"))[
+            "count"
+        ]
+        == 1
+    )
+    assert (
+        json.loads((maxcompute_dir / "9003" / "tables-index.json").read_text(encoding="utf-8"))[
+            "count"
+        ]
+        == 1
+    )
+    assert list((maxcompute_dir / "9002" / "tables").glob("*.json")) == []
+
+    # manifest 仍生成。
+    assert (Path("source") / "manifest.json").exists()

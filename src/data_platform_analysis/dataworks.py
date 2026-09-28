@@ -201,15 +201,44 @@ class DataWorksClient:
 
                 page_files = self._extract_file_list(data)
 
+                total_count = self._extract_int(
+                    data,
+                    keys={
+                        "TotalCount",
+                        "totalCount",
+                        "Total",
+                        "total",
+                    },
+                )
+
                 logger.info(
-                    "DataWorks Workspace %s UseType=%s 第 %s 页获取到 %s 个文件",
+                    "DataWorks Workspace %s UseType=%s 第 %s 页获取到 %s 个文件，TotalCount=%s",
                     workspace_id,
                     use_type or "ALL",
                     page_number,
                     len(page_files),
+                    total_count if total_count is not None else "未知",
                 )
 
+                # --------------------------------------------------
+                # 服务端声明还有数据，却返回了空页：
+                # 说明响应结构异常或分页不一致。
+                #
+                # 此时绝不能把「已经取到的部分」当成权威完整集合，
+                # 否则后续 Cleanup 会误删仍然存在的 Snapshot，
+                # 因此直接失败，由上层记录 Workspace 失败并跳过 Cleanup。
+                # --------------------------------------------------
                 if not page_files:
+                    if total_count is not None and use_type_file_count < total_count:
+                        raise RuntimeError(
+                            "DataWorks ListFiles 分页异常："
+                            f"workspace_id={workspace_id}，"
+                            f"use_type={use_type or 'ALL'}，"
+                            f"page={page_number}，"
+                            f"TotalCount={total_count}，"
+                            f"已获取={use_type_file_count}"
+                        )
+
                     break
 
                 use_type_file_count += len(page_files)
@@ -234,22 +263,21 @@ class DataWorksClient:
                 else:
                     all_files.extend(page_files)
 
-                total_count = self._extract_int(
-                    data,
-                    keys={
-                        "TotalCount",
-                        "totalCount",
-                        "Total",
-                        "total",
-                    },
-                )
+                # --------------------------------------------------
+                # 分页终止判断：
+                #
+                # 服务端返回 TotalCount：
+                #     以 TotalCount 为权威，
+                #     避免服务端每页上限小于请求 page_size 时被提前截断。
+                #
+                # 服务端未返回 TotalCount：
+                #     退化为「本页是否填满」的启发式判断。
+                # --------------------------------------------------
+                if total_count is not None:
+                    if use_type_file_count >= total_count:
+                        break
 
-                # 当前 UseType 已经获取完成。
-                if total_count is not None and use_type_file_count >= total_count:
-                    break
-
-                # 当前页不足 page_size，说明已经是最后一页。
-                if len(page_files) < settings.dataworks_page_size:
+                elif len(page_files) < settings.dataworks_page_size:
                     break
 
                 page_number += 1
@@ -367,20 +395,57 @@ class DataWorksClient:
 
     @staticmethod
     def _extract_int(
-        data: dict[str, Any],
+        value: Any,
         *,
         keys: set[str],
     ) -> int | None:
-        """从字典中提取整数值。"""
+        """
+        递归查找并提取整数值。
 
-        for key in keys:
-            value = data.get(key)
+        DataWorks 响应形如：
 
-            if isinstance(value, int):
-                return value
+            {"Data": {"Files": [...], "TotalCount": 250}}
 
-            if isinstance(value, str) and value.isdigit():
-                return int(value)
+        TotalCount 位于内层 Data 中，
+        因此必须递归查找，不能只看顶层。
+        """
+
+        if isinstance(value, dict):
+            # 先看当前字典自身的目标字段。
+            for key in keys:
+                if key not in value:
+                    continue
+
+                candidate = value[key]
+
+                if isinstance(candidate, bool):
+                    continue
+
+                if isinstance(candidate, int):
+                    return candidate
+
+                if isinstance(candidate, str) and candidate.isdigit():
+                    return int(candidate)
+
+            # 再递归到子对象。
+            for child in value.values():
+                result = DataWorksClient._extract_int(
+                    child,
+                    keys=keys,
+                )
+
+                if result is not None:
+                    return result
+
+        elif isinstance(value, list):
+            for child in value:
+                result = DataWorksClient._extract_int(
+                    child,
+                    keys=keys,
+                )
+
+                if result is not None:
+                    return result
 
         return None
 
@@ -420,7 +485,6 @@ def extract_file_type(
     file: dict[str, Any],
 ) -> int | None:
     """从 DataWorks File 对象中提取 FileType。"""
-
     value = file.get("FileType")
 
     if isinstance(value, int):

@@ -13,14 +13,16 @@ from typing import Any
 def make_workspace(
     workspace_id: int,
     name: str,
-    maxcompute_project: str = "mc_demo",
 ) -> dict[str, Any]:
-    """构造 WORKSPACES 环境变量中的单个条目。"""
+    """构造 WORKSPACES 环境变量中的单个条目。
+
+    Workspace name 即对应 MaxCompute Project 名称，
+    不再单独维护 maxcompute_project。
+    """
 
     return {
         "id": workspace_id,
         "name": name,
-        "maxcompute_project": maxcompute_project,
     }
 
 

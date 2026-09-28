@@ -162,3 +162,136 @@ def test_workspaces_index_upsert_preserves_unlisted_entries(
     assert (
         Path("source") / "dataworks" / "workspaces" / "9002" / "files" / "101__keep_me.json"
     ).exists()
+
+
+def test_content_becomes_empty_removes_old_content(
+    cli_env: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """Content 从非空变为空：旧 Content 被清理，index 中 content_file 置空。"""
+
+    monkeypatch.setenv(
+        "WORKSPACES",
+        workspaces_env(make_workspace(9001, "ws-a")),
+    )
+
+    cli_env.files_by_project[9001] = [
+        make_file(
+            "101",
+            "keep_me",
+            content="SELECT 1;",
+        ),
+    ]
+    assert run_cli("dataworks") == 0
+
+    base = Path("source") / "dataworks" / "workspaces" / "9001"
+    assert (base / "content" / "101__keep_me.sql").exists()
+
+    # Content 变为空。
+    cli_env.files_by_project[9001] = [
+        make_file(
+            "101",
+            "keep_me",
+            content="",
+        ),
+    ]
+    assert run_cli("dataworks") == 0
+
+    # 旧 Content 清理，Raw JSON 保留。
+    assert not (base / "content" / "101__keep_me.sql").exists()
+    assert (base / "files" / "101__keep_me.json").exists()
+
+    index = json.loads((base / "files-index.json").read_text(encoding="utf-8"))
+    assert index["count"] == 1
+    assert index["files"][0]["content_file"] is None
+
+
+def test_empty_content_is_not_written(
+    cli_env: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """Content 一开始为空：不生成 Content 文件，index 记录 content_file=None。"""
+
+    monkeypatch.setenv(
+        "WORKSPACES",
+        workspaces_env(make_workspace(9001, "ws-a")),
+    )
+
+    cli_env.files_by_project[9001] = [
+        make_file(
+            "101",
+            "empty_content",
+            content="",
+        ),
+    ]
+    assert run_cli("dataworks") == 0
+
+    base = Path("source") / "dataworks" / "workspaces" / "9001"
+    assert (base / "files" / "101__empty_content.json").exists()
+    assert list((base / "content").iterdir()) == []
+
+    index = json.loads((base / "files-index.json").read_text(encoding="utf-8"))
+    assert index["files"][0]["content_file"] is None
+
+
+def test_file_rename_replaces_snapshot(
+    cli_env: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """File ID 不变、名称变化：新文件名落盘，旧文件名清理。"""
+
+    monkeypatch.setenv(
+        "WORKSPACES",
+        workspaces_env(make_workspace(9001, "ws-a")),
+    )
+
+    cli_env.files_by_project[9001] = [make_file("101", "old_name")]
+    assert run_cli("dataworks") == 0
+
+    base = Path("source") / "dataworks" / "workspaces" / "9001"
+    assert (base / "files" / "101__old_name.json").exists()
+    assert (base / "content" / "101__old_name.sql").exists()
+
+    # 同一 File ID 改名。
+    cli_env.files_by_project[9001] = [make_file("101", "new_name")]
+    assert run_cli("dataworks") == 0
+
+    assert (base / "files" / "101__new_name.json").exists()
+    assert (base / "content" / "101__new_name.sql").exists()
+    assert not (base / "files" / "101__old_name.json").exists()
+    assert not (base / "content" / "101__old_name.sql").exists()
+
+    index = json.loads((base / "files-index.json").read_text(encoding="utf-8"))
+    assert index["count"] == 1
+    assert index["files"][0]["file_name"] == "new_name"
+
+
+def test_file_id_change_replaces_snapshot(
+    cli_env: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """File ID 变化：新 ID 落盘，旧 ID 的 Snapshot 被清理。"""
+
+    monkeypatch.setenv(
+        "WORKSPACES",
+        workspaces_env(make_workspace(9001, "ws-a")),
+    )
+
+    cli_env.files_by_project[9001] = [make_file("101", "same_name")]
+    assert run_cli("dataworks") == 0
+
+    base = Path("source") / "dataworks" / "workspaces" / "9001"
+    assert (base / "files" / "101__same_name.json").exists()
+
+    # 上游重建文件，File ID 变化。
+    cli_env.files_by_project[9001] = [make_file("102", "same_name")]
+    assert run_cli("dataworks") == 0
+
+    assert (base / "files" / "102__same_name.json").exists()
+    assert (base / "content" / "102__same_name.sql").exists()
+    assert not (base / "files" / "101__same_name.json").exists()
+    assert not (base / "content" / "101__same_name.sql").exists()

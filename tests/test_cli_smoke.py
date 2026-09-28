@@ -19,8 +19,8 @@ def test_export_dual_workspace_snapshot(
     monkeypatch.setenv(
         "WORKSPACES",
         workspaces_env(
-            make_workspace(9001, "ws-a", "mc_a"),
-            make_workspace(9002, "ws-b", "mc_b"),
+            make_workspace(9001, "ws-a"),
+            make_workspace(9002, "ws-b"),
         ),
     )
 

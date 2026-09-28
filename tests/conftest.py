@@ -41,8 +41,10 @@ class _FakeResponse:
 class FakeDataWorksSDK:
     """DataWorks SDK 边界的假实现。
 
-    测试通过 files_by_project / failing_projects / failing_file_ids
-    声明每个 Workspace 的文件集合与故障行为。
+    测试通过 files_by_project / failing_projects / failing_file_ids /
+    malformed_projects 声明每个 Workspace 的文件集合与故障行为。
+
+    page_size_cap 模拟服务端每页上限小于请求 page_size 的情况。
 
     list_files_calls 记录每一次 ListFiles 分页调用，
     用于断言 limit 模式是否提前停止分页。
@@ -52,6 +54,10 @@ class FakeDataWorksSDK:
         self.files_by_project: dict[int, list[dict[str, Any]]] = {}
         self.failing_projects: set[int] = set()
         self.failing_file_ids: dict[int, set[str]] = {}
+        # 返回「有 TotalCount 但没有文件列表」的异常响应结构。
+        self.malformed_projects: set[int] = set()
+        # 服务端实际每页上限；None 表示完全按请求返回。
+        self.page_size_cap: int | None = None
         self.list_files_calls: list[dict[str, Any]] = []
         self.get_file_calls: list[dict[str, Any]] = []
 
@@ -81,6 +87,15 @@ class FakeDataWorksClient:
         if project_id in self._api.failing_projects:
             raise RuntimeError(f"list_files failed for project {project_id}")
 
+        if project_id in self._api.malformed_projects:
+            return _FakeResponse(
+                {
+                    "Data": {
+                        "TotalCount": 5,
+                    }
+                }
+            )
+
         files = [
             file
             for file in self._api.files_by_project.get(project_id, [])
@@ -88,6 +103,10 @@ class FakeDataWorksClient:
         ]
 
         page_size = int(request.page_size)
+
+        if self._api.page_size_cap is not None:
+            page_size = min(page_size, self._api.page_size_cap)
+
         start = (page_number - 1) * page_size
         page = files[start : start + page_size]
 
@@ -155,13 +174,23 @@ class FakeODPS:
 
     get_table_calls 记录每一次 GetTable 调用，
     用于断言 limit 模式下的 GetTable 次数。
+
+    project 由 ODPS 构造参数注入，用于按 Workspace（= MaxCompute
+    Project）声明故障：failing_projects（ListTables 失败）、
+    failing_table_names（单表 GetTable 失败）。
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.project: str | None = kwargs.get("project")
         self.tables: dict[str, FakeTable] = {
             "ods_users": FakeTable("ods_users"),
         }
         self.get_table_calls: list[str] = []
+        self.list_tables_calls: list[str] = []
+        self.failing_projects: set[str] = set()
+        self.failing_table_names: set[str] = set()
+        # ODPS 客户端构造阶段失败（早于 ListTables）。
+        self.failing_init_projects: set[str] = set()
 
     def set_table_names(self, *names: str) -> None:
         """替换当前 Project 的表集合。"""
@@ -169,10 +198,18 @@ class FakeODPS:
         self.tables = {name: FakeTable(name) for name in names}
 
     def list_tables(self, extended: bool = False) -> list[Any]:
+        self.list_tables_calls.append(self.project or "")
+
+        if self.project in self.failing_projects:
+            raise RuntimeError(f"list_tables failed for project {self.project}")
+
         return list(self.tables.values())
 
     def get_table(self, name: str) -> FakeTable:
         self.get_table_calls.append(name)
+
+        if name in self.failing_table_names:
+            raise RuntimeError(f"get_table failed for {name}")
 
         if name not in self.tables:
             self.tables[name] = FakeTable(name)
@@ -209,8 +246,7 @@ def cli_env(
         "DATAWORKS_PAGE_SIZE": "100",
         # 默认不按 UseType 过滤，测试按需覆盖。
         "DATAWORKS_USE_TYPES": "",
-        "WORKSPACES": ('[{"id": 9001, "name": "ws-a", "maxcompute_project": "mc_demo"}]'),
-        "MAXCOMPUTE_PROJECT": "mc_demo",
+        "WORKSPACES": '[{"id": 9001, "name": "ws-a"}]',
         "MAXCOMPUTE_ENDPOINT": "http://localhost/api",
         "MAXCOMPUTE_SCHEMA": "",
         "MAXCOMPUTE_INCLUDE_PARTITIONS": "false",
@@ -227,10 +263,23 @@ def cli_env(
         "Client",
         fake_dataworks.client_factory,
     )
+
+    # MaxCompute Client 每个 Workspace 独立构造：
+    # 这里记录当前构造使用的 project，并支持构造期故障注入。
+    def _odps_factory(*args: Any, **kwargs: Any) -> FakeODPS:
+        project = kwargs.get("project")
+
+        if project in fake_odps.failing_init_projects:
+            raise RuntimeError(f"odps init failed for project {project}")
+
+        fake_odps.project = project
+
+        return fake_odps
+
     monkeypatch.setattr(
         maxcompute_module,
         "ODPS",
-        lambda *args, **kwargs: fake_odps,
+        _odps_factory,
     )
 
     yield fake_dataworks

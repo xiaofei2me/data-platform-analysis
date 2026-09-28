@@ -80,3 +80,81 @@ def test_config_subcommand_shows_workspaces(
     assert "ws-a" in output
     assert "9002" in output
     assert "ws-b" in output
+
+
+def test_empty_workspaces_fails_fast(
+    cli_env: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """WORKSPACES 为空数组 → 启动即失败（至少一个 Workspace）。"""
+
+    monkeypatch.setenv("WORKSPACES", "[]")
+
+    assert run_cli("config") != 0
+
+
+def test_workspace_entry_without_name_fails_fast(
+    cli_env: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """WORKSPACES 条目缺 name → 启动即失败。"""
+
+    monkeypatch.setenv("WORKSPACES", '[{"id": 1}]')
+
+    assert run_cli("config") != 0
+
+
+# ============================================================
+# DATAWORKS_USE_TYPES
+# ============================================================
+
+
+def test_empty_use_types_means_no_filter(
+    cli_env: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+    capsys: Any,
+) -> None:
+    """DATAWORKS_USE_TYPES 为空 → 不过滤，采集全部 UseType。"""
+
+    monkeypatch.setenv("DATAWORKS_USE_TYPES", "")
+
+    assert run_cli("config") == 0
+
+    output = capsys.readouterr().out
+    assert "DATAWORKS_USE_TYPES" in output
+
+
+def test_use_types_are_uppercased_and_deduplicated(
+    cli_env: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+    capsys: Any,
+) -> None:
+    """UseType 解析：去空格、转大写、去重且保持顺序。"""
+
+    monkeypatch.setenv("DATAWORKS_USE_TYPES", "normal, MANUAL ,normal,manual_biz")
+
+    assert run_cli("config") == 0
+
+    output = capsys.readouterr().out
+    assert "NORMAL" in output
+    assert "MANUAL" in output
+    assert "MANUAL_BIZ" in output
+    # 去重后只剩一个 NORMAL/MANUAL。
+    assert output.count("NORMAL") == 1
+    assert output.count("MANUAL,") == 1
+
+
+def test_invalid_use_type_fails_fast(
+    cli_env: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """不支持的 UseType → 启动即失败。"""
+
+    monkeypatch.setenv("DATAWORKS_USE_TYPES", "NORMAL,BOGUS")
+
+    assert run_cli("config") != 0

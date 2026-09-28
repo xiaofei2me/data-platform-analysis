@@ -9,9 +9,9 @@ from typing import Any
 from helpers import make_file, make_workspace, workspaces_env
 
 THREE_WORKSPACES = workspaces_env(
-    make_workspace(9001, "ws-a", "mc_a"),
-    make_workspace(9002, "ws-b", "mc_b"),
-    make_workspace(9003, "ws-c", "mc_c"),
+    make_workspace(9001, "ws-a"),
+    make_workspace(9002, "ws-b"),
+    make_workspace(9003, "ws-c"),
 )
 
 
@@ -107,6 +107,64 @@ def test_export_with_workspace_filter_skips_manifest(
     assert (
         Path("source") / "dataworks" / "workspaces" / "9002" / "files" / "90021__file_b.json"
     ).exists()
+
+    # 过滤运行不写 manifest。
+    assert not (Path("source") / "manifest.json").exists()
+
+
+def test_maxcompute_workspace_filter_isolates_workspace(
+    cli_env: Any,
+    fake_odps: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """maxcompute --workspace 只重跑选中 Workspace，其余目录不产生。"""
+
+    monkeypatch.setenv(
+        "WORKSPACES",
+        THREE_WORKSPACES,
+    )
+
+    assert run_cli("maxcompute", "--workspace", "9002") == 0
+
+    maxcompute_dir = Path("source") / "maxcompute" / "workspaces"
+    assert (maxcompute_dir / "9002" / "tables-index.json").exists()
+    assert not (maxcompute_dir / "9001").exists()
+    assert not (maxcompute_dir / "9003").exists()
+
+
+def test_export_with_workspace_and_limit(
+    cli_env: Any,
+    fake_odps: Any,
+    run_cli: Any,
+    monkeypatch: Any,
+) -> None:
+    """export --workspace <id> --limit <n>：只跑选中 Workspace 且只取前 n 个对象。"""
+
+    monkeypatch.setenv(
+        "WORKSPACES",
+        THREE_WORKSPACES,
+    )
+    cli_env.files_by_project[9002] = [make_file(f"9002{i}", f"file_{i}") for i in range(4)]
+    fake_odps.set_table_names("t1", "t2", "t3", "t4")
+
+    assert run_cli("export", "--workspace", "9002", "--limit", "2") == 0
+
+    dataworks_dir = Path("source") / "dataworks" / "workspaces"
+    maxcompute_dir = Path("source") / "maxcompute" / "workspaces"
+
+    index = json.loads((dataworks_dir / "9002" / "files-index.json").read_text(encoding="utf-8"))
+    assert index["count"] == 2
+
+    table_index = json.loads(
+        (maxcompute_dir / "9002" / "tables-index.json").read_text(encoding="utf-8")
+    )
+    assert table_index["count"] == 2
+    assert len(fake_odps.get_table_calls) == 2
+
+    # 其余 Workspace 未被采集。
+    assert not (dataworks_dir / "9001").exists()
+    assert not (dataworks_dir / "9003").exists()
 
     # 过滤运行不写 manifest。
     assert not (Path("source") / "manifest.json").exists()
