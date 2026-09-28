@@ -24,7 +24,6 @@ from .io_utils import (
     ensure_dir,
     safe_filename,
     write_json,
-    write_jsonl,
 )
 from .maxcompute import MaxComputeClient
 
@@ -39,17 +38,12 @@ def _build_snapshot_filename(
 ) -> str:
     """
     构建 Snapshot 文件名。
-
     格式：
-
         <id>__<name>.<suffix>
-
     例如：
-
         505550697__tb_ec_paid_media_tm_live_streaming_df.json
         505550697__tb_ec_paid_media_tm_live_streaming_df.sql
         505550698__sync_xxx.json
-
     ID 用于保证稳定引用；
     Name 用于提高 Snapshot 的人工可读性。
     """
@@ -107,9 +101,7 @@ def _write_content(
 ) -> None:
     """
     写入 File Content Snapshot。
-
     Content 可能是：
-
     - SQL
     - JSON
     - Python
@@ -137,13 +129,10 @@ def _write_content(
 class SnapshotExporter:
     """
     Snapshot 导出器。
-
     当前版本只负责：
-
         DataWorks + MaxCompute
                 ↓
             本地 Snapshot
-
     不在这里做 DWS / Semantic Layer 分析。
     """
 
@@ -196,8 +185,7 @@ class SnapshotExporter:
         workspaces = settings.select_workspaces(workspace_id)
 
         logger.info(
-            "开始采集 DataWorks（%s 个 Workspace）",
-            len(workspaces),
+            "开始采集 DataWorks（%s 个 Workspace）", len(workspaces),
         )
 
         index_entries: list[dict[str, Any]] = []
@@ -206,9 +194,7 @@ class SnapshotExporter:
             # Workspace 级错误边界：
             # 单个 Workspace 失败不阻断其余 Workspace。
             try:
-                entry = self._export_dataworks_workspace(
-                    workspace
-                )
+                entry = self._export_dataworks_workspace(workspace)
 
             except Exception as exc:
                 logger.exception(
@@ -236,8 +222,7 @@ class SnapshotExporter:
         self._write_workspaces_index(index_entries)
 
         logger.info(
-            "DataWorks 采集完成：%s 个 Workspace",
-            len(index_entries),
+            "DataWorks 采集完成：%s 个 Workspace", len(index_entries),
         )
 
     def _export_dataworks_workspace(
@@ -249,7 +234,6 @@ class SnapshotExporter:
         采集流程：
             ListFiles -> GetFile -> raw File snapshot + Content snapshot + task lineage -> cleanup stale snapshots
         """
-
         base_dir = (
             self.source_dir
             / "dataworks"
@@ -262,11 +246,8 @@ class SnapshotExporter:
         # File Content 不再限定为 SQL。
         content_dir = base_dir / "content"
 
-        lineage_dir = base_dir / "lineage"
-
         ensure_dir(files_dir)
         ensure_dir(content_dir)
-        ensure_dir(lineage_dir)
 
         # ======================================================
         # 1. 获取 Workspace 当前 File 列表
@@ -275,7 +256,6 @@ class SnapshotExporter:
         files = self.dataworks.list_files(workspace.id)
 
         file_index: list[dict[str, Any]] = []
-        lineage_records: list[dict[str, Any]] = []
         failed_files: list[dict[str, Any]] = []
 
         # ======================================================
@@ -283,81 +263,60 @@ class SnapshotExporter:
         # ======================================================
         #
         # file_id -> 当前 raw JSON 文件名
-        #
-
         authoritative_files: dict[str, str] = {}
 
         # ======================================================
         # 当前成功 GetFile 产生的 Content 文件
         # ======================================================
-
         authoritative_content_files: set[str] = set()
 
         # ======================================================
         # GetFile 失败的 File ID
         # ======================================================
-
         failed_file_ids: set[str] = set()
 
         # ======================================================
         # 2. 逐个获取 File Detail
         # ======================================================
-
         for file in track(
-            files,
-            description=f"正在采集 {workspace.name} 文件",
+            files, description=f"正在采集 {workspace.name} 文件",
         ):
             file_id = extract_file_id(file)
-
             if file_id is None:
-                logger.warning(
-                    "发现没有 File ID 的文件，跳过：%s",
-                    file,
-                )
+                logger.warning("发现没有 File ID 的文件，跳过：%s", file,)
                 continue
 
             file_name = extract_file_name(file)
-
             if not file_name:
                 file_name = file_id
 
             # --------------------------------------------------
             # FileType 直接来自 ListFiles。
-            #
             # 例如：
-            #
             # FileType = 10
             #     -> ODPS SQL
             #     -> .sql
-            #
             # FileType = 23
             #     -> Data Integration
             #     -> .json
             # --------------------------------------------------
-
             file_type = extract_file_type(file)
             use_type = extract_use_type(file)
 
             # ==================================================
             # File 属于当前 ListFiles 权威集合
             # ==================================================
-
             raw_filename = _build_snapshot_filename(
                 file_id,
                 file_name,
                 suffix="json",
             )
-
             authoritative_files[file_id] = raw_filename
 
             # ==================================================
             # File Type 分类
             # ==================================================
-
-            file_type_info = get_file_type(
-                file_type
-            )
-
+            file_type_info = get_file_type(file_type)
             logger.debug(
                 "DataWorks File："
                 "workspace=%s，"
@@ -385,7 +344,6 @@ class SnapshotExporter:
             # ==================================================
             # 对未知 FileType 打出 warning
             # ==================================================
-
             if file_type_info.category == "unknown":
                 logger.warning(
                     "发现未知 DataWorks FileType："
@@ -402,7 +360,6 @@ class SnapshotExporter:
             # ==================================================
             # 获取 File 完整详情
             # ==================================================
-
             try:
                 detail = self.dataworks.get_file(
                     workspace.id,
@@ -443,9 +400,7 @@ class SnapshotExporter:
             # ==================================================
             # 3. 保存原始 File JSON
             # ==================================================
-
             raw_path = files_dir / raw_filename
-
             write_json(
                 raw_path,
                 detail,
@@ -455,51 +410,29 @@ class SnapshotExporter:
             # ==================================================
             # 4. 提取 File Content
             # ==================================================
-
-            content = extract_file_content(
-                detail
-            )
+            content = extract_file_content(detail)
 
             content_file: str | None = None
-
             if content is not None and content != "":
                 # ------------------------------------------------
                 # 根据 ListFiles.FileType 决定 Content 扩展名。
-                #
                 # 不根据 Content 内容猜测类型。
                 # ------------------------------------------------
-
-                extension = (
-                    file_type_info.extension.lstrip(".")
-                )
-
+                extension = (file_type_info.extension.lstrip("."))
                 content_filename = _build_snapshot_filename(
-                    file_id,
-                    file_name,
-                    suffix=extension,
+                    file_id, file_name, suffix=extension,
                 )
 
-                content_path = (
-                    content_dir / content_filename
-                )
+                content_path = (content_dir / content_filename)
 
                 _write_content(
                     content_path,
                     content,
-                    overwrite=(
-                        settings.export_overwrite
-                    ),
+                    overwrite=settings.export_overwrite,
                 )
 
-                authoritative_content_files.add(
-                    content_filename
-                )
-
-                content_file = str(
-                    content_path.relative_to(
-                        self.source_dir
-                    )
-                )
+                authoritative_content_files.add(content_filename)
+                content_file = str(content_path.relative_to(self.source_dir))
 
                 logger.debug(
                     "保存 File Content："
@@ -529,7 +462,6 @@ class SnapshotExporter:
             # ==================================================
             # 5. 保存 File 索引
             # ==================================================
-
             file_index.append(
                 {
                     "workspace_id": workspace.id,
@@ -537,66 +469,27 @@ class SnapshotExporter:
                     "file_name": file_name,
                     "use_type": use_type,
                     "file_type": file_type,
-                    "task_type": (
-                        file_type_info.task_type
-                    ),
-                    "file_type_name": (
-                        file_type_info.name
-                    ),
-                    "category": (
-                        file_type_info.category
-                    ),
-                    "content_format": (
-                        file_type_info.content_format
-                    ),
-                    "raw_file": str(
-                        raw_path.relative_to(
-                            self.source_dir
-                        )
-                    ),
+                    "task_type": file_type_info.task_type,
+                    "file_type_name": file_type_info.name,
+                    "category": file_type_info.category,
+                    "content_format": file_type_info.content_format,
+                    "raw_file": str(raw_path.relative_to(self.source_dir)),
                     "content_file": content_file,
                 }
-            )
-
-            # ==================================================
-            # 6. 保存基础任务关系
-            # ==================================================
-
-            lineage_records.append(
-                self._build_lineage_record(
-                    workspace_id=workspace.id,
-                    file=file,
-                    detail=detail,
-                    file_type_info=file_type_info,
-                    content_file=content_file,
-                )
             )
 
         # ======================================================
         # 7. 保存 File 索引
         # ======================================================
-
         write_json(
             base_dir / "files-index.json",
             {
                 "generated_at": utc_now(),
-                "workspace": _workspace_identity(
-                    workspace
-                ),
+                "workspace": _workspace_identity(workspace),
                 "count": len(file_index),
                 "files": file_index,
                 "failed_files": failed_files,
             },
-            overwrite=settings.export_overwrite,
-        )
-
-        # ======================================================
-        # 8. 保存基础任务关系
-        # ======================================================
-
-        write_jsonl(
-            lineage_dir / "task-lineage.jsonl",
-            lineage_records,
             overwrite=settings.export_overwrite,
         )
 
@@ -697,7 +590,6 @@ class SnapshotExporter:
         for path in content_dir.iterdir():
             if not path.is_file():
                 continue
-
             file_id = (
                 self._extract_file_id_from_content_filename(
                     path.name,
@@ -707,13 +599,10 @@ class SnapshotExporter:
 
             # --------------------------------------------------
             # 无法匹配当前 File ID
-            #
             # 说明该 Content 对应的 File 已经不存在。
             # --------------------------------------------------
-
             if file_id is None:
                 logger.info("清理幽灵 Content 文件：%s", path.name,)
-
                 path.unlink()
                 continue
 
@@ -725,10 +614,7 @@ class SnapshotExporter:
             # --------------------------------------------------
 
             if file_id in failed_file_ids:
-                logger.debug(
-                    "保留 GetFile 失败的旧 Content Snapshot：%s",
-                    path.name,
-                )
+                logger.debug("保留 GetFile 失败的旧 Content Snapshot：%s", path.name,)
                 continue
 
             # --------------------------------------------------
@@ -736,19 +622,14 @@ class SnapshotExporter:
             #
             # 当前 Content 不在 authoritative_content_files 中，
             # 说明：
-            #
             # - Content 从有变成无
             # - FileName 发生变化
             # - FileType 发生变化
             # - Content extension 发生变化
-            #
             # 因此可以安全删除。
             # --------------------------------------------------
 
-            if (
-                path.name
-                not in authoritative_content_files
-            ):
+            if path.name not in authoritative_content_files:
                 logger.info(
                     "清理过期 Content Snapshot：%s",
                     path.name,
@@ -765,9 +646,7 @@ class SnapshotExporter:
         根据 Content Snapshot 文件名识别对应的 File ID。
 
         当前文件名格式：
-
             <file_id>__<file_name>.<extension>
-
         例如：
 
             505550697__tb_xxx.sql
@@ -1011,84 +890,6 @@ class SnapshotExporter:
             manifest,
             overwrite=settings.export_overwrite,
         )
-
-    @staticmethod
-    def _build_lineage_record(
-        *,
-        workspace_id: int,
-        file: dict[str, Any],
-        detail: dict[str, Any],
-        file_type_info: DataWorksFileType,
-        content_file: str | None,
-    ) -> dict[str, Any]:
-        """
-        构建基础任务关系记录。
-
-        当前这里只保存 DataWorks File / Task 级信息，
-        还不是最终的表级血缘。
-
-        后续需要结合：
-
-        1. DataWorks 任务依赖
-        2. SQL AST
-        3. 数据集成 Reader / Writer
-        4. 输入表
-        5. 输出表
-
-        最终形成：
-
-            source_table
-                ↓
-              task
-                ↓
-            target_table
-        """
-
-        return {
-            "workspace_id": workspace_id,
-
-            # --------------------------------------------------
-            # File 基础身份
-            # --------------------------------------------------
-
-            "file_id": extract_file_id(file),
-            "file_name": extract_file_name(file),
-            "use_type": extract_use_type(file),
-            "file_type": extract_file_type(file),
-
-            # --------------------------------------------------
-            # File Type 语义
-            # --------------------------------------------------
-
-            "task_type": file_type_info.task_type,
-            "file_type_name": file_type_info.name,
-            "category": file_type_info.category,
-            "content_format": (
-                file_type_info.content_format
-            ),
-
-            # --------------------------------------------------
-            # Content Snapshot
-            # --------------------------------------------------
-
-            "content_file": content_file,
-
-            # --------------------------------------------------
-            # 原始 GetFile Detail
-            #
-            # 后续分析阶段可以从这里提取：
-            #
-            # - NodeId
-            # - NodeConfiguration
-            # - InputList
-            # - OutputList
-            # - DependentNodeIdList
-            # - DependentType
-            #
-            # --------------------------------------------------
-
-            "raw_detail": detail,
-        }
 
 
 def utc_now() -> str:

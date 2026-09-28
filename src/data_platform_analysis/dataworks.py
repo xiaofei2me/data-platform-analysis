@@ -157,13 +157,11 @@ class DataWorksClient:
     ) -> list[dict[str, Any]]:
         """
         获取指定 DataWorks Workspace 下的 File。
-
-        DATAWORKS_USE_TYPES 为空：
-            不传 UseType，一次获取全部文件。
-
-        DATAWORKS_USE_TYPES 有值：
-            按 UseType 分别调用 ListFiles，
-            将各 UseType 返回的文件直接合并。
+            DATAWORKS_USE_TYPES 为空：
+                不传 UseType，一次获取全部文件。
+            DATAWORKS_USE_TYPES 有值：
+                按 UseType 分别调用 ListFiles，
+                将各 UseType 返回的文件直接合并。
         """
         all_files: list[dict[str, Any]] = []
 
@@ -177,7 +175,6 @@ class DataWorksClient:
         for use_type in use_types:
             page_number = 1
             use_type_file_count = 0
-
             while True:
                 response = self._list_files_page(
                     workspace_id=workspace_id,
@@ -185,10 +182,7 @@ class DataWorksClient:
                     use_type=use_type,
                 )
 
-                data = self._find_first_dict(
-                    response,
-                    keys={"Data", "data"},
-                )
+                data = self._find_first_dict(response, keys={"Data", "data"},)
 
                 if data is None:
                     data = response

@@ -8,7 +8,6 @@ from typing import Any
 
 def ensure_dir(path: Path) -> None:
     """确保目录存在，不存在时自动创建。"""
-
     path.mkdir(
         parents=True,
         exist_ok=True,
