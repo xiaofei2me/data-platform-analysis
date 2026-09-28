@@ -42,8 +42,8 @@ files = ["src"]
 module = [
     "odps",
     "odps.*",
-    "alibabacloud_dataworks_public20240518",
-    "alibabacloud_dataworks_public20240518.*",
+    "alibabacloud_dataworks_public20200518",
+    "alibabacloud_dataworks_public20200518.*",
     "alibabacloud_tea_openapi",
     "alibabacloud_tea_openapi.*",
 ]

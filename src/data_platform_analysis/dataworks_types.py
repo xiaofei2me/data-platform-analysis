@@ -47,7 +47,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
     # ========================================================
     # Shell
     # ========================================================
-
     6: DataWorksFileType(
         file_type=6,
         name="Shell",
@@ -56,11 +55,9 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="shell",
         extension=".sh",
     ),
-
     # ========================================================
     # MaxCompute / ODPS
     # ========================================================
-
     10: DataWorksFileType(
         file_type=10,
         name="ODPS SQL",
@@ -69,7 +66,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="sql",
         extension=".sql",
     ),
-
     11: DataWorksFileType(
         file_type=11,
         name="ODPS MR",
@@ -78,7 +74,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="java",
         extension=".java",
     ),
-
     24: DataWorksFileType(
         file_type=24,
         name="ODPS Script",
@@ -87,11 +82,9 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="script",
         extension=".py",
     ),
-
     # ========================================================
     # Data Integration
     # ========================================================
-
     23: DataWorksFileType(
         file_type=23,
         name="离线同步",
@@ -100,7 +93,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="json",
         extension=".json",
     ),
-
     900: DataWorksFileType(
         file_type=900,
         name="实时同步",
@@ -109,11 +101,9 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="json",
         extension=".json",
     ),
-
     # ========================================================
     # PyODPS
     # ========================================================
-
     221: DataWorksFileType(
         file_type=221,
         name="PyODPS 2",
@@ -122,7 +112,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="python",
         extension=".py",
     ),
-
     1221: DataWorksFileType(
         file_type=1221,
         name="PyODPS 3",
@@ -131,11 +120,9 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="python",
         extension=".py",
     ),
-
     # ========================================================
     # EMR
     # ========================================================
-
     227: DataWorksFileType(
         file_type=227,
         name="EMR Hive",
@@ -144,7 +131,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="sql",
         extension=".sql",
     ),
-
     228: DataWorksFileType(
         file_type=228,
         name="EMR Spark",
@@ -153,7 +139,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="python",
         extension=".py",
     ),
-
     229: DataWorksFileType(
         file_type=229,
         name="EMR Spark SQL",
@@ -162,7 +147,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="sql",
         extension=".sql",
     ),
-
     257: DataWorksFileType(
         file_type=257,
         name="EMR Shell",
@@ -171,7 +155,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="shell",
         extension=".sh",
     ),
-
     259: DataWorksFileType(
         file_type=259,
         name="EMR Presto",
@@ -180,7 +163,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="sql",
         extension=".sql",
     ),
-
     260: DataWorksFileType(
         file_type=260,
         name="EMR Impala",
@@ -189,7 +171,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="sql",
         extension=".sql",
     ),
-
     267: DataWorksFileType(
         file_type=267,
         name="EMR Trino",
@@ -198,11 +179,9 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="sql",
         extension=".sql",
     ),
-
     # ========================================================
     # Other SQL Engines
     # ========================================================
-
     1093: DataWorksFileType(
         file_type=1093,
         name="Hologres SQL",
@@ -211,7 +190,6 @@ DATAWORKS_FILE_TYPES: dict[int, DataWorksFileType] = {
         content_format="sql",
         extension=".sql",
     ),
-
     1301: DataWorksFileType(
         file_type=1301,
         name="ClickHouse SQL",

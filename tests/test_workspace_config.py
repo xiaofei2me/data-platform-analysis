@@ -12,9 +12,9 @@ def test_invalid_workspaces_json_fails_fast(
     run_cli: Any,
     monkeypatch: Any,
 ) -> None:
-    """DATAWORKS_WORKSPACES 不是合法 JSON → 启动即失败。"""
+    """WORKSPACES 不是合法 JSON → 启动即失败。"""
 
-    monkeypatch.setenv("DATAWORKS_WORKSPACES", "{not-json")
+    monkeypatch.setenv("WORKSPACES", "{not-json")
 
     assert run_cli("config") != 0
 
@@ -27,7 +27,7 @@ def test_duplicate_workspace_id_fails_fast(
     """重复 workspace id → 启动即失败。"""
 
     monkeypatch.setenv(
-        "DATAWORKS_WORKSPACES",
+        "WORKSPACES",
         workspaces_env(
             make_workspace(1, "ws-a"),
             make_workspace(1, "ws-b"),
@@ -45,7 +45,7 @@ def test_duplicate_workspace_name_fails_fast(
     """重复 workspace name → 启动即失败。"""
 
     monkeypatch.setenv(
-        "DATAWORKS_WORKSPACES",
+        "WORKSPACES",
         workspaces_env(
             make_workspace(1, "same"),
             make_workspace(2, "same"),
@@ -64,7 +64,7 @@ def test_config_subcommand_shows_workspaces(
     """config 子命令展示全部 Workspace 且以 0 退出。"""
 
     monkeypatch.setenv(
-        "DATAWORKS_WORKSPACES",
+        "WORKSPACES",
         workspaces_env(
             make_workspace(9001, "ws-a"),
             make_workspace(9002, "ws-b"),
@@ -74,6 +74,9 @@ def test_config_subcommand_shows_workspaces(
     assert run_cli("config") == 0
 
     output = capsys.readouterr().out
-    assert "DATAWORKS_WORKSPACES" in output
-    assert "9001 (ws-a)" in output
-    assert "9002 (ws-b)" in output
+    assert "WORKSPACES" in output
+    # Rich 表格可能折行，这里只断言不会被拆开的原子 token。
+    assert "9001" in output
+    assert "ws-a" in output
+    assert "9002" in output
+    assert "ws-b" in output

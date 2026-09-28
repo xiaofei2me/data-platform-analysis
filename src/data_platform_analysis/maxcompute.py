@@ -128,15 +128,9 @@ class MaxComputeClient:
             "schema": settings.maxcompute_schema,
             "name": table.name,
             "comment": table.comment,
-            "creation_time": (
-                table.creation_time.isoformat()
-                if table.creation_time
-                else None
-            ),
+            "creation_time": (table.creation_time.isoformat() if table.creation_time else None),
             "last_modified_time": (
-                table.last_modified_time.isoformat()
-                if table.last_modified_time
-                else None
+                table.last_modified_time.isoformat() if table.last_modified_time else None
             ),
             "size": table.size,
             "lifecycle": table.lifecycle,
@@ -148,11 +142,7 @@ class MaxComputeClient:
         # 实际分区数量可能非常大。
         # 默认关闭，只在明确需要时采集。
         if settings.maxcompute_include_partitions:
-            metadata["partition_instances"] = (
-                self._get_partition_instances(
-                    table
-                )
-            )
+            metadata["partition_instances"] = self._get_partition_instances(table)
 
         return metadata
 
@@ -175,9 +165,7 @@ class MaxComputeClient:
                     {
                         "name": partition.name,
                         "creation_time": (
-                            partition.creation_time.isoformat()
-                            if partition.creation_time
-                            else None
+                            partition.creation_time.isoformat() if partition.creation_time else None
                         ),
                         "last_modified_time": (
                             partition.last_modified_time.isoformat()

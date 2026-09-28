@@ -216,27 +216,18 @@ class Settings(BaseSettings):
 
         if isinstance(workspaces, str):
             try:
-                values["workspaces"] = json.loads(
-                    workspaces
-                )
+                values["workspaces"] = json.loads(workspaces)
             except json.JSONDecodeError as exc:
-                raise ValueError(
-                    "WORKSPACES 不是合法的 JSON："
-                    f"{exc}"
-                ) from exc
+                raise ValueError(f"WORKSPACES 不是合法的 JSON：{exc}") from exc
 
         # ----------------------------------------------------
         # DATAWORKS_USE_TYPES
         # ----------------------------------------------------
-        use_types = values.get(
-            "dataworks_use_types"
-        )
+        use_types = values.get("dataworks_use_types")
 
         if isinstance(use_types, str):
             values["dataworks_use_types"] = [
-                item.strip().upper()
-                for item in use_types.split(",")
-                if item.strip()
+                item.strip().upper() for item in use_types.split(",") if item.strip()
             ]
 
         return values
@@ -250,27 +241,18 @@ class Settings(BaseSettings):
         1. Workspace ID 不能重复。
         2. Workspace name 不能重复。
         """
-        workspace_ids = [
-            workspace.id
-            for workspace in self.workspaces
-        ]
+        workspace_ids = [workspace.id for workspace in self.workspaces]
 
         duplicate_ids = {
-            workspace_id
-            for workspace_id in workspace_ids
-            if workspace_ids.count(workspace_id) > 1
+            workspace_id for workspace_id in workspace_ids if workspace_ids.count(workspace_id) > 1
         }
 
         if duplicate_ids:
             raise ValueError(
-                "WORKSPACES 存在重复的 Workspace id："
-                f"{', '.join(map(str, sorted(duplicate_ids)))}"
+                f"WORKSPACES 存在重复的 Workspace id：{', '.join(map(str, sorted(duplicate_ids)))}"
             )
 
-        workspace_names = [
-            workspace.name
-            for workspace in self.workspaces
-        ]
+        workspace_names = [workspace.name for workspace in self.workspaces]
 
         duplicate_names = {
             workspace_name
@@ -280,8 +262,7 @@ class Settings(BaseSettings):
 
         if duplicate_names:
             raise ValueError(
-                "WORKSPACES 存在重复的 Workspace name："
-                f"{', '.join(sorted(duplicate_names))}"
+                f"WORKSPACES 存在重复的 Workspace name：{', '.join(sorted(duplicate_names))}"
             )
 
         return self
@@ -302,9 +283,7 @@ class Settings(BaseSettings):
         }
 
         self.dataworks_use_types = [
-            use_type.strip().upper()
-            for use_type in self.dataworks_use_types
-            if use_type.strip()
+            use_type.strip().upper() for use_type in self.dataworks_use_types if use_type.strip()
         ]
 
         # 空配置表示获取全部 UseType，
@@ -313,9 +292,7 @@ class Settings(BaseSettings):
             return self
 
         invalid_use_types = [
-            use_type
-            for use_type in self.dataworks_use_types
-            if use_type not in allowed_use_types
+            use_type for use_type in self.dataworks_use_types if use_type not in allowed_use_types
         ]
 
         if invalid_use_types:
@@ -327,11 +304,7 @@ class Settings(BaseSettings):
             )
 
         # 去重，同时保持配置顺序。
-        self.dataworks_use_types = list(
-            dict.fromkeys(
-                self.dataworks_use_types
-            )
-        )
+        self.dataworks_use_types = list(dict.fromkeys(self.dataworks_use_types))
 
         return self
 
@@ -343,9 +316,7 @@ class Settings(BaseSettings):
         这样业务代码拿到的 settings.source_dir
         永远是绝对路径，不再依赖当前 Working Directory。
         """
-        self.source_dir = resolve_project_path(
-            self.source_dir
-        )
+        self.source_dir = resolve_project_path(self.source_dir)
 
         return self
 
@@ -373,17 +344,10 @@ class Settings(BaseSettings):
         if workspace_id is None:
             return list(self.workspaces)
 
-        matched = [
-            workspace
-            for workspace in self.workspaces
-            if workspace.id == workspace_id
-        ]
+        matched = [workspace for workspace in self.workspaces if workspace.id == workspace_id]
 
         if not matched:
-            raise ValueError(
-                f"未配置的 Workspace id：{workspace_id}"
-                "（不在 WORKSPACES 中）"
-            )
+            raise ValueError(f"未配置的 Workspace id：{workspace_id}（不在 WORKSPACES 中）")
 
         return matched
 

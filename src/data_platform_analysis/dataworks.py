@@ -28,15 +28,10 @@ class _stop_after_configured_retries(stop_base):
         self,
         retry_state: RetryCallState,
     ) -> bool:
-        return (
-            retry_state.attempt_number
-            >= get_settings().dataworks_max_retries + 1
-        )
+        return retry_state.attempt_number >= get_settings().dataworks_max_retries + 1
 
 
-_stop_after_configured_retries_instance = (
-    _stop_after_configured_retries()
-)
+_stop_after_configured_retries_instance = _stop_after_configured_retries()
 
 
 class DataWorksClient:
@@ -58,12 +53,8 @@ class DataWorksClient:
         """初始化 DataWorks OpenAPI 客户端。"""
 
         config = Config(
-            access_key_id=(
-                settings.alibaba_cloud_access_key_id
-            ),
-            access_key_secret=(
-                settings.alibaba_cloud_access_key_secret
-            ),
+            access_key_id=(settings.alibaba_cloud_access_key_id),
+            access_key_secret=(settings.alibaba_cloud_access_key_secret),
             region_id=settings.dataworks_region,
         )
 
@@ -84,10 +75,10 @@ class DataWorksClient:
         reraise=True,
     )
     def _list_files_page(
-            self,
-            workspace_id: int,
-            page_number: int,
-            use_type: str | None = None,
+        self,
+        workspace_id: int,
+        page_number: int,
+        use_type: str | None = None,
     ) -> dict[str, Any]:
         request = models.ListFilesRequest(
             project_id=workspace_id,
@@ -99,8 +90,7 @@ class DataWorksClient:
             request.use_type = use_type
 
         logger.debug(
-            "调用 DataWorks ListFiles："
-            "workspace_id=%s，page=%s，page_size=%s，use_type=%s",
+            "调用 DataWorks ListFiles：workspace_id=%s，page=%s，page_size=%s，use_type=%s",
             workspace_id,
             page_number,
             settings.dataworks_page_size,
@@ -138,41 +128,60 @@ class DataWorksClient:
         )
 
         logger.debug(
-            "调用 DataWorks GetFile："
-            "workspace_id=%s，"
-            "file_id=%s",
+            "调用 DataWorks GetFile：workspace_id=%s，file_id=%s",
             workspace_id,
             file_id,
         )
 
-        response = self.client.get_file(
-            request
-        )
+        response = self.client.get_file(request)
 
         return response.body.to_map()
 
     def list_files(
-            self,
-            workspace_id: int,
+        self,
+        workspace_id: int,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         """
         获取指定 DataWorks Workspace 下的 File。
+
             DATAWORKS_USE_TYPES 为空：
                 不传 UseType，一次获取全部文件。
             DATAWORKS_USE_TYPES 有值：
                 按 UseType 分别调用 ListFiles，
                 将各 UseType 返回的文件直接合并。
+
+        limit 含义：
+
+            每个 Workspace 的 File 总数量限制，
+            不是每个 UseType 的限制。
+
+            多 UseType 场景下，一旦累计数量达到 limit，
+            立即停止后续 UseType 的分页调用。
+
+        limit 为 None：
+            全量采集（保持现有行为）。
         """
         all_files: list[dict[str, Any]] = []
 
         # 未配置 UseType 时，不传 UseType，获取全部文件。
         use_types: list[str | None] = (
-            settings.dataworks_use_types
-            if settings.dataworks_use_types
-            else [None]
+            settings.dataworks_use_types if settings.dataworks_use_types else [None]
         )
 
         for use_type in use_types:
+            # --------------------------------------------------
+            # 整个 Workspace 的配额已经用完：
+            # 直接停止，不再发起无意义的 ListFiles 调用。
+            # --------------------------------------------------
+            if limit is not None and len(all_files) >= limit:
+                logger.info(
+                    "DataWorks Workspace %s 已达到 limit=%s，停止后续 UseType 的分页调用",
+                    workspace_id,
+                    limit,
+                )
+                break
+
             page_number = 1
             use_type_file_count = 0
             while True:
@@ -182,7 +191,10 @@ class DataWorksClient:
                     use_type=use_type,
                 )
 
-                data = self._find_first_dict(response, keys={"Data", "data"},)
+                data = self._find_first_dict(
+                    response,
+                    keys={"Data", "data"},
+                )
 
                 if data is None:
                     data = response
@@ -190,8 +202,7 @@ class DataWorksClient:
                 page_files = self._extract_file_list(data)
 
                 logger.info(
-                    "DataWorks Workspace %s "
-                    "UseType=%s 第 %s 页获取到 %s 个文件",
+                    "DataWorks Workspace %s UseType=%s 第 %s 页获取到 %s 个文件",
                     workspace_id,
                     use_type or "ALL",
                     page_number,
@@ -201,8 +212,27 @@ class DataWorksClient:
                 if not page_files:
                     break
 
-                all_files.extend(page_files)
                 use_type_file_count += len(page_files)
+
+                # --------------------------------------------------
+                # limit 模式：只保留剩余配额，
+                # 达到上限后立即停止分页。
+                # --------------------------------------------------
+                if limit is not None:
+                    remaining = limit - len(all_files)
+
+                    all_files.extend(page_files[:remaining])
+
+                    if len(all_files) >= limit:
+                        logger.info(
+                            "DataWorks Workspace %s 已达到 limit=%s，停止继续分页",
+                            workspace_id,
+                            limit,
+                        )
+                        break
+
+                else:
+                    all_files.extend(page_files)
 
                 total_count = self._extract_int(
                     data,
@@ -215,10 +245,7 @@ class DataWorksClient:
                 )
 
                 # 当前 UseType 已经获取完成。
-                if (
-                        total_count is not None
-                        and use_type_file_count >= total_count
-                ):
+                if total_count is not None and use_type_file_count >= total_count:
                     break
 
                 # 当前页不足 page_size，说明已经是最后一页。
@@ -228,12 +255,9 @@ class DataWorksClient:
                 page_number += 1
 
         logger.info(
-            "DataWorks Workspace %s 文件采集完成："
-            "UseType=%s，共 %s 个文件",
+            "DataWorks Workspace %s 文件采集完成：UseType=%s，共 %s 个文件",
             workspace_id,
-            ",".join(settings.dataworks_use_types)
-            if settings.dataworks_use_types
-            else "ALL",
+            ",".join(settings.dataworks_use_types) if settings.dataworks_use_types else "ALL",
             len(all_files),
         )
 
@@ -258,11 +282,7 @@ class DataWorksClient:
             value = data.get(key)
 
             if isinstance(value, list):
-                return [
-                    item
-                    for item in value
-                    if isinstance(item, dict)
-                ]
+                return [item for item in value if isinstance(item, dict)]
 
         result = DataWorksClient._find_list_of_dicts(
             data,
@@ -285,18 +305,13 @@ class DataWorksClient:
         """递归查找第一个包含目标字段的字典。"""
 
         if isinstance(value, dict):
-            if any(
-                key in value
-                for key in keys
-            ):
+            if any(key in value for key in keys):
                 return value
 
             for child in value.values():
-                result = (
-                    DataWorksClient._find_first_dict(
-                        child,
-                        keys=keys,
-                    )
+                result = DataWorksClient._find_first_dict(
+                    child,
+                    keys=keys,
                 )
 
                 if result is not None:
@@ -304,11 +319,9 @@ class DataWorksClient:
 
         elif isinstance(value, list):
             for child in value:
-                result = (
-                    DataWorksClient._find_first_dict(
-                        child,
-                        keys=keys,
-                    )
+                result = DataWorksClient._find_first_dict(
+                    child,
+                    keys=keys,
                 )
 
                 if result is not None:
@@ -326,39 +339,25 @@ class DataWorksClient:
 
         if isinstance(value, dict):
             for child in value.values():
-                result = (
-                    DataWorksClient._find_list_of_dicts(
-                        child,
-                        required_any_keys=required_any_keys,
-                    )
+                result = DataWorksClient._find_list_of_dicts(
+                    child,
+                    required_any_keys=required_any_keys,
                 )
 
                 if result is not None:
                     return result
 
         elif isinstance(value, list):
-            dictionaries = [
-                item
-                for item in value
-                if isinstance(item, dict)
-            ]
+            dictionaries = [item for item in value if isinstance(item, dict)]
 
             if dictionaries:
-                if any(
-                    any(
-                        key in item
-                        for key in required_any_keys
-                    )
-                    for item in dictionaries
-                ):
+                if any(any(key in item for key in required_any_keys) for item in dictionaries):
                     return dictionaries
 
             for child in value:
-                result = (
-                    DataWorksClient._find_list_of_dicts(
-                        child,
-                        required_any_keys=required_any_keys,
-                    )
+                result = DataWorksClient._find_list_of_dicts(
+                    child,
+                    required_any_keys=required_any_keys,
                 )
 
                 if result is not None:
@@ -380,10 +379,7 @@ class DataWorksClient:
             if isinstance(value, int):
                 return value
 
-            if (
-                isinstance(value, str)
-                and value.isdigit()
-            ):
+            if isinstance(value, str) and value.isdigit():
                 return int(value)
 
         return None
@@ -430,10 +426,7 @@ def extract_file_type(
     if isinstance(value, int):
         return value
 
-    if (
-        isinstance(value, str)
-        and value.isdigit()
-    ):
+    if isinstance(value, str) and value.isdigit():
         return int(value)
 
     return None

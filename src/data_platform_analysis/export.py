@@ -132,6 +132,35 @@ def _write_content(
     )
 
 
+def _log_limit_mode(
+    limit: int | None,
+    *,
+    scope: str,
+) -> None:
+    """
+    输出采集限制模式日志。
+
+    Cleanup 安全原则：
+
+        limit is None     -> 允许 Cleanup
+        limit is not None -> 绝对禁止 Cleanup
+
+    原因：limit 返回的是部分集合，
+    不具有完整集合的权威性，
+    不能据此判断远端对象已经删除。
+    """
+
+    if limit is None:
+        return
+
+    logger.info(
+        "%s 采集限制模式：limit=%s，每个 Workspace 最多 %s 个对象，Cleanup=SKIP",
+        scope,
+        limit,
+        limit,
+    )
+
+
 class SnapshotExporter:
     """
     Snapshot 导出器。
@@ -176,6 +205,7 @@ class SnapshotExporter:
     def export_all(
         self,
         workspace_id: int | None = None,
+        limit: int | None = None,
     ) -> None:
         """
         执行 DataWorks + MaxCompute 完整采集。
@@ -186,6 +216,14 @@ class SnapshotExporter:
         workspace_id 不为 None：
             只采集指定 Workspace。
 
+        limit 为 None：
+            全量采集，允许 Snapshot Cleanup。
+
+        limit 不为 None：
+            采集限制模式，每个 Workspace 最多处理
+            limit 个 File 和 limit 个 Table，
+            并禁止 Snapshot Cleanup。
+
         manifest.json 仅在完整 Workspace 采集时生成。
         """
 
@@ -195,6 +233,8 @@ class SnapshotExporter:
             "开始执行完整 Snapshot 采集：%s 个 Workspace",
             len(workspaces),
         )
+
+        _log_limit_mode(limit, scope="DataWorks + MaxCompute")
 
         dataworks_entries: list[dict[str, Any]] = []
 
@@ -209,7 +249,10 @@ class SnapshotExporter:
             # DataWorks
             # --------------------------------------------------
             try:
-                dataworks_entry = self._export_dataworks_workspace(workspace)
+                dataworks_entry = self._export_dataworks_workspace(
+                    workspace,
+                    limit=limit,
+                )
 
             except Exception as exc:
                 logger.exception(
@@ -235,7 +278,10 @@ class SnapshotExporter:
             # --------------------------------------------------
             # MaxCompute
             # --------------------------------------------------
-            self._export_maxcompute_workspace(workspace)
+            self._export_maxcompute_workspace(
+                workspace,
+                limit=limit,
+            )
 
             logger.info(
                 "Workspace 采集完成：id=%s，name=%s",
@@ -258,6 +304,7 @@ class SnapshotExporter:
     def export_dataworks(
         self,
         workspace_id: int | None = None,
+        limit: int | None = None,
     ) -> None:
         """
         采集 DataWorks。
@@ -267,6 +314,10 @@ class SnapshotExporter:
 
         workspace_id 不为 None：
             只采集指定 Workspace。
+
+        limit 不为 None：
+            每个 Workspace 最多采集 limit 个 File，
+            并禁止 Snapshot Cleanup。
         """
 
         workspaces = settings.select_workspaces(workspace_id)
@@ -276,11 +327,16 @@ class SnapshotExporter:
             len(workspaces),
         )
 
+        _log_limit_mode(limit, scope="DataWorks")
+
         index_entries: list[dict[str, Any]] = []
 
         for workspace in workspaces:
             try:
-                entry = self._export_dataworks_workspace(workspace)
+                entry = self._export_dataworks_workspace(
+                    workspace,
+                    limit=limit,
+                )
 
             except Exception as exc:
                 logger.exception(
@@ -316,6 +372,7 @@ class SnapshotExporter:
     def export_maxcompute(
         self,
         workspace_id: int | None = None,
+        limit: int | None = None,
     ) -> None:
         """
         采集 MaxCompute。
@@ -325,6 +382,10 @@ class SnapshotExporter:
 
         workspace_id 不为 None：
             只采集指定 Workspace。
+
+        limit 不为 None：
+            每个 Workspace 最多采集 limit 个 Table，
+            并禁止 Snapshot Cleanup。
         """
 
         workspaces = settings.select_workspaces(workspace_id)
@@ -334,8 +395,13 @@ class SnapshotExporter:
             len(workspaces),
         )
 
+        _log_limit_mode(limit, scope="MaxCompute")
+
         for workspace in workspaces:
-            self._export_maxcompute_workspace(workspace)
+            self._export_maxcompute_workspace(
+                workspace,
+                limit=limit,
+            )
 
         logger.info(
             "MaxCompute 采集完成：%s 个 Workspace",
@@ -349,6 +415,7 @@ class SnapshotExporter:
     def _export_dataworks_workspace(
         self,
         workspace: WorkspaceSettings,
+        limit: int | None = None,
     ) -> dict[str, Any]:
         """
         采集单个 DataWorks Workspace。
@@ -367,6 +434,11 @@ class SnapshotExporter:
                 ↓
             清理失效 Snapshot
 
+        limit 不为 None：
+
+            ListFiles 只返回前 limit 个 File，
+            并跳过最后一步 Cleanup。
+
         Collection 阶段只保存 Raw / Content。
         不在这里生成派生 Task Lineage。
         """
@@ -383,7 +455,7 @@ class SnapshotExporter:
         # 1. 获取当前 Workspace 的权威 File 列表
         # ======================================================
 
-        files = self.dataworks.list_files(workspace.id)
+        files = self.dataworks.list_files(workspace.id, limit=limit)
 
         file_index: list[dict[str, Any]] = []
         failed_files: list[dict[str, Any]] = []
@@ -646,13 +718,26 @@ class SnapshotExporter:
         # 7. 清理旧 Snapshot
         # ======================================================
 
-        self._cleanup_workspace_files(
-            files_dir=files_dir,
-            content_dir=content_dir,
-            authoritative_files=(authoritative_files),
-            authoritative_content_files=(authoritative_content_files),
-            failed_file_ids=failed_file_ids,
-        )
+        # Cleanup 安全原则：
+        #
+        # limit 模式拿到的是部分集合，
+        # 不具有完整集合的权威性，
+        # 不能据此判断远端对象已删除，因此绝对禁止 Cleanup。
+        if limit is not None:
+            logger.info(
+                "limit 模式跳过 DataWorks Snapshot Cleanup：workspace=%s，limit=%s，Cleanup=SKIP",
+                workspace.id,
+                limit,
+            )
+
+        else:
+            self._cleanup_workspace_files(
+                files_dir=files_dir,
+                content_dir=content_dir,
+                authoritative_files=(authoritative_files),
+                authoritative_content_files=(authoritative_content_files),
+                failed_file_ids=failed_file_ids,
+            )
 
         return _workspace_entry(
             workspace,
@@ -893,6 +978,7 @@ class SnapshotExporter:
     def _export_maxcompute_workspace(
         self,
         workspace: WorkspaceSettings,
+        limit: int | None = None,
     ) -> None:
         """
         采集单个 Workspace 对应的 MaxCompute Project。
@@ -911,6 +997,12 @@ class SnapshotExporter:
             MaxCompute Project = ods
 
         Snapshot 按 Workspace ID 隔离。
+
+        limit 不为 None：
+
+            完整 ListTables 结果获取后，
+            只对前 limit 张表执行 GetTable，
+            并跳过最后一步 Cleanup。
         """
 
         project = workspace.name
@@ -949,6 +1041,26 @@ class SnapshotExporter:
 
             # ListTables 失败时不能 cleanup。
             return
+
+        # ======================================================
+        # 1.1 采集限制模式
+        #
+        # 不修改 MaxComputeClient.list_tables()，
+        # 在拿到完整 ListTables 结果后、GetTable 之前截断。
+        # ======================================================
+
+        if limit is not None:
+            logger.info(
+                "MaxCompute 采集限制模式：workspace=%s，project=%s，"
+                "全量表数=%s，limit=%s，只处理前 %s 张表，Cleanup=SKIP",
+                workspace.id,
+                project,
+                len(tables),
+                limit,
+                limit,
+            )
+
+            tables = tables[:limit]
 
         table_index: list[dict[str, Any]] = []
 
@@ -1064,11 +1176,24 @@ class SnapshotExporter:
         # 4. 清理失效 Table Snapshot
         # ======================================================
 
-        self._cleanup_maxcompute_tables(
-            tables_dir=tables_dir,
-            authoritative_tables=(authoritative_tables),
-            failed_tables=failed_tables,
-        )
+        # Cleanup 安全原则：
+        #
+        # limit 模式拿到的是部分集合，
+        # 不具有完整集合的权威性，
+        # 不能据此判断远端表已删除，因此绝对禁止 Cleanup。
+        if limit is not None:
+            logger.info(
+                "limit 模式跳过 MaxCompute Snapshot Cleanup：workspace=%s，limit=%s，Cleanup=SKIP",
+                workspace.id,
+                limit,
+            )
+
+        else:
+            self._cleanup_maxcompute_tables(
+                tables_dir=tables_dir,
+                authoritative_tables=(authoritative_tables),
+                failed_tables=failed_tables,
+            )
 
     def _cleanup_maxcompute_tables(
         self,

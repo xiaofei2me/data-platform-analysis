@@ -41,74 +41,92 @@ class _FakeResponse:
 class FakeDataWorksSDK:
     """DataWorks SDK 边界的假实现。
 
-    测试通过 nodes_by_project / failing_projects / failing_node_ids
-    声明每个 Workspace 的节点集合与故障行为。
+    测试通过 files_by_project / failing_projects / failing_file_ids
+    声明每个 Workspace 的文件集合与故障行为。
+
+    list_files_calls 记录每一次 ListFiles 分页调用，
+    用于断言 limit 模式是否提前停止分页。
     """
 
     def __init__(self) -> None:
-        self.nodes_by_project: dict[int, list[dict[str, Any]]] = {}
+        self.files_by_project: dict[int, list[dict[str, Any]]] = {}
         self.failing_projects: set[int] = set()
-        self.failing_node_ids: dict[int, set[str]] = {}
+        self.failing_file_ids: dict[int, set[str]] = {}
+        self.list_files_calls: list[dict[str, Any]] = []
+        self.get_file_calls: list[dict[str, Any]] = []
 
     def client_factory(self, config: Any) -> FakeDataWorksClient:
         return FakeDataWorksClient(self)
 
 
 class FakeDataWorksClient:
+    """模拟 DataWorks OpenAPI Client 的 ListFiles / GetFile。"""
+
     def __init__(self, api: FakeDataWorksSDK) -> None:
         self._api = api
 
-    def list_nodes(self, request: Any) -> _FakeResponse:
+    def list_files(self, request: Any) -> _FakeResponse:
         project_id = int(request.project_id)
+        page_number = int(request.page_number)
+        use_type = getattr(request, "use_type", None)
+
+        self._api.list_files_calls.append(
+            {
+                "project_id": project_id,
+                "page_number": page_number,
+                "use_type": use_type,
+            }
+        )
 
         if project_id in self._api.failing_projects:
-            raise RuntimeError(
-                f"list_nodes failed for project {project_id}"
-            )
+            raise RuntimeError(f"list_files failed for project {project_id}")
 
-        nodes = self._api.nodes_by_project.get(project_id, [])
+        files = [
+            file
+            for file in self._api.files_by_project.get(project_id, [])
+            if use_type is None or file.get("UseType") == use_type
+        ]
+
         page_size = int(request.page_size)
-        page_number = int(request.page_number)
         start = (page_number - 1) * page_size
-        page = nodes[start : start + page_size]
+        page = files[start : start + page_size]
 
         return _FakeResponse(
             {
                 "Data": {
-                    "Nodes": page,
-                    "TotalCount": len(nodes),
+                    "Files": page,
+                    "TotalCount": len(files),
                 }
             }
         )
 
-    def get_node(self, request: Any) -> _FakeResponse:
+    def get_file(self, request: Any) -> _FakeResponse:
         project_id = int(request.project_id)
-        node_id = str(request.id)
+        file_id = str(request.file_id)
+
+        self._api.get_file_calls.append(
+            {
+                "project_id": project_id,
+                "file_id": file_id,
+            }
+        )
 
         if project_id in self._api.failing_projects:
-            raise RuntimeError(
-                f"get_node failed for project {project_id}"
-            )
+            raise RuntimeError(f"get_file failed for project {project_id}")
 
-        if node_id in self._api.failing_node_ids.get(
-            project_id, set()
-        ):
-            raise RuntimeError(
-                f"get_node failed for node {node_id}"
-            )
+        if file_id in self._api.failing_file_ids.get(project_id, set()):
+            raise RuntimeError(f"get_file failed for file {file_id}")
 
-        for node in self._api.nodes_by_project.get(
-            project_id, []
-        ):
-            if str(node.get("NodeId")) == node_id:
-                return _FakeResponse({"Data": dict(node)})
+        for file in self._api.files_by_project.get(project_id, []):
+            if str(file.get("FileId")) == file_id:
+                return _FakeResponse({"Data": {"File": dict(file)}})
 
-        raise RuntimeError(
-            f"node {node_id} not found in project {project_id}"
-        )
+        raise RuntimeError(f"file {file_id} not found in project {project_id}")
 
 
 class FakeTable:
+    """模拟 PyODPS Table 对象。"""
+
     def __init__(self, name: str) -> None:
         self.name = name
         self.comment = "demo table"
@@ -133,19 +151,32 @@ class FakeTable:
 
 
 class FakeODPS:
-    """PyODPS SDK 边界的假实现。"""
+    """PyODPS SDK 边界的假实现。
+
+    get_table_calls 记录每一次 GetTable 调用，
+    用于断言 limit 模式下的 GetTable 次数。
+    """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.tables: dict[str, FakeTable] = {
             "ods_users": FakeTable("ods_users"),
         }
+        self.get_table_calls: list[str] = []
+
+    def set_table_names(self, *names: str) -> None:
+        """替换当前 Project 的表集合。"""
+
+        self.tables = {name: FakeTable(name) for name in names}
 
     def list_tables(self, extended: bool = False) -> list[Any]:
         return list(self.tables.values())
 
     def get_table(self, name: str) -> FakeTable:
+        self.get_table_calls.append(name)
+
         if name not in self.tables:
             self.tables[name] = FakeTable(name)
+
         return self.tables[name]
 
 
@@ -175,14 +206,16 @@ def cli_env(
         "ALIBABA_CLOUD_ACCESS_KEY_SECRET": "test-sk",
         "DATAWORKS_REGION": "cn-shanghai",
         "DATAWORKS_MAX_RETRIES": "0",
-        "DATAWORKS_WORKSPACES": (
-            '[{"id": 9001, "name": "ws-a",'
-            ' "maxcompute_project": "mc_demo"}]'
-        ),
+        "DATAWORKS_PAGE_SIZE": "100",
+        # 默认不按 UseType 过滤，测试按需覆盖。
+        "DATAWORKS_USE_TYPES": "",
+        "WORKSPACES": ('[{"id": 9001, "name": "ws-a", "maxcompute_project": "mc_demo"}]'),
         "MAXCOMPUTE_PROJECT": "mc_demo",
         "MAXCOMPUTE_ENDPOINT": "http://localhost/api",
         "MAXCOMPUTE_SCHEMA": "",
-        "SOURCE_DIR": "source",
+        "MAXCOMPUTE_INCLUDE_PARTITIONS": "false",
+        # 输出目录必须是绝对路径，避免写进项目根目录。
+        "SOURCE_DIR": str(tmp_path / "source"),
         "EXPORT_OVERWRITE": "true",
     }.items():
         monkeypatch.setenv(key, value)
