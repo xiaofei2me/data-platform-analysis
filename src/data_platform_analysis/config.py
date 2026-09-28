@@ -44,19 +44,6 @@ def resolve_project_path(path: Path | str) -> Path:
 
     绝对路径：
         保持原路径不变。
-
-    Examples:
-        resolve_project_path("source")
-        -> /project-root/source
-
-        resolve_project_path("./source")
-        -> /project-root/source
-
-        resolve_project_path("snapshot/dataworks")
-        -> /project-root/snapshot/dataworks
-
-        resolve_project_path("/data/snapshot")
-        -> /data/snapshot
     """
     path = Path(path)
 
@@ -69,17 +56,14 @@ def resolve_project_path(path: Path | str) -> Path:
 class WorkspaceSettings(BaseModel):
     """单个 DataWorks Workspace 配置。"""
 
-    # DataWorks Workspace ID（稳定主键）。
+    # Workspace ID（稳定主键）。
     id: int
 
-    # 人类可读名称（数组内唯一）。
+    # Workspace 名称。
+    #
+    # 当前约定：
+    # Workspace name 与对应 MaxCompute Project name 1:1 对应。
     name: str = Field(
-        ...,
-        min_length=1,
-    )
-
-    # 1:1 绑定的 MaxCompute 项目（仅作环境映射元数据）。
-    maxcompute_project: str = Field(
         ...,
         min_length=1,
     )
@@ -118,123 +102,18 @@ class Settings(BaseSettings):
     # DataWorks 所在地域。
     dataworks_region: str = "cn-shanghai"
 
-    # DataWorks Workspace 列表（JSON 数组）。
+    # DataWorks Workspace 列表。
     #
-    # 单 Workspace 即长度为 1 的数组，不存在单独模式。
-    dataworks_workspaces: list[WorkspaceSettings] = Field(
+    # Workspace 同时作为：
+    # 1. DataWorks 采集上下文
+    # 2. 对应 MaxCompute Project 的映射上下文
+    #
+    # 单 Workspace 即长度为 1 的数组，
+    # 不存在单独的 single / multi 模式。
+    workspaces: list[WorkspaceSettings] = Field(
         ...,
         min_length=1,
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _parse_json_environment_values(
-            cls,
-            values: Any,
-    ) -> Any:
-        """
-        解析通过环境变量传入的配置。
-        DATAWORKS_WORKSPACES：使用 JSON 数组。
-        DATAWORKS_USE_TYPES：使用逗号分隔字符串。
-        例如：
-            DATAWORKS_WORKSPACES='[{"id": 123, "name": "workspace-a"}]'
-            DATAWORKS_USE_TYPES=NORMAL,MANUAL
-        """
-        if not isinstance(values, dict):
-            return values
-
-        # ----------------------------------------------------
-        # DATAWORKS_WORKSPACES
-        # ----------------------------------------------------
-        workspaces = values.get("dataworks_workspaces")
-        if isinstance(workspaces, str):
-            values["dataworks_workspaces"] = json.loads(workspaces)
-
-        # ----------------------------------------------------
-        # DATAWORKS_USE_TYPES
-        # ----------------------------------------------------
-        # DATAWORKS_USE_TYPES 使用逗号分隔字符串。
-        use_types = values.get("dataworks_use_types")
-        if isinstance(use_types, str):
-            values["dataworks_use_types"] = [
-                item.strip().upper()
-                for item in use_types.split(",")
-                if item.strip()
-            ]
-        return values
-
-    @model_validator(mode="after")
-    def _validate_dataworks_use_types(
-            self,
-    ) -> Settings:
-        """校验 DataWorks UseType 配置。"""
-        allowed_use_types = {
-            "NORMAL",
-            "MANUAL",
-            "MANUAL_BIZ",
-            "SKIP",
-            "ADHOCQUERY",
-            "COMPONENT",
-        }
-
-        self.dataworks_use_types = [
-            use_type.strip().upper()
-            for use_type in self.dataworks_use_types
-            if use_type.strip()
-        ]
-
-        # 空配置表示获取全部 UseType，不进行过滤。
-        if not self.dataworks_use_types:
-            return self
-
-        invalid_use_types = [
-            use_type
-            for use_type in self.dataworks_use_types
-            if use_type not in allowed_use_types
-        ]
-
-        if invalid_use_types:
-            raise ValueError(
-                "DATAWORKS_USE_TYPES 包含不支持的 UseType："
-                f"{', '.join(invalid_use_types)}；"
-                "支持的值："
-                f"{', '.join(sorted(allowed_use_types))}"
-            )
-
-        # 去重，同时保持配置顺序。
-        self.dataworks_use_types = list(
-            dict.fromkeys(
-                self.dataworks_use_types
-            )
-        )
-        return self
-
-    def select_workspaces(
-        self,
-        workspace_id: int | None = None,
-    ) -> list[WorkspaceSettings]:
-        """
-        解析本次要采集的 Workspace 列表。
-
-        workspace_id 为 None 时返回全部；
-        指定但未配置的 id 直接报错（fail-fast）。
-        """
-        if workspace_id is None:
-            return list(self.dataworks_workspaces)
-
-        matched = [
-            workspace
-            for workspace in self.dataworks_workspaces
-            if workspace.id == workspace_id
-        ]
-
-        if not matched:
-            raise ValueError(
-                f"未配置的 Workspace id：{workspace_id}"
-                "（不在 DATAWORKS_WORKSPACES 中）"
-            )
-
-        return matched
 
     # DataWorks API 每页返回的数据量。
     dataworks_page_size: int = Field(
@@ -274,9 +153,6 @@ class Settings(BaseSettings):
     # MaxCompute
     # ========================================================
 
-    # MaxCompute 项目名称。
-    maxcompute_project: str
-
     # MaxCompute Endpoint。
     maxcompute_endpoint: str
 
@@ -296,15 +172,168 @@ class Settings(BaseSettings):
 
     # Snapshot 输出目录。
     #
-    # 这里保留相对路径的配置语义：
+    # 相对路径：
+    #   相对于项目根目录解析。
     #
-    #     SOURCE_DIR=source
-    #
-    # 具体的绝对路径在 _resolve_paths() 中统一解析。
+    # 绝对路径：
+    #   保持原路径不变。
     source_dir: Path = Path("source")
 
     # 是否覆盖已经存在的文件。
     export_overwrite: bool = True
+
+    # ========================================================
+    # Validators
+    # ========================================================
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_json_environment_values(
+        cls,
+        values: Any,
+    ) -> Any:
+        """
+        解析通过环境变量传入的配置。
+
+        WORKSPACES：
+            使用 JSON 数组。
+
+        例如：
+            WORKSPACES='[
+                {"id": 123, "name": "workspace-a"}
+            ]'
+
+        DATAWORKS_USE_TYPES：
+            使用逗号分隔字符串。
+        """
+        if not isinstance(values, dict):
+            return values
+
+        # ----------------------------------------------------
+        # WORKSPACES
+        # ----------------------------------------------------
+        workspaces = values.get("workspaces")
+
+        if isinstance(workspaces, str):
+            try:
+                values["workspaces"] = json.loads(
+                    workspaces
+                )
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "WORKSPACES 不是合法的 JSON："
+                    f"{exc}"
+                ) from exc
+
+        # ----------------------------------------------------
+        # DATAWORKS_USE_TYPES
+        # ----------------------------------------------------
+        use_types = values.get(
+            "dataworks_use_types"
+        )
+
+        if isinstance(use_types, str):
+            values["dataworks_use_types"] = [
+                item.strip().upper()
+                for item in use_types.split(",")
+                if item.strip()
+            ]
+
+        return values
+
+    @model_validator(mode="after")
+    def _validate_workspaces(self) -> Settings:
+        """
+        校验 Workspace 配置。
+
+        校验：
+        1. Workspace ID 不能重复。
+        2. Workspace name 不能重复。
+        """
+        workspace_ids = [
+            workspace.id
+            for workspace in self.workspaces
+        ]
+
+        duplicate_ids = {
+            workspace_id
+            for workspace_id in workspace_ids
+            if workspace_ids.count(workspace_id) > 1
+        }
+
+        if duplicate_ids:
+            raise ValueError(
+                "WORKSPACES 存在重复的 Workspace id："
+                f"{', '.join(map(str, sorted(duplicate_ids)))}"
+            )
+
+        workspace_names = [
+            workspace.name
+            for workspace in self.workspaces
+        ]
+
+        duplicate_names = {
+            workspace_name
+            for workspace_name in workspace_names
+            if workspace_names.count(workspace_name) > 1
+        }
+
+        if duplicate_names:
+            raise ValueError(
+                "WORKSPACES 存在重复的 Workspace name："
+                f"{', '.join(sorted(duplicate_names))}"
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def _validate_dataworks_use_types(
+        self,
+    ) -> Settings:
+        """校验 DataWorks UseType 配置。"""
+
+        allowed_use_types = {
+            "NORMAL",
+            "MANUAL",
+            "MANUAL_BIZ",
+            "SKIP",
+            "ADHOCQUERY",
+            "COMPONENT",
+        }
+
+        self.dataworks_use_types = [
+            use_type.strip().upper()
+            for use_type in self.dataworks_use_types
+            if use_type.strip()
+        ]
+
+        # 空配置表示获取全部 UseType，
+        # 不进行过滤。
+        if not self.dataworks_use_types:
+            return self
+
+        invalid_use_types = [
+            use_type
+            for use_type in self.dataworks_use_types
+            if use_type not in allowed_use_types
+        ]
+
+        if invalid_use_types:
+            raise ValueError(
+                "DATAWORKS_USE_TYPES 包含不支持的 UseType："
+                f"{', '.join(invalid_use_types)}；"
+                "支持的值："
+                f"{', '.join(sorted(allowed_use_types))}"
+            )
+
+        # 去重，同时保持配置顺序。
+        self.dataworks_use_types = list(
+            dict.fromkeys(
+                self.dataworks_use_types
+            )
+        )
+
+        return self
 
     @model_validator(mode="after")
     def _resolve_paths(self) -> Settings:
@@ -314,12 +343,49 @@ class Settings(BaseSettings):
         这样业务代码拿到的 settings.source_dir
         永远是绝对路径，不再依赖当前 Working Directory。
         """
-
         self.source_dir = resolve_project_path(
             self.source_dir
         )
 
         return self
+
+    # ========================================================
+    # Workspace selection
+    # ========================================================
+
+    def select_workspaces(
+        self,
+        workspace_id: int | None = None,
+    ) -> list[WorkspaceSettings]:
+        """
+        解析本次要采集的 Workspace 列表。
+
+        workspace_id 为 None：
+            返回全部 Workspace。
+
+        workspace_id 不为 None：
+            返回指定 Workspace。
+
+        指定但未配置的 Workspace：
+            直接报错（fail-fast）。
+        """
+
+        if workspace_id is None:
+            return list(self.workspaces)
+
+        matched = [
+            workspace
+            for workspace in self.workspaces
+            if workspace.id == workspace_id
+        ]
+
+        if not matched:
+            raise ValueError(
+                f"未配置的 Workspace id：{workspace_id}"
+                "（不在 WORKSPACES 中）"
+            )
+
+        return matched
 
 
 # ============================================================
@@ -354,7 +420,10 @@ class _SettingsProxy:
     __slots__ = ()
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(get_settings(), name)
+        return getattr(
+            get_settings(),
+            name,
+        )
 
 
 # 全局配置实例（惰性）。

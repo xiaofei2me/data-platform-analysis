@@ -15,23 +15,32 @@ logger = logging.getLogger(__name__)
 class MaxComputeClient:
     """MaxCompute 只读元数据客户端。"""
 
-    def __init__(self) -> None:
-        """初始化 MaxCompute 客户端。"""
+    def __init__(self, project: str) -> None:
+        """初始化 MaxCompute 客户端。
+
+        Args:
+            project: MaxCompute Project 名称。
+        """
+
+        self.project = project
 
         kwargs: dict[str, Any] = {}
 
         # 如果配置了 Schema，则传给 PyODPS。
         if settings.maxcompute_schema:
-            kwargs["schema"] = (
-                settings.maxcompute_schema
-            )
+            kwargs["schema"] = settings.maxcompute_schema
 
         self.odps = ODPS(
             settings.alibaba_cloud_access_key_id,
             settings.alibaba_cloud_access_key_secret,
-            project=settings.maxcompute_project,
+            project=project,
             endpoint=settings.maxcompute_endpoint,
             **kwargs,
+        )
+
+        logger.debug(
+            "MaxCompute 客户端初始化完成：project=%s",
+            self.project,
         )
 
     def list_tables(self) -> list[Any]:
@@ -39,7 +48,7 @@ class MaxComputeClient:
 
         logger.info(
             "开始获取 MaxCompute 表列表：project=%s",
-            settings.maxcompute_project,
+            self.project,
         )
 
         tables = list(
@@ -49,7 +58,8 @@ class MaxComputeClient:
         )
 
         logger.info(
-            "MaxCompute 表列表获取完成，共 %s 张表",
+            "MaxCompute 表列表获取完成：project=%s，共 %s 张表",
+            self.project,
             len(tables),
         )
 
@@ -64,6 +74,8 @@ class MaxComputeClient:
 
         当前主要采集：
 
+        - Project
+        - Schema
         - 表名
         - 表注释
         - 创建时间
@@ -73,15 +85,17 @@ class MaxComputeClient:
         - 是否 Virtual View
         - 普通字段
         - 分区字段
+        - 实际分区实例（可选）
         """
 
         logger.debug(
-            "获取 MaxCompute 表元数据：%s",
+            "获取 MaxCompute 表元数据：project=%s, table=%s",
+            self.project,
             table_name,
         )
 
         table = self.odps.get_table(
-            table_name
+            table_name,
         )
 
         # 重新从 MaxCompute 服务端加载最新元数据。
@@ -110,12 +124,8 @@ class MaxComputeClient:
         ]
 
         metadata: dict[str, Any] = {
-            "project": (
-                settings.maxcompute_project
-            ),
-            "schema": (
-                settings.maxcompute_schema
-            ),
+            "project": self.project,
+            "schema": settings.maxcompute_schema,
             "name": table.name,
             "comment": table.comment,
             "creation_time": (
@@ -130,22 +140,18 @@ class MaxComputeClient:
             ),
             "size": table.size,
             "lifecycle": table.lifecycle,
-            "is_virtual_view": (
-                table.is_virtual_view
-            ),
+            "is_virtual_view": table.is_virtual_view,
             "columns": columns,
             "partitions": partitions,
         }
 
         # 实际分区数量可能非常大。
         # 默认关闭，只在明确需要时采集。
-        if (
-            settings.maxcompute_include_partitions
-        ):
-            metadata[
-                "partition_instances"
-            ] = self._get_partition_instances(
-                table
+        if settings.maxcompute_include_partitions:
+            metadata["partition_instances"] = (
+                self._get_partition_instances(
+                    table
+                )
             )
 
         return metadata

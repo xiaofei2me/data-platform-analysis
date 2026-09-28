@@ -19,7 +19,7 @@ from .dataworks import (
     extract_file_type,
     extract_use_type,
 )
-from .dataworks_types import DataWorksFileType, get_file_type
+from .dataworks_types import get_file_type
 from .io_utils import (
     ensure_dir,
     safe_filename,
@@ -28,6 +28,12 @@ from .io_utils import (
 from .maxcompute import MaxComputeClient
 
 logger = logging.getLogger(__name__)
+
+
+def utc_now() -> str:
+    """返回当前 UTC 时间。"""
+
+    return datetime.now(UTC).isoformat()
 
 
 def _build_snapshot_filename(
@@ -61,11 +67,9 @@ def _workspace_identity(
     workspace: WorkspaceSettings,
 ) -> dict[str, Any]:
     """返回 Workspace 身份信息。"""
-
     return {
         "id": workspace.id,
         "name": workspace.name,
-        "maxcompute_project": workspace.maxcompute_project,
     }
 
 
@@ -77,7 +81,7 @@ def _workspace_entry(
     failed_file_count: int,
     error: str | None = None,
 ) -> dict[str, Any]:
-    """构建 Workspace 注册表条目。"""
+    """构建 DataWorks Workspace 注册表条目。"""
 
     entry: dict[str, Any] = {
         **_workspace_identity(workspace),
@@ -101,7 +105,9 @@ def _write_content(
 ) -> None:
     """
     写入 File Content Snapshot。
+
     Content 可能是：
+
     - SQL
     - JSON
     - Python
@@ -129,70 +135,150 @@ def _write_content(
 class SnapshotExporter:
     """
     Snapshot 导出器。
+
     当前版本只负责：
+
         DataWorks + MaxCompute
                 ↓
             本地 Snapshot
-    不在这里做 DWS / Semantic Layer 分析。
+
+    不在这里做：
+
+    - DWS 分析
+    - Semantic Layer
+    - SQLGlot
+    - LLM 分析
+    - Task Dependency 派生
+    - Table Lineage 派生
+    - Column Lineage 派生
+
+    这些属于后续 Analysis 阶段。
     """
 
     def __init__(
         self,
         source_dir: Path | None = None,
     ) -> None:
-        self.source_dir = (
-            source_dir
-            if source_dir is not None
-            else settings.source_dir
-        )
+        self.source_dir = source_dir if source_dir is not None else settings.source_dir
 
+        # DataWorks Client 不绑定 Workspace。
+        # Workspace ID 在调用方法时传入。
         self.dataworks = DataWorksClient()
-        self.maxcompute = MaxComputeClient()
 
-        # 本次运行是否存在 Workspace / File 级失败。
+        # MaxCompute Client 必须绑定 Project。
+        # 因此每个 Workspace 在采集时独立创建 Client。
         self.had_failures: bool = False
+
+    # ==========================================================
+    # Public API
+    # ==========================================================
 
     def export_all(
         self,
         workspace_id: int | None = None,
     ) -> None:
-        """执行 DataWorks + MaxCompute 全量采集。"""
+        """
+        执行 DataWorks + MaxCompute 完整采集。
 
-        logger.info("开始执行完整 Snapshot 采集")
+        workspace_id 为 None：
+            采集全部 Workspace。
 
-        self.export_dataworks(workspace_id)
-        self.export_maxcompute()
+        workspace_id 不为 None：
+            只采集指定 Workspace。
 
-        # manifest 仅由全量 export 写入。
+        manifest.json 仅在完整 Workspace 采集时生成。
+        """
+
+        workspaces = settings.select_workspaces(workspace_id)
+
+        logger.info(
+            "开始执行完整 Snapshot 采集：%s 个 Workspace",
+            len(workspaces),
+        )
+
+        dataworks_entries: list[dict[str, Any]] = []
+
+        for workspace in workspaces:
+            logger.info(
+                "开始采集 Workspace：id=%s，name=%s",
+                workspace.id,
+                workspace.name,
+            )
+
+            # --------------------------------------------------
+            # DataWorks
+            # --------------------------------------------------
+            try:
+                dataworks_entry = self._export_dataworks_workspace(workspace)
+
+            except Exception as exc:
+                logger.exception(
+                    "DataWorks Workspace 采集失败：workspace=%s",
+                    workspace.id,
+                )
+
+                dataworks_entry = _workspace_entry(
+                    workspace,
+                    status="failed",
+                    file_count=0,
+                    failed_file_count=0,
+                    error=(str(exc) or type(exc).__name__),
+                )
+
+                self.had_failures = True
+
+            dataworks_entries.append(dataworks_entry)
+
+            if dataworks_entry.get("failed_file_count"):
+                self.had_failures = True
+
+            # --------------------------------------------------
+            # MaxCompute
+            # --------------------------------------------------
+            self._export_maxcompute_workspace(workspace)
+
+            logger.info(
+                "Workspace 采集完成：id=%s，name=%s",
+                workspace.id,
+                workspace.name,
+            )
+
+        # DataWorks Workspace 注册表。
+        self._write_workspaces_index(dataworks_entries)
+
+        # manifest 仅由完整 export 写入。
         if workspace_id is None:
             self.write_manifest()
 
-        logger.info("完整 Snapshot 采集完成")
+        logger.info(
+            "完整 Snapshot 采集完成：%s 个 Workspace",
+            len(workspaces),
+        )
 
     def export_dataworks(
         self,
         workspace_id: int | None = None,
     ) -> None:
         """
-        顺序采集全部 DataWorks Workspace 的 File、Content
-        和基础任务关系。
+        采集 DataWorks。
 
-        每个 Workspace 独立落盘（ADR-0001），
-        采集层不做跨 Workspace 合并（ADR-0002）。
+        workspace_id 为 None：
+            采集全部 Workspace。
+
+        workspace_id 不为 None：
+            只采集指定 Workspace。
         """
 
-        # 校验在任何采集动作之前完成。
         workspaces = settings.select_workspaces(workspace_id)
 
         logger.info(
-            "开始采集 DataWorks（%s 个 Workspace）", len(workspaces),
+            "开始采集 DataWorks：%s 个 Workspace",
+            len(workspaces),
         )
 
         index_entries: list[dict[str, Any]] = []
 
         for workspace in workspaces:
-            # Workspace 级错误边界：
-            # 单个 Workspace 失败不阻断其余 Workspace。
             try:
                 entry = self._export_dataworks_workspace(workspace)
 
@@ -207,8 +293,10 @@ class SnapshotExporter:
                     status="failed",
                     file_count=0,
                     failed_file_count=0,
-                    error=str(exc) or type(exc).__name__,
+                    error=(str(exc) or type(exc).__name__),
                 )
+
+                self.had_failures = True
 
             if entry.get("status") == "failed":
                 self.had_failures = True
@@ -218,39 +306,81 @@ class SnapshotExporter:
 
             index_entries.append(entry)
 
-        # 根级 Workspace 注册表（读-改-写 upsert）。
         self._write_workspaces_index(index_entries)
 
         logger.info(
-            "DataWorks 采集完成：%s 个 Workspace", len(index_entries),
+            "DataWorks 采集完成：%s 个 Workspace",
+            len(index_entries),
         )
+
+    def export_maxcompute(
+        self,
+        workspace_id: int | None = None,
+    ) -> None:
+        """
+        采集 MaxCompute。
+
+        workspace_id 为 None：
+            采集全部 Workspace。
+
+        workspace_id 不为 None：
+            只采集指定 Workspace。
+        """
+
+        workspaces = settings.select_workspaces(workspace_id)
+
+        logger.info(
+            "开始采集 MaxCompute：%s 个 Workspace",
+            len(workspaces),
+        )
+
+        for workspace in workspaces:
+            self._export_maxcompute_workspace(workspace)
+
+        logger.info(
+            "MaxCompute 采集完成：%s 个 Workspace",
+            len(workspaces),
+        )
+
+    # ==========================================================
+    # DataWorks
+    # ==========================================================
 
     def _export_dataworks_workspace(
         self,
         workspace: WorkspaceSettings,
     ) -> dict[str, Any]:
         """
-        采集单个 Workspace 并返回其注册表条目。
+        采集单个 DataWorks Workspace。
+
         采集流程：
-            ListFiles -> GetFile -> raw File snapshot + Content snapshot + task lineage -> cleanup stale snapshots
+
+            ListFiles
+                ↓
+            GetFile
+                ↓
+            Raw File Snapshot
+                +
+            Content Snapshot
+                ↓
+            files-index.json
+                ↓
+            清理失效 Snapshot
+
+        Collection 阶段只保存 Raw / Content。
+        不在这里生成派生 Task Lineage。
         """
-        base_dir = (
-            self.source_dir
-            / "dataworks"
-            / "workspaces"
-            / str(workspace.id)
-        )
+
+        base_dir = self.source_dir / "dataworks" / "workspaces" / str(workspace.id)
 
         files_dir = base_dir / "files"
-
-        # File Content 不再限定为 SQL。
         content_dir = base_dir / "content"
 
         ensure_dir(files_dir)
         ensure_dir(content_dir)
 
         # ======================================================
-        # 1. 获取 Workspace 当前 File 列表
+        # 1. 获取当前 Workspace 的权威 File 列表
         # ======================================================
 
         files = self.dataworks.list_files(workspace.id)
@@ -259,64 +389,59 @@ class SnapshotExporter:
         failed_files: list[dict[str, Any]] = []
 
         # ======================================================
-        # 当前 Workspace 的权威 File 快照
+        # 当前 Workspace 的权威 File Snapshot
         # ======================================================
-        #
-        # file_id -> 当前 raw JSON 文件名
+
         authoritative_files: dict[str, str] = {}
 
         # ======================================================
         # 当前成功 GetFile 产生的 Content 文件
         # ======================================================
+
         authoritative_content_files: set[str] = set()
 
         # ======================================================
         # GetFile 失败的 File ID
         # ======================================================
+
         failed_file_ids: set[str] = set()
 
         # ======================================================
         # 2. 逐个获取 File Detail
         # ======================================================
+
         for file in track(
-            files, description=f"正在采集 {workspace.name} 文件",
+            files,
+            description=f"正在采集 {workspace.name} 文件",
         ):
             file_id = extract_file_id(file)
+
             if file_id is None:
-                logger.warning("发现没有 File ID 的文件，跳过：%s", file,)
+                logger.warning(
+                    "发现没有 File ID 的文件，跳过：%s",
+                    file,
+                )
                 continue
 
             file_name = extract_file_name(file)
+
             if not file_name:
                 file_name = file_id
 
             # --------------------------------------------------
             # FileType 直接来自 ListFiles。
-            # 例如：
-            # FileType = 10
-            #     -> ODPS SQL
-            #     -> .sql
-            # FileType = 23
-            #     -> Data Integration
-            #     -> .json
+            # 不根据 Content 猜测类型。
             # --------------------------------------------------
+
             file_type = extract_file_type(file)
             use_type = extract_use_type(file)
 
             # ==================================================
-            # File 属于当前 ListFiles 权威集合
-            # ==================================================
-            raw_filename = _build_snapshot_filename(
-                file_id,
-                file_name,
-                suffix="json",
-            )
-            authoritative_files[file_id] = raw_filename
-
-            # ==================================================
             # File Type 分类
             # ==================================================
+
             file_type_info = get_file_type(file_type)
+
             logger.debug(
                 "DataWorks File："
                 "workspace=%s，"
@@ -342,8 +467,9 @@ class SnapshotExporter:
             )
 
             # ==================================================
-            # 对未知 FileType 打出 warning
+            # 未知 FileType
             # ==================================================
+
             if file_type_info.category == "unknown":
                 logger.warning(
                     "发现未知 DataWorks FileType："
@@ -360,6 +486,7 @@ class SnapshotExporter:
             # ==================================================
             # 获取 File 完整详情
             # ==================================================
+
             try:
                 detail = self.dataworks.get_file(
                     workspace.id,
@@ -368,8 +495,7 @@ class SnapshotExporter:
 
             except Exception as exc:
                 logger.exception(
-                    "获取 DataWorks 文件详情失败："
-                    "workspace=%s，file_id=%s，file_name=%s",
+                    "获取 DataWorks 文件详情失败：workspace=%s，file_id=%s，file_name=%s",
                     workspace.id,
                     file_id,
                     file_name,
@@ -382,10 +508,7 @@ class SnapshotExporter:
                         "file_id": file_id,
                         "file_name": file_name,
                         "file_type": file_type,
-                        "error": (
-                            str(exc)
-                            or type(exc).__name__
-                        ),
+                        "error": (str(exc) or type(exc).__name__),
                     }
                 )
 
@@ -393,14 +516,30 @@ class SnapshotExporter:
                 #
                 # 1. 不覆盖旧 JSON
                 # 2. 不生成新的 Content
-                # 3. cleanup 时保留旧 JSON
-                # 4. cleanup 时保留旧 Content
+                # 3. cleanup 保留旧 JSON
+                # 4. cleanup 保留旧 Content
                 continue
+
+            # ==================================================
+            # GetFile 成功
+            #
+            # 从这里开始，这个 File 才属于本次权威 Snapshot。
+            # ==================================================
+
+            raw_filename = _build_snapshot_filename(
+                file_id,
+                file_name,
+                suffix="json",
+            )
+
+            authoritative_files[file_id] = raw_filename
 
             # ==================================================
             # 3. 保存原始 File JSON
             # ==================================================
+
             raw_path = files_dir / raw_filename
+
             write_json(
                 raw_path,
                 detail,
@@ -410,37 +549,41 @@ class SnapshotExporter:
             # ==================================================
             # 4. 提取 File Content
             # ==================================================
+
             content = extract_file_content(detail)
 
             content_file: str | None = None
+
             if content is not None and content != "":
                 # ------------------------------------------------
-                # 根据 ListFiles.FileType 决定 Content 扩展名。
-                # 不根据 Content 内容猜测类型。
+                # 根据 ListFiles.FileType 决定扩展名。
                 # ------------------------------------------------
-                extension = (file_type_info.extension.lstrip("."))
+
+                extension = file_type_info.extension.lstrip(".")
+
+                if not extension:
+                    extension = "txt"
+
                 content_filename = _build_snapshot_filename(
-                    file_id, file_name, suffix=extension,
+                    file_id,
+                    file_name,
+                    suffix=extension,
                 )
 
-                content_path = (content_dir / content_filename)
+                content_path = content_dir / content_filename
 
                 _write_content(
                     content_path,
                     content,
-                    overwrite=settings.export_overwrite,
+                    overwrite=(settings.export_overwrite),
                 )
 
                 authoritative_content_files.add(content_filename)
+
                 content_file = str(content_path.relative_to(self.source_dir))
 
                 logger.debug(
-                    "保存 File Content："
-                    "workspace=%s，"
-                    "file_id=%s，"
-                    "file_type=%s，"
-                    "format=%s，"
-                    "path=%s",
+                    "保存 File Content：workspace=%s，file_id=%s，file_type=%s，format=%s，path=%s",
                     workspace.id,
                     file_id,
                     file_type,
@@ -450,10 +593,7 @@ class SnapshotExporter:
 
             else:
                 logger.debug(
-                    "File 没有 Content："
-                    "workspace=%s，"
-                    "file_id=%s，"
-                    "file_type=%s",
+                    "File 没有 Content：workspace=%s，file_id=%s，file_type=%s",
                     workspace.id,
                     file_id,
                     file_type,
@@ -462,6 +602,7 @@ class SnapshotExporter:
             # ==================================================
             # 5. 保存 File 索引
             # ==================================================
+
             file_index.append(
                 {
                     "workspace_id": workspace.id,
@@ -479,8 +620,9 @@ class SnapshotExporter:
             )
 
         # ======================================================
-        # 7. 保存 File 索引
+        # 6. 保存 File 索引
         # ======================================================
+
         write_json(
             base_dir / "files-index.json",
             {
@@ -501,22 +643,20 @@ class SnapshotExporter:
         )
 
         # ======================================================
-        # 9. 清理旧 Snapshot
+        # 7. 清理旧 Snapshot
         # ======================================================
 
         self._cleanup_workspace_files(
             files_dir=files_dir,
             content_dir=content_dir,
-            authoritative_files=authoritative_files,
-            authoritative_content_files=(
-                authoritative_content_files
-            ),
+            authoritative_files=(authoritative_files),
+            authoritative_content_files=(authoritative_content_files),
             failed_file_ids=failed_file_ids,
         )
 
         return _workspace_entry(
             workspace,
-            status="ok",
+            status=("failed" if failed_files else "ok"),
             file_count=len(file_index),
             failed_file_count=len(failed_files),
         )
@@ -535,45 +675,51 @@ class SnapshotExporter:
 
         JSON 清理规则：
 
-        1. File ID 已经不存在
-           -> 删除旧 JSON
+        1. File ID 当前 GetFile 成功：
+           只保留当前 raw filename。
 
-        2. File ID 仍然存在，但 FileName 已经变化
-           -> 删除旧 JSON
+        2. File ID 当前不存在：
+           删除旧 JSON。
 
-        3. File ID + FileName 都匹配
-           -> 保留
-
-        GetFile 失败：
-
-        1. 保留旧 JSON
-        2. 保留旧 Content
+        3. File ID 当前存在但 GetFile 失败：
+           保留旧 JSON。
 
         Content 清理规则：
 
-        1. File ID 已经不存在
-           -> 删除旧 Content
+        1. File 已经不存在：
+           删除旧 Content。
 
-        2. File ID 当前存在且 GetFile 成功
-           -> 只保留当前 Content
+        2. File 当前 GetFile 成功：
+           只保留当前 Content。
 
-        3. File ID 当前存在但 GetFile 失败
-           -> 保留该 File 的旧 Content
+        3. File 当前 GetFile 失败：
+           保留旧 Content。
 
-        4. Content 从有变成无
-           -> 删除旧 Content
+        4. Content 从有变成无：
+           删除旧 Content。
         """
 
         # ======================================================
         # 1. 清理 JSON File Snapshot
         # ======================================================
 
-        keep_file_names = set(
-            authoritative_files.values()
-        )
+        keep_file_names = set(authoritative_files.values())
+
+        failed_file_snapshot_ids = {safe_filename(file_id) for file_id in failed_file_ids}
 
         for path in files_dir.glob("*.json"):
             if path.name in keep_file_names:
+                continue
+
+            file_id = self._extract_entity_id_from_filename(path.name)
+
+            # GetFile 失败：
+            # 保留旧 Snapshot。
+            if file_id in failed_file_snapshot_ids:
+                logger.debug(
+                    "保留 GetFile 失败的旧 File Snapshot：%s",
+                    path.name,
+                )
                 continue
 
             logger.info(
@@ -587,46 +733,50 @@ class SnapshotExporter:
         # 2. 清理 Content Snapshot
         # ======================================================
 
+        authoritative_file_ids = {safe_filename(file_id) for file_id in authoritative_files}
+
         for path in content_dir.iterdir():
             if not path.is_file():
                 continue
-            file_id = (
-                self._extract_file_id_from_content_filename(
-                    path.name,
-                    authoritative_files,
-                )
-            )
 
-            # --------------------------------------------------
-            # 无法匹配当前 File ID
-            # 说明该 Content 对应的 File 已经不存在。
-            # --------------------------------------------------
+            file_id = self._extract_entity_id_from_filename(path.name)
+
             if file_id is None:
-                logger.info("清理幽灵 Content 文件：%s", path.name,)
+                logger.info(
+                    "清理幽灵 Content 文件：%s",
+                    path.name,
+                )
                 path.unlink()
                 continue
 
             # --------------------------------------------------
-            # GetFile 失败
-            #
-            # 不确定当前 DataWorks 内容是否发生变化，
-            # 所以保留旧 Content。
+            # File 已经不存在于当前 ListFiles。
             # --------------------------------------------------
 
-            if file_id in failed_file_ids:
-                logger.debug("保留 GetFile 失败的旧 Content Snapshot：%s", path.name,)
+            if file_id not in authoritative_file_ids and file_id not in failed_file_snapshot_ids:
+                logger.info(
+                    "清理已删除 File 对应的 Content Snapshot：%s",
+                    path.name,
+                )
+                path.unlink()
                 continue
 
             # --------------------------------------------------
-            # GetFile 成功
-            #
-            # 当前 Content 不在 authoritative_content_files 中，
-            # 说明：
-            # - Content 从有变成无
-            # - FileName 发生变化
-            # - FileType 发生变化
-            # - Content extension 发生变化
-            # 因此可以安全删除。
+            # GetFile 失败：
+            # 保留旧 Content。
+            # --------------------------------------------------
+
+            if file_id in failed_file_snapshot_ids:
+                logger.debug(
+                    "保留 GetFile 失败的旧 Content Snapshot：%s",
+                    path.name,
+                )
+                continue
+
+            # --------------------------------------------------
+            # GetFile 成功：
+            # 当前 Content 不在权威集合中，
+            # 可以安全删除。
             # --------------------------------------------------
 
             if path.name not in authoritative_content_files:
@@ -634,78 +784,79 @@ class SnapshotExporter:
                     "清理过期 Content Snapshot：%s",
                     path.name,
                 )
-
                 path.unlink()
 
     @staticmethod
-    def _extract_file_id_from_content_filename(
+    def _extract_entity_id_from_filename(
         filename: str,
-        authoritative_files: dict[str, str],
     ) -> str | None:
         """
-        根据 Content Snapshot 文件名识别对应的 File ID。
+        从 Snapshot 文件名提取实体 ID。
 
-        当前文件名格式：
-            <file_id>__<file_name>.<extension>
+        当前格式：
+
+            <id>__<name>.<extension>
+
         例如：
 
             505550697__tb_xxx.sql
             505550698__sync_xxx.json
-            505550699__xxx.py
 
-        返回当前 authoritative_files 中匹配的 File ID。
+        返回：
 
-        如果找不到，则返回 None。
+            505550697
+            505550698
+
+        如果无法解析，则返回 None。
         """
 
-        for file_id in authoritative_files:
-            prefix = (
-                f"{safe_filename(file_id)}__"
-            )
+        if "__" not in filename:
+            return None
 
-            if filename.startswith(prefix):
-                return file_id
+        entity_id = filename.split(
+            "__",
+            maxsplit=1,
+        )[0]
 
-        return None
+        return entity_id if entity_id else None
+
+    # ==========================================================
+    # Workspace Index
+    # ==========================================================
 
     def _write_workspaces_index(
         self,
         entries: list[dict[str, Any]],
     ) -> None:
         """
-        写入 Workspace 注册表（upsert 合并）。
+        写入 DataWorks Workspace 注册表。
 
-        已有且未参与本次采集的条目原样保留；
-        本次采集的条目按 id 更新或追加。
+        使用读-改-写 upsert。
+
+        已有但未参与本次采集的 Workspace：
+            原样保留。
+
+        本次采集的 Workspace：
+            按 id 更新或追加。
         """
 
-        path = (
-            self.source_dir
-            / "dataworks"
-            / "workspaces-index.json"
-        )
+        path = self.source_dir / "dataworks" / "workspaces-index.json"
 
         merged: dict[int, dict[str, Any]] = {}
         order: list[int] = []
 
         if path.exists():
             try:
-                existing = json.loads(
-                    path.read_text(
-                        encoding="utf-8"
-                    )
-                )
+                existing = json.loads(path.read_text(encoding="utf-8"))
 
             except (
                 json.JSONDecodeError,
                 OSError,
             ):
                 logger.warning(
-                    "workspaces-index.json 无法解析，"
-                    "将从空注册表重建：%s",
+                    "workspaces-index.json 无法解析，将从空注册表重建：%s",
                     path,
                 )
-
                 existing = {}
 
             for entry in existing.get(
@@ -730,66 +881,122 @@ class SnapshotExporter:
             path,
             {
                 "generated_at": utc_now(),
-                "workspaces": [
-                    merged[entry_id]
-                    for entry_id in order
-                ],
+                "workspaces": [merged[entry_id] for entry_id in order],
             },
             overwrite=settings.export_overwrite,
         )
 
-    def export_maxcompute(self) -> None:
-        """采集 MaxCompute 表结构和元数据。"""
+    # ==========================================================
+    # MaxCompute
+    # ==========================================================
 
-        logger.info("开始采集 MaxCompute")
+    def _export_maxcompute_workspace(
+        self,
+        workspace: WorkspaceSettings,
+    ) -> None:
+        """
+        采集单个 Workspace 对应的 MaxCompute Project。
 
-        base_dir = (
-            self.source_dir
-            / "maxcompute"
-        )
+        当前约定：
 
-        tables_dir = (
-            base_dir / "tables"
-        )
+            Workspace.name
+                ↓
+            MaxCompute Project.name
 
-        metadata_dir = (
-            base_dir / "metadata"
-        )
+        例如：
+
+            Workspace ID   = 123456
+            Workspace Name = ods
+
+            MaxCompute Project = ods
+
+        Snapshot 按 Workspace ID 隔离。
+        """
+
+        project = workspace.name
+
+        base_dir = self.source_dir / "maxcompute" / "workspaces" / str(workspace.id)
+
+        tables_dir = base_dir / "tables"
 
         ensure_dir(tables_dir)
-        ensure_dir(metadata_dir)
 
-        tables = self.maxcompute.list_tables()
+        logger.info(
+            "开始采集 MaxCompute：workspace=%s，workspace_name=%s，project=%s",
+            workspace.id,
+            workspace.name,
+            project,
+        )
+
+        # 每个 Workspace 使用独立 MaxCompute Client。
+        client = MaxComputeClient(project=project)
+
+        # ======================================================
+        # 1. 获取当前 Project 的权威 Table 列表
+        # ======================================================
+
+        try:
+            tables = client.list_tables()
+
+        except Exception:
+            logger.exception(
+                "获取 MaxCompute 表列表失败：workspace=%s，project=%s",
+                workspace.id,
+                project,
+            )
+
+            self.had_failures = True
+
+            # ListTables 失败时不能 cleanup。
+            return
 
         table_index: list[dict[str, Any]] = []
 
+        # 当前成功获取到的 Table Snapshot。
+        authoritative_tables: set[str] = set()
+
+        # 当前获取失败的 Table。
+        failed_tables: set[str] = set()
+
+        # ======================================================
+        # 2. 获取每张表的完整元数据
+        # ======================================================
+
         for table in track(
             tables,
-            description="正在获取 MaxCompute 表",
+            description=(f"正在获取 MaxCompute 表 [{workspace.name}]"),
         ):
-            table_name = table.name
+            table_name = str(table.name)
+
+            filename = f"{safe_filename(table_name)}.json"
+
+            table_path = tables_dir / filename
 
             try:
-                metadata = (
-                    self.maxcompute.get_table_metadata(
-                        table_name
-                    )
-                )
+                metadata = client.get_table_metadata(table_name)
 
             except Exception:
                 logger.exception(
-                    "获取 MaxCompute 表失败：table=%s",
+                    "获取 MaxCompute 表失败：workspace=%s，project=%s，table=%s",
+                    workspace.id,
+                    project,
                     table_name,
                 )
+
+                self.had_failures = True
+
+                failed_tables.add(table_name)
+
+                # GetTable 失败：
+                # 不覆盖旧 Snapshot。
                 continue
 
-            filename = (
-                f"{safe_filename(table_name)}.json"
-            )
+            # --------------------------------------------------
+            # 只有 GetTable 成功后，
+            # 才将 Table 加入权威 Snapshot 集合。
+            # --------------------------------------------------
 
-            table_path = (
-                tables_dir / filename
-            )
+            authoritative_tables.add(table_name)
 
             write_json(
                 table_path,
@@ -799,16 +1006,12 @@ class SnapshotExporter:
 
             table_index.append(
                 {
-                    "project": (
-                        settings.maxcompute_project
-                    ),
-                    "schema": (
-                        settings.maxcompute_schema
-                    ),
+                    "workspace_id": workspace.id,
+                    "workspace_name": workspace.name,
+                    "project": project,
+                    "schema": (settings.maxcompute_schema),
                     "table": table_name,
-                    "comment": metadata.get(
-                        "comment"
-                    ),
+                    "comment": metadata.get("comment"),
                     "column_count": len(
                         metadata.get(
                             "columns",
@@ -821,41 +1024,121 @@ class SnapshotExporter:
                             [],
                         )
                     ),
-                    "size": metadata.get(
-                        "size"
-                    ),
-                    "raw_file": str(
-                        table_path.relative_to(
-                            self.source_dir
-                        )
-                    ),
+                    "size": metadata.get("size"),
+                    "raw_file": str(table_path.relative_to(self.source_dir)),
                 }
             )
 
-        # 保存所有 MaxCompute 表的索引。
+        # ======================================================
+        # 3. 保存 Table Index
+        # ======================================================
+
         write_json(
-            metadata_dir / "tables-index.json",
+            base_dir / "tables-index.json",
             {
                 "generated_at": utc_now(),
-                "project": (
-                    settings.maxcompute_project
-                ),
-                "schema": (
-                    settings.maxcompute_schema
-                ),
+                "workspace": _workspace_identity(workspace),
+                "project": project,
+                "schema": (settings.maxcompute_schema),
                 "count": len(table_index),
                 "tables": table_index,
+                "failed_tables": [
+                    {
+                        "table": table_name,
+                    }
+                    for table_name in sorted(failed_tables)
+                ],
             },
             overwrite=settings.export_overwrite,
         )
 
         logger.info(
-            "MaxCompute 采集完成：%s 张表",
+            "MaxCompute Workspace 采集完成：workspace=%s，project=%s，成功=%s，失败=%s",
+            workspace.id,
+            project,
             len(table_index),
+            len(failed_tables),
         )
 
+        # ======================================================
+        # 4. 清理失效 Table Snapshot
+        # ======================================================
+
+        self._cleanup_maxcompute_tables(
+            tables_dir=tables_dir,
+            authoritative_tables=(authoritative_tables),
+            failed_tables=failed_tables,
+        )
+
+    def _cleanup_maxcompute_tables(
+        self,
+        *,
+        tables_dir: Path,
+        authoritative_tables: set[str],
+        failed_tables: set[str],
+    ) -> None:
+        """
+        清理 MaxCompute 旧 Table Snapshot。
+
+        前提：
+
+        ListTables 必须成功。
+
+        清理规则：
+
+        1. Table 当前存在 + GetTable 成功
+           -> 保留当前 Snapshot。
+
+        2. Table 当前存在 + GetTable 失败
+           -> 保留旧 Snapshot。
+
+        3. Table 已经不存在
+           -> 删除旧 Snapshot。
+        """
+
+        authoritative_table_names = {
+            safe_filename(table_name) for table_name in authoritative_tables
+        }
+
+        failed_table_names = {safe_filename(table_name) for table_name in failed_tables}
+
+        for path in tables_dir.glob("*.json"):
+            table_name = path.stem
+
+            # GetTable 失败：
+            # 保留旧 Snapshot。
+            if table_name in failed_table_names:
+                logger.debug(
+                    "保留 MaxCompute 获取失败的旧 Table Snapshot：%s",
+                    path.name,
+                )
+                continue
+
+            # 当前成功获取：
+            # 保留。
+            if table_name in authoritative_table_names:
+                continue
+
+            # ListTables 成功，但当前 Table 已不存在：
+            # 删除旧 Snapshot。
+            logger.info(
+                "清理过期 MaxCompute Table Snapshot：%s",
+                path.name,
+            )
+
+            path.unlink()
+
+    # ==========================================================
+    # Manifest
+    # ==========================================================
+
     def write_manifest(self) -> None:
-        """生成 Snapshot 清单。"""
+        """
+        生成 Snapshot 清单。
+
+        manifest 只描述当前配置和采集来源，
+        不保存具体 Table / File 明细。
+        """
 
         manifest = {
             "generated_at": utc_now(),
@@ -864,23 +1147,21 @@ class SnapshotExporter:
             "sources": {
                 "dataworks": {
                     "api_version": "2020-05-18",
-                    "region": (
-                        settings.dataworks_region
-                    ),
+                    "region": (settings.dataworks_region),
                     "workspaces": [
-                        _workspace_identity(workspace)
-                        for workspace in (
-                            settings.dataworks_workspaces
-                        )
+                        _workspace_identity(workspace) for workspace in (settings.workspaces)
                     ],
                 },
                 "maxcompute": {
-                    "project": (
-                        settings.maxcompute_project
-                    ),
-                    "schema": (
-                        settings.maxcompute_schema
-                    ),
+                    "endpoint": (settings.maxcompute_endpoint),
+                    "schema": (settings.maxcompute_schema),
+                    "workspaces": [
+                        {
+                            **_workspace_identity(workspace),
+                            "project": (workspace.name),
+                        }
+                        for workspace in (settings.workspaces)
+                    ],
                 },
             },
         }
@@ -890,9 +1171,3 @@ class SnapshotExporter:
             manifest,
             overwrite=settings.export_overwrite,
         )
-
-
-def utc_now() -> str:
-    """返回当前 UTC 时间。"""
-
-    return datetime.now(UTC).isoformat()
