@@ -246,20 +246,8 @@ class SnapshotExporter:
     ) -> dict[str, Any]:
         """
         采集单个 Workspace 并返回其注册表条目。
-
         采集流程：
-
-            ListFiles
-                ↓
-            GetFile
-                ↓
-            raw File snapshot
-                +
-            Content snapshot
-                +
-            task lineage
-                ↓
-            cleanup stale snapshots
+            ListFiles -> GetFile -> raw File snapshot + Content snapshot + task lineage -> cleanup stale snapshots
         """
 
         base_dir = (
@@ -284,9 +272,7 @@ class SnapshotExporter:
         # 1. 获取 Workspace 当前 File 列表
         # ======================================================
 
-        files = self.dataworks.list_files(
-            workspace.id
-        )
+        files = self.dataworks.list_files(workspace.id)
 
         file_index: list[dict[str, Any]] = []
         lineage_records: list[dict[str, Any]] = []
@@ -726,10 +712,7 @@ class SnapshotExporter:
             # --------------------------------------------------
 
             if file_id is None:
-                logger.info(
-                    "清理幽灵 Content 文件：%s",
-                    path.name,
-                )
+                logger.info("清理幽灵 Content 文件：%s", path.name,)
 
                 path.unlink()
                 continue

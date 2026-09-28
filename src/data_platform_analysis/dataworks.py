@@ -84,34 +84,30 @@ class DataWorksClient:
         reraise=True,
     )
     def _list_files_page(
-        self,
-        workspace_id: int,
-        page_number: int,
+            self,
+            workspace_id: int,
+            page_number: int,
+            use_type: str | None = None,
     ) -> dict[str, Any]:
-        """获取 DataWorks 指定页的文件。"""
-
         request = models.ListFilesRequest(
             project_id=workspace_id,
             page_number=page_number,
             page_size=settings.dataworks_page_size,
-            use_type=settings.dataworks_use_type,
         )
+
+        if use_type:
+            request.use_type = use_type
 
         logger.debug(
             "调用 DataWorks ListFiles："
-            "workspace_id=%s，"
-            "page=%s，"
-            "page_size=%s，"
-            "use_type=%s",
+            "workspace_id=%s，page=%s，page_size=%s，use_type=%s",
             workspace_id,
             page_number,
             settings.dataworks_page_size,
-            settings.dataworks_use_type,
+            use_type or "ALL",
         )
 
-        response = self.client.list_files(
-            request
-        )
+        response = self.client.list_files(request)
 
         return response.body.to_map()
 
@@ -155,88 +151,96 @@ class DataWorksClient:
 
         return response.body.to_map()
 
-    # ========================================================
-    # ListFiles 全量分页
-    # ========================================================
-
     def list_files(
-        self,
-        workspace_id: int,
+            self,
+            workspace_id: int,
     ) -> list[dict[str, Any]]:
         """
-        获取指定 DataWorks Workspace 的全部 File。
+        获取指定 DataWorks Workspace 下的 File。
 
-        UseType 已经在 ListFiles API 层进行过滤。
+        DATAWORKS_USE_TYPES 为空：
+            不传 UseType，一次获取全部文件。
+
+        DATAWORKS_USE_TYPES 有值：
+            按 UseType 分别调用 ListFiles，
+            将各 UseType 返回的文件直接合并。
         """
-
         all_files: list[dict[str, Any]] = []
 
-        page_number = 1
+        # 未配置 UseType 时，不传 UseType，获取全部文件。
+        use_types: list[str | None] = (
+            settings.dataworks_use_types
+            if settings.dataworks_use_types
+            else [None]
+        )
 
-        while True:
-            response = self._list_files_page(
-                workspace_id,
-                page_number,
-            )
+        for use_type in use_types:
+            page_number = 1
+            use_type_file_count = 0
 
-            data = self._find_first_dict(
-                response,
-                keys={
-                    "Data",
-                    "data",
-                },
-            )
+            while True:
+                response = self._list_files_page(
+                    workspace_id=workspace_id,
+                    page_number=page_number,
+                    use_type=use_type,
+                )
 
-            if data is None:
-                data = response
+                data = self._find_first_dict(
+                    response,
+                    keys={"Data", "data"},
+                )
 
-            page_files = self._extract_file_list(
-                data
-            )
+                if data is None:
+                    data = response
 
-            logger.info(
-                "DataWorks 第 %s 页获取到 %s 个文件",
-                page_number,
-                len(page_files),
-            )
+                page_files = self._extract_file_list(data)
 
-            if not page_files:
-                break
+                logger.info(
+                    "DataWorks Workspace %s "
+                    "UseType=%s 第 %s 页获取到 %s 个文件",
+                    workspace_id,
+                    use_type or "ALL",
+                    page_number,
+                    len(page_files),
+                )
 
-            all_files.extend(
-                page_files
-            )
+                if not page_files:
+                    break
 
-            total_count = self._extract_int(
-                data,
-                keys={
-                    "TotalCount",
-                    "totalCount",
-                    "Total",
-                    "total",
-                },
-            )
+                all_files.extend(page_files)
+                use_type_file_count += len(page_files)
 
-            if (
-                total_count is not None
-                and len(all_files) >= total_count
-            ):
-                break
+                total_count = self._extract_int(
+                    data,
+                    keys={
+                        "TotalCount",
+                        "totalCount",
+                        "Total",
+                        "total",
+                    },
+                )
 
-            if (
-                len(page_files)
-                < settings.dataworks_page_size
-            ):
-                break
+                # 当前 UseType 已经获取完成。
+                if (
+                        total_count is not None
+                        and use_type_file_count >= total_count
+                ):
+                    break
 
-            page_number += 1
+                # 当前页不足 page_size，说明已经是最后一页。
+                if len(page_files) < settings.dataworks_page_size:
+                    break
+
+                page_number += 1
 
         logger.info(
             "DataWorks Workspace %s 文件采集完成："
-            "共 %s 个文件，UseType=%s",
+            "UseType=%s，共 %s 个文件",
             workspace_id,
+            ",".join(settings.dataworks_use_types)
+            if settings.dataworks_use_types
+            else "ALL",
             len(all_files),
-            settings.dataworks_use_type,
         )
 
         return all_files

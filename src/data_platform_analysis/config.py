@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
+from pydantic_settings import (
+    BaseSettings,
+    NoDecode,
+    SettingsConfigDict,
+)
 
 # ============================================================
 # Project paths
@@ -126,57 +129,84 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def _parse_json_environment_values(
-        cls,
-        values: Any,
+            cls,
+            values: Any,
     ) -> Any:
         """
-        解析通过环境变量传入的 JSON 配置。
-
+        解析通过环境变量传入的配置。
+        DATAWORKS_WORKSPACES：使用 JSON 数组。
+        DATAWORKS_USE_TYPES：使用逗号分隔字符串。
         例如：
-
-            DATAWORKS_WORKSPACES='[
-                {"id": 123, "name": "workspace-a"}
-            ]'
-
-        Pydantic Settings 在环境变量场景下会将其读取为字符串，
-        这里统一转换成 Python 对象。
+            DATAWORKS_WORKSPACES='[{"id": 123, "name": "workspace-a"}]'
+            DATAWORKS_USE_TYPES=NORMAL,MANUAL
         """
         if not isinstance(values, dict):
             return values
 
+        # ----------------------------------------------------
+        # DATAWORKS_WORKSPACES
+        # ----------------------------------------------------
         workspaces = values.get("dataworks_workspaces")
-
         if isinstance(workspaces, str):
-            values["dataworks_workspaces"] = json.loads(
-                workspaces
-            )
+            values["dataworks_workspaces"] = json.loads(workspaces)
 
+        # ----------------------------------------------------
+        # DATAWORKS_USE_TYPES
+        # ----------------------------------------------------
+        # DATAWORKS_USE_TYPES 使用逗号分隔字符串。
+        use_types = values.get("dataworks_use_types")
+        if isinstance(use_types, str):
+            values["dataworks_use_types"] = [
+                item.strip().upper()
+                for item in use_types.split(",")
+                if item.strip()
+            ]
         return values
 
     @model_validator(mode="after")
-    def _validate_workspaces(self) -> Settings:
-        """Workspace id 与 name 在列表内必须唯一。"""
+    def _validate_dataworks_use_types(
+            self,
+    ) -> Settings:
+        """校验 DataWorks UseType 配置。"""
+        allowed_use_types = {
+            "NORMAL",
+            "MANUAL",
+            "MANUAL_BIZ",
+            "SKIP",
+            "ADHOCQUERY",
+            "COMPONENT",
+        }
 
-        ids = [
-            workspace.id
-            for workspace in self.dataworks_workspaces
+        self.dataworks_use_types = [
+            use_type.strip().upper()
+            for use_type in self.dataworks_use_types
+            if use_type.strip()
         ]
 
-        names = [
-            workspace.name
-            for workspace in self.dataworks_workspaces
+        # 空配置表示获取全部 UseType，不进行过滤。
+        if not self.dataworks_use_types:
+            return self
+
+        invalid_use_types = [
+            use_type
+            for use_type in self.dataworks_use_types
+            if use_type not in allowed_use_types
         ]
 
-        if len(ids) != len(set(ids)):
+        if invalid_use_types:
             raise ValueError(
-                "DATAWORKS_WORKSPACES 中存在重复的 id"
+                "DATAWORKS_USE_TYPES 包含不支持的 UseType："
+                f"{', '.join(invalid_use_types)}；"
+                "支持的值："
+                f"{', '.join(sorted(allowed_use_types))}"
             )
 
-        if len(names) != len(set(names)):
-            raise ValueError(
-                "DATAWORKS_WORKSPACES 中存在重复的 name"
+        # 去重，同时保持配置顺序。
+        self.dataworks_use_types = list(
+            dict.fromkeys(
+                self.dataworks_use_types
             )
-
+        )
         return self
 
     def select_workspaces(
@@ -219,10 +249,25 @@ class Settings(BaseSettings):
         ge=0,
         le=10,
     )
-    # 需要获取的节点文件类型UseType
-    dataworks_use_type: str = Field(
-        default="NORMAL",
-        min_length=1,
+
+    # DataWorks ListFiles 支持按 UseType 查询。
+    #
+    # 空值：
+    # DATAWORKS_USE_TYPES=
+    # 表示不传 UseType，获取 Workspace 全量文件。
+    #
+    # 单个：
+    # DATAWORKS_USE_TYPES=NORMAL
+    #
+    # 多个：
+    # DATAWORKS_USE_TYPES=NORMAL,MANUAL,MANUAL_BIZ
+    #
+    # 多个 UseType 会分别调用 ListFiles，最终合并结果。
+    dataworks_use_types: Annotated[
+        list[str],
+        NoDecode,
+    ] = Field(
+        default_factory=list,
     )
 
     # ========================================================
