@@ -444,6 +444,28 @@ class SnapshotExporter:
 
         files = self.dataworks.list_files(workspace.id, limit=limit)
 
+        # ======================================================
+        # 保存 ListFiles 最终 File Inventory Snapshot
+        # files 已经经过：
+        # - 多页分页
+        # - 多 UseType 合并
+        # - limit 截断
+        #
+        # 因此这里保存的是当前 Workspace 本次采集看到的
+        # 最终 File 集合，而不是单个 API Page。
+        # ======================================================
+        write_json(
+            base_dir / "files-list.json",
+            {
+                "generated_at": utc_now(),
+                "workspace": _workspace_identity(workspace),
+                "limit": limit,
+                "count": len(files),
+                "files": files,
+            },
+            overwrite=settings.export_overwrite,
+        )
+
         file_index: list[dict[str, Any]] = []
         failed_files: list[dict[str, Any]] = []
 
@@ -528,7 +550,6 @@ class SnapshotExporter:
             # ==================================================
             # 未知 FileType
             # ==================================================
-
             if file_type_info.category == "unknown":
                 logger.warning(
                     "发现未知 DataWorks FileType："
@@ -551,7 +572,6 @@ class SnapshotExporter:
                     workspace.id,
                     int(file_id),
                 )
-
             except Exception as exc:
                 logger.exception(
                     "获取 DataWorks 文件详情失败：workspace=%s，file_id=%s，file_name=%s",
@@ -681,7 +701,6 @@ class SnapshotExporter:
         # ======================================================
         # 6. 保存 File 索引
         # ======================================================
-
         write_json(
             base_dir / "files-index.json",
             {
