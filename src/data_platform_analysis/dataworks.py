@@ -115,22 +115,22 @@ class DataWorksClient:
         ),
         reraise=True,
     )
-    def get_node(
+    def get_file(
         self,
         workspace_id: int,
-        node_id: int,
+        file_id: int,
     ) -> dict[str, Any]:
         """获取 DataWorks 单个文件的完整详情。"""
 
         request = models.GetFileRequest(
             project_id=workspace_id,
-            file_id=node_id,
+            file_id=file_id,
         )
 
         logger.debug(
-            "调用 DataWorks GetFile：workspace_id=%s，node_id=%s",
+            "调用 DataWorks GetFile：workspace_id=%s，file_id=%s",
             workspace_id,
-            node_id,
+            file_id,
         )
 
         response = self.client.get_file(request)
@@ -461,6 +461,18 @@ def extract_file_id(
     """从 DataWorks File 对象中提取 File ID。"""
 
     value = file.get("FileId")
+
+    if value is not None:
+        return str(value)
+
+    return None
+
+def extract_node_id(
+    file: dict[str, Any],
+) -> str | None:
+    """从 DataWorks File 对象中提取 Node ID。"""
+
+    value = file.get("NodeId")
 
     if value is not None:
         return str(value)

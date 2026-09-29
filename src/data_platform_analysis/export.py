@@ -18,6 +18,7 @@ from .dataworks import (
     extract_file_name,
     extract_file_type,
     extract_use_type,
+    extract_node_id,
 )
 from .dataworks_types import get_file_type
 from .io_utils import (
@@ -461,6 +462,8 @@ class SnapshotExporter:
                 "workspace": _workspace_identity(workspace),
                 "limit": limit,
                 "count": len(files),
+                "complete": limit is None,
+                "use_types": settings.dataworks_use_types or None,
                 "files": files,
             },
             overwrite=settings.export_overwrite,
@@ -496,6 +499,7 @@ class SnapshotExporter:
             description=f"正在采集 {workspace.name} 文件",
         ):
             file_id = extract_file_id(file)
+            node_id = extract_node_id(file)
 
             if file_id is None:
                 logger.warning(
@@ -528,6 +532,7 @@ class SnapshotExporter:
                 "workspace=%s，"
                 "file_id=%s，"
                 "file_name=%s，"
+                "node_id=%s，"
                 "use_type=%s，"
                 "file_type=%s，"
                 "file_type_name=%s，"
@@ -538,6 +543,7 @@ class SnapshotExporter:
                 workspace.id,
                 file_id,
                 file_name,
+                node_id,
                 use_type,
                 file_type,
                 file_type_info.name,
@@ -556,10 +562,12 @@ class SnapshotExporter:
                     "workspace=%s，"
                     "file_id=%s，"
                     "file_name=%s，"
+                    "node_id=%s，"
                     "file_type=%s",
                     workspace.id,
                     file_id,
                     file_name,
+                    node_id,
                     file_type,
                 )
 
@@ -568,16 +576,16 @@ class SnapshotExporter:
             # ==================================================
 
             try:
-                detail = self.dataworks.get_node(
-                    workspace.id,
-                    int(file_id),
+                detail = self.dataworks.get_file(
+                    workspace.id, int(file_id),
                 )
             except Exception as exc:
                 logger.exception(
-                    "获取 DataWorks 文件详情失败：workspace=%s，file_id=%s，file_name=%s",
+                    "获取 DataWorks 文件详情失败：workspace=%s，file_id=%s，file_name=%s, node_id=%s",
                     workspace.id,
                     file_id,
                     file_name,
+                    node_id,
                 )
 
                 failed_file_ids.add(file_id)
@@ -586,6 +594,7 @@ class SnapshotExporter:
                     {
                         "file_id": file_id,
                         "file_name": file_name,
+                        "node_id": node_id,
                         "file_type": file_type,
                         "error": (str(exc) or type(exc).__name__),
                     }
@@ -628,7 +637,6 @@ class SnapshotExporter:
             # ==================================================
             # 4. 提取 File Content
             # ==================================================
-
             content = extract_file_content(detail)
 
             content_file: str | None = None
@@ -637,7 +645,6 @@ class SnapshotExporter:
                 # ------------------------------------------------
                 # 根据 ListFiles.FileType 决定扩展名。
                 # ------------------------------------------------
-
                 extension = file_type_info.extension.lstrip(".")
 
                 if not extension:
@@ -672,9 +679,10 @@ class SnapshotExporter:
 
             else:
                 logger.debug(
-                    "File 没有 Content：workspace=%s，file_id=%s，file_type=%s",
+                    "File 没有 Content：workspace=%s，file_id=%s，node_id=%s，file_type=%s",
                     workspace.id,
                     file_id,
+                    node_id,
                     file_type,
                 )
 
@@ -687,6 +695,7 @@ class SnapshotExporter:
                     "workspace_id": workspace.id,
                     "file_id": file_id,
                     "file_name": file_name,
+                    "node_id": node_id,
                     "use_type": use_type,
                     "file_type": file_type,
                     "task_type": file_type_info.task_type,
