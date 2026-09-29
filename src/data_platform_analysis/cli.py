@@ -12,6 +12,7 @@ from rich.table import Table
 from .config import settings
 from .export import SnapshotExporter
 from .logging_utils import setup_logging
+from .summary import SnapshotSummaryGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_limit_argument(sub_export)
 
     # ========================================================
+    # Summary
+    # ========================================================
+
+    # 基于已有 Snapshot 重新生成 Summary.md。
+    subparsers.add_parser(
+        "summary",
+        help="根据已有 Snapshot 重新生成 Summary.md。",
+    )
+    # ========================================================
     # Config
     # ========================================================
 
@@ -218,6 +228,16 @@ def run_maxcompute(
 
     _exit_on_failures(exporter)
 
+def run_summary() -> None:
+    """根据已有 Snapshot 重新生成 Summary.md。"""
+
+    summary_path = SnapshotSummaryGenerator(
+        source_dir=settings.source_dir,
+    ).generate()
+
+    console.print(
+        f"[green]Summary 已生成：[/green]{summary_path}"
+    )
 
 def run_export(
     workspace_id: int | None = None,
@@ -270,6 +290,9 @@ def main() -> None:
             )
             return
 
+        if args.command == "summary":
+            run_summary()
+            return
         parser.error(f"未知命令：{args.command}")
 
     except KeyboardInterrupt:

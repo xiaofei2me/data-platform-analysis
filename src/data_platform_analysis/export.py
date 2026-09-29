@@ -27,6 +27,7 @@ from .io_utils import (
     write_json,
 )
 from .maxcompute import MaxComputeClient
+from .summary import SnapshotSummaryGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,6 @@ def _log_limit_mode(
 class SnapshotExporter:
     """
     Snapshot 导出器。
-
     当前版本只负责：
 
         DataWorks + MaxCompute
@@ -261,6 +261,20 @@ class SnapshotExporter:
         # manifest 仅由完整 export 写入。
         if workspace_id is None:
             self.write_manifest()
+
+        # manifest 仅由完整 export 写入。
+        if workspace_id is None:
+            self.write_manifest()
+
+        # 所有 Snapshot 采集完成后生成 Summary.md。
+        summary_path = SnapshotSummaryGenerator(
+            source_dir=self.source_dir,
+        ).generate()
+
+        logger.info(
+            "Snapshot Summary 已生成：%s",
+            summary_path,
+        )
 
         logger.info(
             "完整 Snapshot 采集完成：%s 个 Workspace",
@@ -1279,7 +1293,6 @@ class SnapshotExporter:
         manifest 只描述当前配置和采集来源，
         不保存具体 Table / File 明细。
         """
-
         manifest = {
             "generated_at": utc_now(),
             "tool": "data-platform-analysis",
