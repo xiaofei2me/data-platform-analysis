@@ -259,11 +259,7 @@ class SnapshotExporter:
         )
 
         # manifest 仅由完整 export 写入。
-        if workspace_id is None:
-            self.write_manifest()
-
-        # manifest 仅由完整 export 写入。
-        if workspace_id is None:
+        if workspace_id is None and limit is None:
             self.write_manifest()
 
         # 所有 Snapshot 采集完成后生成 Summary.md。

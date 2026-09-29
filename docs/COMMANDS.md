@@ -59,6 +59,9 @@ uv run data-platform-analysis export --workspace 123456 --limit 10
 
 # 查看配置
 uv run data-platform-analysis config
+
+# 根据已有 Snapshot 重新生成 Summary
+uv run data-platform-analysis summary
 ```
 
 ## `--limit` 语义
