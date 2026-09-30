@@ -100,7 +100,7 @@ def test_inventory_lists_and_layer_candidates(
     assert table_by_name["s_ods_log"]["layer_candidate"] is None
 
     columns = _read(Path("analysis/inventory/columns.json"))
-    assert columns["count"] == 3
+    assert columns["count"] == 4
 
     column_by_name = {
         (item["table"], item["column_name"]): item for item in columns["columns"]

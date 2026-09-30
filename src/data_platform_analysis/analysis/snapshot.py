@@ -394,7 +394,7 @@ class SnapshotReader:
                 error_type="CONTENT_FILE_MISSING",
                 message="files-index 条目缺少 content_file",
                 workspace_id=workspace_id,
-                file_id=file_id,
+                file_id=str(file_id),
             )
 
             return None, False
@@ -407,7 +407,7 @@ class SnapshotReader:
                 error_type="CONTENT_FILE_MISSING",
                 message="SQL content 文件不存在",
                 workspace_id=workspace_id,
-                file_id=file_id,
+                file_id=str(file_id),
                 path=content_file,
             )
 
@@ -422,7 +422,7 @@ class SnapshotReader:
                 error_type="CONTENT_MISSING",
                 message=str(exc),
                 workspace_id=workspace_id,
-                file_id=file_id,
+                file_id=str(file_id),
                 path=content_file,
             )
 

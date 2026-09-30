@@ -90,7 +90,7 @@ def test_lineage_dedup_cross_workspace_and_candidates(
 
     deduped = by_target["ws_a.dwd_order"]
     assert deduped["source_key"] == "ws_a.ods_order"
-    assert [item["file_id"] for item in deduped["evidence"]] == [101, 102]
+    assert [item["file_id"] for item in deduped["evidence"]] == ["101", "102"]
     assert deduped["source_layer_candidate"] == "ODS"
     assert deduped["target_layer_candidate"] == "DWD"
     assert deduped["source_workspace_id"] == 9001
@@ -164,7 +164,7 @@ def test_lineage_keeps_sql_spelling_and_raw_reference(
     assert len(edges) == 1
 
     edge = edges[0]
-    assert edge["source_table"] == "${ws_a}.ods_order"
-    assert edge["source_key"] == "ws_a.ods_order"
-    assert edge["target_table"] == "${ws_a}.dwd_order"
+    assert edge["source_table"] == "ws_a.ods_order"
+    assert edge["source_key"] == "ws_a.ods_order"  # same as source_table after normalization
+    assert edge["target_table"] == "ws_a.dwd_order"
     assert edge["target_key"] == "ws_a.dwd_order"

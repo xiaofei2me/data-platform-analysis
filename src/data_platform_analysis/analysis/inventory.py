@@ -234,8 +234,7 @@ class InventoryBuilder:
 
                 continue
 
-            file_id = to_int(raw_file_id)
-            file_id_value: int | str = file_id if file_id is not None else str(raw_file_id)
+            file_id_value = str(raw_file_id)
 
             node_id = to_int(entry.get("node_id"))
             node_id_value: int | str | None = (
