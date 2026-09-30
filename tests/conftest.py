@@ -252,6 +252,7 @@ def cli_env(
         "MAXCOMPUTE_INCLUDE_PARTITIONS": "false",
         # 输出目录必须是绝对路径，避免写进项目根目录。
         "SOURCE_DIR": str(tmp_path / "source"),
+        "ANALYSIS_DIR": str(tmp_path / "analysis"),
         "EXPORT_OVERWRITE": "true",
     }.items():
         monkeypatch.setenv(key, value)

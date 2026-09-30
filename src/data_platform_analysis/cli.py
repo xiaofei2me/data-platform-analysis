@@ -9,6 +9,8 @@ import sys
 from rich.console import Console
 from rich.table import Table
 
+from .analysis import AnalysisPipeline
+from .analysis.errors import AnalysisFatalError
 from .config import settings
 from .export import SnapshotExporter
 from .logging_utils import setup_logging
@@ -144,6 +146,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="根据已有 Snapshot 重新生成 Summary.md。",
     )
     # ========================================================
+    # Analyze
+    # ========================================================
+
+    sub_analyze = subparsers.add_parser(
+        "analyze",
+        help="基于已有 Snapshot 生成 analysis/ Evidence Chain。",
+    )
+
+    sub_analyze.add_argument(
+        "--workspace",
+        type=int,
+        default=None,
+        help="只分析 Snapshot 中的指定 Workspace（必须已存在于 source/）。",
+    )
+
+    # ========================================================
     # Config
     # ========================================================
 
@@ -176,6 +194,7 @@ def print_config() -> None:
         "MAXCOMPUTE_SCHEMA": (settings.maxcompute_schema or ""),
         "MAXCOMPUTE_INCLUDE_PARTITIONS": str(settings.maxcompute_include_partitions),
         "SOURCE_DIR": str(settings.source_dir),
+        "ANALYSIS_DIR": str(settings.analysis_dir),
         "EXPORT_OVERWRITE": str(settings.export_overwrite),
     }
 
@@ -228,6 +247,7 @@ def run_maxcompute(
 
     _exit_on_failures(exporter)
 
+
 def run_summary() -> None:
     """根据已有 Snapshot 重新生成 Summary.md。"""
 
@@ -235,9 +255,8 @@ def run_summary() -> None:
         source_dir=settings.source_dir,
     ).generate()
 
-    console.print(
-        f"[green]Summary 已生成：[/green]{summary_path}"
-    )
+    console.print(f"[green]Summary 已生成：[/green]{summary_path}")
+
 
 def run_export(
     workspace_id: int | None = None,
@@ -253,6 +272,37 @@ def run_export(
     )
 
     _exit_on_failures(exporter)
+
+
+def run_analyze(
+    workspace_id: int | None = None,
+) -> None:
+    """基于已有 Snapshot 执行 Analysis。"""
+
+    try:
+        result = AnalysisPipeline(
+            source_dir=settings.source_dir,
+            analysis_dir=settings.analysis_dir,
+            workspace_id=workspace_id,
+        ).run()
+
+    except AnalysisFatalError as exc:
+        logger.error("Analysis 无法继续：%s", exc)
+
+        sys.exit(1)
+
+    console.print(
+        "[green]Analysis 完成：[/green]"
+        f"workspace={len(result.workspace_ids)}，"
+        f"file={result.file_count}，"
+        f"table={result.table_count}，"
+        f"statement={result.statement_count}，"
+        f"edge={result.edge_count}，"
+        f"error={result.error_count}"
+    )
+
+    if result.summary_path is not None:
+        console.print(f"[green]Summary：[/green]{result.summary_path}")
 
 
 def main() -> None:
@@ -293,6 +343,13 @@ def main() -> None:
         if args.command == "summary":
             run_summary()
             return
+
+        if args.command == "analyze":
+            run_analyze(
+                workspace_id=args.workspace,
+            )
+            return
+
         parser.error(f"未知命令：{args.command}")
 
     except KeyboardInterrupt:

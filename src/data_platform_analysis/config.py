@@ -179,6 +179,17 @@ class Settings(BaseSettings):
     #   保持原路径不变。
     source_dir: Path = Path("source")
 
+    # Analysis 输出目录。
+    #
+    # Analysis 只读 source_dir，写入 analysis_dir。
+    #
+    # 相对路径：
+    #   相对于项目根目录解析。
+    #
+    # 绝对路径：
+    #   保持原路径不变。
+    analysis_dir: Path = Path("analysis")
+
     # 是否覆盖已经存在的文件。
     export_overwrite: bool = True
 
@@ -317,6 +328,7 @@ class Settings(BaseSettings):
         永远是绝对路径，不再依赖当前 Working Directory。
         """
         self.source_dir = resolve_project_path(self.source_dir)
+        self.analysis_dir = resolve_project_path(self.analysis_dir)
 
         return self
 

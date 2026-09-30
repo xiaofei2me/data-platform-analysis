@@ -124,7 +124,6 @@ FILE_TYPE_REGISTRY: dict[int, FileTypeInfo] = {
     # ------------------------------------------------------------------------
     # MaxCompute / ODPS
     # ------------------------------------------------------------------------
-
     6: FileTypeInfo(
         file_type=6,
         name="SHELL",
@@ -188,11 +187,9 @@ FILE_TYPE_REGISTRY: dict[int, FileTypeInfo] = {
         extension="txt",
         description="MaxCompute / ODPS Spark 任务。",
     ),
-
     # ------------------------------------------------------------------------
     # EMR
     # ------------------------------------------------------------------------
-
     227: FileTypeInfo(
         file_type=227,
         name="EMR_HIVE",
@@ -274,11 +271,9 @@ FILE_TYPE_REGISTRY: dict[int, FileTypeInfo] = {
         extension="sql",
         description="EMR Trino 任务。",
     ),
-
     # ------------------------------------------------------------------------
     # 其他任务类型
     # ------------------------------------------------------------------------
-
     239: FileTypeInfo(
         file_type=239,
         name="OSS_OBJECT_CHECK",
@@ -333,11 +328,9 @@ FILE_TYPE_REGISTRY: dict[int, FileTypeInfo] = {
         extension="sql",
         description="ClickHouse SQL 任务。",
     ),
-
     # ------------------------------------------------------------------------
     # 当前 Workspace 实际验证的任务类型
     # ------------------------------------------------------------------------
-
     1026: FileTypeInfo(
         file_type=1026,
         name="TASK_FLOW",
@@ -373,11 +366,9 @@ FILE_TYPE_REGISTRY: dict[int, FileTypeInfo] = {
         extension="json",
         description="Function Compute 函数计算节点。",
     ),
-
     # ------------------------------------------------------------------------
     # Resource
     # ------------------------------------------------------------------------
-
     12: FileTypeInfo(
         file_type=12,
         name="PYTHON",
@@ -395,9 +386,7 @@ FILE_TYPE_REGISTRY: dict[int, FileTypeInfo] = {
         content_format=CONTENT_BINARY,
         extension="jar",
         description=(
-            "JAR 资源文件。"
-            "当前实际 GetFile Content 为 OSS Object Key，"
-            "不是 JAR 二进制内容。"
+            "JAR 资源文件。当前实际 GetFile Content 为 OSS Object Key，不是 JAR 二进制内容。"
         ),
     ),
     14: FileTypeInfo(
@@ -408,9 +397,7 @@ FILE_TYPE_REGISTRY: dict[int, FileTypeInfo] = {
         content_format=CONTENT_BINARY,
         extension="zip",
         description=(
-            "ZIP 资源文件。"
-            "当前实际 GetFile Content 为 OSS Object Key，"
-            "不是 ZIP 二进制内容。"
+            "ZIP 资源文件。当前实际 GetFile Content 为 OSS Object Key，不是 ZIP 二进制内容。"
         ),
     ),
     15: FileTypeInfo(
@@ -421,9 +408,7 @@ FILE_TYPE_REGISTRY: dict[int, FileTypeInfo] = {
         content_format=CONTENT_BINARY,
         extension="txt",
         description=(
-            "普通资源文件。"
-            "当前实际 GetFile Content 为 OSS Object Key，"
-            "不是实际文件内容。"
+            "普通资源文件。当前实际 GetFile Content 为 OSS Object Key，不是实际文件内容。"
         ),
     ),
     17: FileTypeInfo(

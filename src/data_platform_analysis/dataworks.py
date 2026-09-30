@@ -467,6 +467,7 @@ def extract_file_id(
 
     return None
 
+
 def extract_node_id(
     file: dict[str, Any],
 ) -> str | None:

@@ -120,8 +120,7 @@ class SnapshotSummaryGenerator:
                 "",
                 "## 1. 概述",
                 "",
-                "`source/` 目录用于保存从 DataWorks 和 MaxCompute "
-                "采集得到的本地 Snapshot 数据。",
+                "`source/` 目录用于保存从 DataWorks 和 MaxCompute 采集得到的本地 Snapshot 数据。",
                 "",
                 "该目录是后续数据平台分析工作的输入数据源。",
                 "",
@@ -840,23 +839,19 @@ class SnapshotSummaryGenerator:
     ) -> None:
         """添加当前 Snapshot 的汇总信息。"""
         dataworks_file_count = sum(
-            workspace.get("file_count", 0)
-            for workspace in dataworks["workspaces"]
+            workspace.get("file_count", 0) for workspace in dataworks["workspaces"]
         )
 
         dataworks_failed_count = sum(
-            workspace.get("failed_file_count", 0)
-            for workspace in dataworks["workspaces"]
+            workspace.get("failed_file_count", 0) for workspace in dataworks["workspaces"]
         )
 
         maxcompute_table_count = sum(
-            workspace.get("count", 0)
-            for workspace in maxcompute["workspaces"]
+            workspace.get("count", 0) for workspace in maxcompute["workspaces"]
         )
 
         maxcompute_failed_count = sum(
-            workspace.get("failed_count", 0)
-            for workspace in maxcompute["workspaces"]
+            workspace.get("failed_count", 0) for workspace in maxcompute["workspaces"]
         )
 
         lines.extend(
@@ -915,11 +910,7 @@ class SnapshotSummaryGenerator:
         不读取 DataWorks API，只读取已经落盘的
         workspaces-index.json。
         """
-        path = (
-            self.source_dir
-            / "dataworks"
-            / "workspaces-index.json"
-        )
+        path = self.source_dir / "dataworks" / "workspaces-index.json"
 
         data = self._read_json(path)
 
@@ -931,11 +922,7 @@ class SnapshotSummaryGenerator:
         if not isinstance(workspaces, list):
             workspaces = []
 
-        valid_workspaces = [
-            workspace
-            for workspace in workspaces
-            if isinstance(workspace, dict)
-        ]
+        valid_workspaces = [workspace for workspace in workspaces if isinstance(workspace, dict)]
 
         return {
             "workspace_count": len(valid_workspaces),
@@ -955,11 +942,7 @@ class SnapshotSummaryGenerator:
 
             maxcompute/workspaces/<workspace_id>/tables-index.json
         """
-        root = (
-            self.source_dir
-            / "maxcompute"
-            / "workspaces"
-        )
+        root = self.source_dir / "maxcompute" / "workspaces"
 
         if not root.exists():
             return {
@@ -973,10 +956,7 @@ class SnapshotSummaryGenerator:
             if not workspace_dir.is_dir():
                 continue
 
-            index_path = (
-                workspace_dir
-                / "tables-index.json"
-            )
+            index_path = workspace_dir / "tables-index.json"
 
             data = self._read_json(index_path)
 
@@ -1023,9 +1003,7 @@ class SnapshotSummaryGenerator:
                             0,
                         )
                     ),
-                    "failed_count": len(
-                        failed_tables
-                    ),
+                    "failed_count": len(failed_tables),
                 }
             )
 

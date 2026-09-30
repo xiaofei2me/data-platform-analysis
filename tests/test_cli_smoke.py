@@ -73,7 +73,7 @@ def test_export_dual_workspace_snapshot(
     assert index_a["files"][0]["workspace_id"] == 9001
     assert index_a["files"][0]["file_id"] == "101"
     assert index_a["files"][0]["file_name"] == "daily_etl"
-    assert index_a["files"][0]["file_type_name"] == "ODPS SQL"
+    assert index_a["files"][0]["file_type_name"] == "ODPS_SQL"
 
     index_b = json.loads((ws_b / "files-index.json").read_text(encoding="utf-8"))
     assert index_b["count"] == 2

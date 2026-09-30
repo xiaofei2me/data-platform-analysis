@@ -17,8 +17,8 @@ from .dataworks import (
     extract_file_id,
     extract_file_name,
     extract_file_type,
-    extract_use_type,
     extract_node_id,
+    extract_use_type,
 )
 from .dataworks_types import get_file_type
 from .io_utils import (
@@ -587,11 +587,13 @@ class SnapshotExporter:
 
             try:
                 detail = self.dataworks.get_file(
-                    workspace.id, int(file_id),
+                    workspace.id,
+                    int(file_id),
                 )
             except Exception as exc:
                 logger.exception(
-                    "获取 DataWorks 文件详情失败：workspace=%s，file_id=%s，file_name=%s, node_id=%s",
+                    "获取 DataWorks 文件详情失败："
+                    "workspace=%s，file_id=%s，file_name=%s, node_id=%s",
                     workspace.id,
                     file_id,
                     file_name,

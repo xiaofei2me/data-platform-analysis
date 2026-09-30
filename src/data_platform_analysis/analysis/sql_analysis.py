@@ -1,0 +1,295 @@
+"""M2.2 SQL Analysis：把 DataWorks SQL 文件拆成语句并解析成 AST。
+
+处理流程：
+
+    content 文本
+      → 按顶层分号切分语句（基于 tokenizer，字符串里的分号不会被切开）
+      → 逐条解析（dialect=odps）
+      → 记录 parse_status 与语句原文
+      → 对解析成功的语句提取 source / target 表引用
+
+失败处理：
+
+    单条语句失败只影响该条语句，文件级与分析级继续执行；
+    失败语句写入 analysis/sql/parse-errors.json 与 analysis/errors.json。
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+
+import sqlglot
+from sqlglot import Dialect, exp
+from sqlglot.errors import ParseError, TokenError
+from sqlglot.tokens import TokenType
+
+from .dialect import DIALECT, register_dialect
+from .errors import ErrorLedger
+from .models import (
+    PARSE_STATUS_ERROR,
+    PARSE_STATUS_SUCCESS,
+    PARSE_STATUS_UNSUPPORTED,
+    FileInventory,
+    StatementRecord,
+    TableReference,
+)
+from .references import extract_table_references
+from .snapshot import SnapshotReader
+
+register_dialect()
+
+logger = logging.getLogger(__name__)
+
+for _logger_name in ("sqlglot", "sqlglot.parser", "sqlglot.transpiler"):
+    logging.getLogger(_logger_name).setLevel(logging.ERROR)
+
+MAX_MESSAGE_LENGTH = 300
+"""错误信息截断长度，避免把整段 SQL 写进错误账本。"""
+
+
+@dataclass
+class ParseErrorRecord:
+    """写入 analysis/sql/parse-errors.json 的单条记录。"""
+
+    workspace_id: int
+    file_id: int | str
+    node_id: int | str | None
+    statement_id: int
+    error_type: str
+    message: str
+    content_file: str | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "file_id": self.file_id,
+            "node_id": self.node_id,
+            "statement_id": self.statement_id,
+            "error_type": self.error_type,
+            "message": self.message,
+            "content_file": self.content_file,
+        }
+
+
+@dataclass
+class SqlFileResult:
+    """单个 DataWorks File 的 SQL 分析结果。"""
+
+    statements: list[StatementRecord] = field(default_factory=list)
+    references: list[TableReference] = field(default_factory=list)
+    parse_errors: list[ParseErrorRecord] = field(default_factory=list)
+
+
+def split_statements(content: str) -> tuple[list[str], str | None]:
+    """按顶层分号切分语句。
+
+    返回 (fragments, error_message)：
+    只含注释或空白的片段不会返回；
+    tokenizer 失败时返回空列表与错误信息。
+    """
+
+    tokenizer = Dialect.get_or_raise(DIALECT).tokenizer()
+
+    try:
+        tokens = tokenizer.tokenize(content)
+    except TokenError as exc:
+        return [], _truncate(str(exc))
+    except Exception as exc:
+        return [], _truncate(str(exc))
+
+    fragments: list[str] = []
+    start = 0
+    has_tokens = False
+
+    for token in tokens:
+        if token.token_type is TokenType.SEMICOLON:
+            if has_tokens:
+                fragments.append(content[start : token.start])
+
+            start = token.end + 1
+            has_tokens = False
+
+        else:
+            has_tokens = True
+
+    if has_tokens:
+        fragments.append(content[start:])
+
+    return [fragment.strip() for fragment in fragments if fragment.strip()], None
+
+
+def parse_statement(fragment: str) -> tuple[str, list[exp.Expression], str | None]:
+    """解析单条语句，返回 (parse_status, expressions, message)。"""
+
+    try:
+        parsed = sqlglot.parse(fragment, dialect=DIALECT)
+
+    except ParseError as exc:
+        return PARSE_STATUS_ERROR, [], _truncate(str(exc))
+
+    except Exception as exc:
+        return PARSE_STATUS_ERROR, [], _truncate(str(exc))
+
+    expressions = [
+        node
+        for node in parsed
+        if isinstance(node, exp.Expression) and not isinstance(node, exp.Semicolon)
+    ]
+
+    if not expressions:
+        return PARSE_STATUS_ERROR, [], "语句未产生任何 AST"
+
+    if all(isinstance(node, exp.Command) for node in expressions):
+        return PARSE_STATUS_UNSUPPORTED, [], "语句被解析为 Command，无法提取表引用"
+
+    return PARSE_STATUS_SUCCESS, expressions, None
+
+
+class SqlAnalyzer:
+    """SQL 文件分析器。"""
+
+    def __init__(
+        self,
+        reader: SnapshotReader,
+        ledger: ErrorLedger,
+    ) -> None:
+        self.reader = reader
+        self.ledger = ledger
+
+    def analyze_file(self, file: FileInventory) -> SqlFileResult:
+        """分析单个 DataWorks File，返回语句、表引用与解析错误。"""
+
+        result = SqlFileResult()
+
+        if file.content_format.upper() != "SQL":
+            return result
+
+        content, ok = self.reader.load_file_content(
+            workspace_id=file.workspace_id,
+            file_id=file.file_id,
+            content_file=file.content_file,
+        )
+
+        if not ok or content is None or not content.strip():
+            return result
+
+        fragments, split_error = split_statements(content)
+
+        if split_error is not None:
+            self.ledger.add(
+                stage="sql",
+                error_type="SQL_TOKENIZE_ERROR",
+                message=split_error,
+                workspace_id=file.workspace_id,
+                file_id=file.file_id,
+                path=file.content_file,
+            )
+
+            return result
+
+        for statement_id, fragment in enumerate(fragments, start=1):
+            self._analyze_statement(result, file, statement_id, fragment)
+
+        return result
+
+    def _analyze_statement(
+        self,
+        result: SqlFileResult,
+        file: FileInventory,
+        statement_id: int,
+        fragment: str,
+    ) -> None:
+        """分析单条语句并把结果追加到 SqlFileResult。"""
+
+        status, expressions, message = parse_statement(fragment)
+
+        result.statements.append(
+            StatementRecord(
+                workspace_id=file.workspace_id,
+                file_id=file.file_id,
+                node_id=file.node_id,
+                file_name=file.file_name,
+                statement_id=statement_id,
+                sql=fragment,
+                dialect=DIALECT,
+                parse_status=status,
+                content_file=file.content_file,
+            )
+        )
+
+        if status == PARSE_STATUS_SUCCESS:
+            self._extract_references(result, file, statement_id, expressions)
+
+            return
+
+        error_type = (
+            "SQL_UNSUPPORTED_STATEMENT" if status == PARSE_STATUS_UNSUPPORTED else "SQL_PARSE_ERROR"
+        )
+
+        record = ParseErrorRecord(
+            workspace_id=file.workspace_id,
+            file_id=file.file_id,
+            node_id=file.node_id,
+            statement_id=statement_id,
+            error_type=error_type,
+            message=message or status,
+            content_file=file.content_file,
+        )
+
+        result.parse_errors.append(record)
+
+        self.ledger.add(
+            stage="sql",
+            error_type=error_type,
+            message=record.message,
+            workspace_id=file.workspace_id,
+            file_id=file.file_id,
+            statement_id=statement_id,
+            path=file.content_file,
+        )
+
+    @staticmethod
+    def _extract_references(
+        result: SqlFileResult,
+        file: FileInventory,
+        statement_id: int,
+        expressions: list[exp.Expression],
+    ) -> None:
+        """从解析成功的语句中提取表引用。"""
+
+        sources: list[str] = []
+        targets: list[str] = []
+
+        for expression in expressions:
+            statement_sources, statement_targets = extract_table_references(expression)
+
+            sources.extend(item for item in statement_sources if item not in sources)
+            targets.extend(item for item in statement_targets if item not in targets)
+
+        if not sources and not targets:
+            return
+
+        result.references.append(
+            TableReference(
+                workspace_id=file.workspace_id,
+                file_id=file.file_id,
+                node_id=file.node_id,
+                file_name=file.file_name,
+                statement_id=statement_id,
+                source_tables=sorted(set(sources)),
+                target_tables=sorted(set(targets)),
+                content_file=file.content_file,
+            )
+        )
+
+
+def _truncate(message: str, limit: int = MAX_MESSAGE_LENGTH) -> str:
+    """截断超长错误信息。"""
+
+    message = message.strip()
+
+    if len(message) <= limit:
+        return message
+
+    return message[:limit]
