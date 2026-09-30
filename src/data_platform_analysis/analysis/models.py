@@ -66,7 +66,8 @@ class FileInventory:
 class TableInventory:
     """MaxCompute Table 级分析清单。
 
-    稳定身份是 workspace_id + project + schema + table。
+    稳定身份是 project.table（table_key）。
+    workspace_id 用于跨 Workspace 边界识别，schema 字段目前保留但不参与 identity。
     """
 
     workspace_id: int

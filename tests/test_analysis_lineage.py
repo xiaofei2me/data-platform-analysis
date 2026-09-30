@@ -30,36 +30,25 @@ def test_lineage_dedup_cross_workspace_and_candidates(
                 "workspace_id": 9001,
                 "file_id": "101",
                 "file_name": "load_order_a",
-                "content": (
-                    "INSERT INTO ${ws_a}.dwd_order "
-                    "SELECT * FROM ${ws_a}.ods_order;"
-                ),
+                "content": ("INSERT INTO ${ws_a}.dwd_order SELECT * FROM ${ws_a}.ods_order;"),
             },
             {
                 "workspace_id": 9001,
                 "file_id": "102",
                 "file_name": "load_order_b",
-                "content": (
-                    "INSERT INTO ${ws_a}.dwd_order "
-                    "SELECT * FROM ${ws_a}.ods_order;"
-                ),
+                "content": ("INSERT INTO ${ws_a}.dwd_order SELECT * FROM ${ws_a}.ods_order;"),
             },
             {
                 "workspace_id": 9001,
                 "file_id": "103",
                 "file_name": "load_x",
-                "content": (
-                    "INSERT INTO ${ws_a}.dwd_x SELECT * FROM ws_b.dim_y;"
-                ),
+                "content": ("INSERT INTO ${ws_a}.dwd_x SELECT * FROM ws_b.dim_y;"),
             },
             {
                 "workspace_id": 9001,
                 "file_id": "104",
                 "file_name": "load_z",
-                "content": (
-                    "INSERT INTO ${ws_a}.dwd_z "
-                    "SELECT * FROM other.unknown_table;"
-                ),
+                "content": ("INSERT INTO ${ws_a}.dwd_z SELECT * FROM other.unknown_table;"),
             },
         ],
         tables=[
@@ -138,10 +127,7 @@ def test_lineage_keeps_sql_spelling_and_raw_reference(
                 "workspace_id": 9001,
                 "file_id": "101",
                 "file_name": "load",
-                "content": (
-                    "INSERT INTO TABLE ${ws_a}.dwd_order "
-                    "SELECT * FROM ${ws_a}.ods_order;"
-                ),
+                "content": ("INSERT INTO TABLE ${ws_a}.dwd_order SELECT * FROM ${ws_a}.ods_order;"),
             }
         ],
         tables=[

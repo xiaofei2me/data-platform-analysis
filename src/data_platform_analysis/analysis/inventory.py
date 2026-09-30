@@ -16,7 +16,7 @@
 约定：
 
 1. 稳定身份：Workspace=workspace_id；File=workspace_id+file_id；
-   Table=workspace_id+project+schema+table。
+   Table=project.table（table_key），不包含 schema。
 2. index 用于导航，raw JSON 是 Source of Truth；冲突时 raw 优先。
 3. 层级只产出 layer_candidate（依据 table_name_prefix），不产出分层结论。
 """

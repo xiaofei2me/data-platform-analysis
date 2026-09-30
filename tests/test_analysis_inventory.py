@@ -102,9 +102,7 @@ def test_inventory_lists_and_layer_candidates(
     columns = _read(Path("analysis/inventory/columns.json"))
     assert columns["count"] == 4
 
-    column_by_name = {
-        (item["table"], item["column_name"]): item for item in columns["columns"]
-    }
+    column_by_name = {(item["table"], item["column_name"]): item for item in columns["columns"]}
     assert column_by_name[("dwd_order", "id")]["is_partition"] is False
     assert column_by_name[("dwd_order", "ds")]["is_partition"] is True
 

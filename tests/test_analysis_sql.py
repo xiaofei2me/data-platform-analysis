@@ -56,9 +56,7 @@ def test_split_and_reference_extraction(
 
     references = _read(Path("analysis/sql/table-references.json"))
 
-    by_statement = {
-        item["statement_id"]: item for item in references["references"]
-    }
+    by_statement = {item["statement_id"]: item for item in references["references"]}
 
     assert set(by_statement) == {2, 3, 4}
 
@@ -130,11 +128,7 @@ def test_parse_error_isolation(
     }
 
     references = _read(Path("analysis/sql/table-references.json"))["references"]
-    good = [
-        item
-        for item in references
-        if item["file_id"] == "301" and item["statement_id"] == 2
-    ]
+    good = [item for item in references if item["file_id"] == "301" and item["statement_id"] == 2]
     assert len(good) == 1
     assert good[0]["target_tables"] == ["ws_a.t2"]
     assert good[0]["source_tables"] == ["ws_a.t1"]
@@ -171,9 +165,7 @@ def test_non_sql_file_and_missing_content(
         ],
     )
 
-    missing = Path(
-        "source/dataworks/workspaces/9001/content/402__missing_content.sql"
-    )
+    missing = Path("source/dataworks/workspaces/9001/content/402__missing_content.sql")
     missing.unlink()
 
     assert run_cli("analyze") == 0
