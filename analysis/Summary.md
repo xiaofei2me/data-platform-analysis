@@ -14,9 +14,9 @@
 | MaxCompute Table | 3719 |
 | Column | 102603 |
 | SQL 语句 | 1963 |
-| 表引用记录 | 1272 |
-| 血缘边 | 3436 |
-| 可恢复错误 | 1 |
+| 表引用记录 | 1273 |
+| 血缘边 | 3442 |
+| 可恢复错误 | 0 |
 
 Snapshot File 全量保留；只有 NodeId 有效的 File 进入 SQL / Table Reference / Lineage Analysis，NodeId 缺失的 File 不产生 SQL Evidence，也不记为错误。
 
@@ -64,33 +64,36 @@ Snapshot File 全量保留；只有 NodeId 有效的 File 进入 SQL / Table Ref
 
 | parse_status | statement_count |
 | --- | --- |
-| success | 1962 |
+| success | 1963 |
 | unsupported | 0 |
-| error | 1 |
+| error | 0 |
 
 - 解析语句的 File：559
-- 解析错误 / 不支持语句：1
-- 表引用提取方式（按语句）：ast=1961，fallback=1
+- 解析错误 / 不支持语句：0
+- 表引用提取方式（按语句）：ast=1962，fallback=1
+- Parser Compatibility Normalization 生效语句：1
 - 因 NodeId 缺失被排除的 File：3202
 
 只有 NodeId 有效的 File 进入 SQL Analysis；被排除的 File 不产生任何 statement / reference / lineage 证据。
+
+Parser Compatibility Normalization 只在 syntax context 替换全角括号，string literal 与 comment 原样保留；statement.sql 仍是 raw SQL。
 
 ## 7. Table References
 
 | 指标 | 数值 |
 | --- | --- |
-| 含 source 的语句 | 1263 |
-| 含 target 的语句 | 1271 |
-| 去重 source 表 | 1570 |
-| 去重 target 表 | 1259 |
+| 含 source 的语句 | 1264 |
+| 含 target 的语句 | 1272 |
+| 去重 source 表 | 1573 |
+| 去重 target 表 | 1260 |
 
 ## 8. Table Lineage
 
 | 指标 | 数值 |
 | --- | --- |
-| 血缘边（去重） | 3436 |
+| 血缘边（去重） | 3442 |
 | 带多条证据的边 | 7 |
-| 跨 Workspace 血缘 | 1559 |
+| 跨 Workspace 血缘 | 1560 |
 
 ## 9. Core Table Candidates
 
@@ -132,9 +135,7 @@ Snapshot File 全量保留；只有 NodeId 有效的 File 进入 SQL / Table Ref
 
 ## 11. 错误摘要
 
-| stage | error_type | count |
-| --- | --- | --- |
-| sql | SQL_PARSE_ERROR | 1 |
+_（无数据）_
 
 完整错误见 `analysis/errors.json`，SQL 解析错误见 `analysis/sql/parse-errors.json`。
 
