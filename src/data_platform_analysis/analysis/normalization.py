@@ -153,11 +153,13 @@ def _block_comment_end(sql: str, start: int) -> int:
 def _quoted_end(sql: str, start: int, quote: str) -> int:
     """返回从 start 开始的引号区间结束位置（不含）。
 
-    转义规则对齐 sqlglot ODPS/Hive tokenizer：
+    扫描规则：
 
-    - `'...'` 与 `"..."`：只认反斜杠转义，`''` 是两个独立字符串，
-      因此这里也不把 `''` 当作转义；
-    - `` `...` ``：只认引号重复（`` `a``b` ``）。
+    - `'...'` 与 `"..."`：认反斜杠转义（`\\'`）；连续引号 `''`
+      按字符串内部的 doubled quote 处理——跳过两位后仍处于同一字符串内，
+      直到遇到不成对的引号才结束本区间；
+    - `` `...` ``：不认反斜杠转义，同样按 doubled quote 处理
+      （`` `a``b` `` 是单个 quoted identifier）。
 
     未闭合时返回 len(sql)：后续字符整体按字面量保护，
     这样既不会误改内容，也不会掩盖真正需要上报的解析错误。

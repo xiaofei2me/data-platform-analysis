@@ -23,7 +23,7 @@ from typing import Any
 import pytest
 from helpers import source_tree_hash, write_snapshot
 
-from data_platform_analysis.analysis.normalization import normalize_for_parser
+from data_platform_analysis.analysis.normalization import _quoted_end, normalize_for_parser
 from data_platform_analysis.analysis.sql_analysis import parse_statement
 
 
@@ -98,6 +98,31 @@ def test_string_and_identifier_literals_are_protected(raw: str) -> None:
     assert result.applied is False
     assert result.sql == raw
     assert _parse_raw(raw)[1] is False
+
+
+def test_doubled_quote_keeps_paren_inside_string() -> None:
+    """连续引号 ``''`` 走 _quoted_end() 的 doubled quote 分支。
+
+    `SELECT 'a''）b'` 里的 `''` 必须被当作同一字符串内部的 doubled quote，
+    让整段 `a''）b` 留在同一个 string literal 内：
+
+    1. 端到端：全角括号不被替换，applied 为 False，SQL 逐字不变；
+    2. 分支强度：_quoted_end() 必须跳过连续引号、把区间延续到收尾引号，
+       而不是在第一个 ``''`` 处闭合字符串——后者返回值为 10 而非 len(raw)。
+    """
+
+    raw = "SELECT 'a''）b'"
+    quote = "'"
+
+    result = normalize_for_parser(raw)
+
+    assert result.applied is False
+    assert result.sql == raw
+    assert result.changes == ()
+    assert _parse_raw(raw) == ("success", False)
+
+    # 连续引号分支：'' 被跳过，区间延续到末尾的收尾引号。
+    assert _quoted_end(raw, raw.index(quote), quote) == len(raw)
 
 
 # ============================================================
