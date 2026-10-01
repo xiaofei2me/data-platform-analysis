@@ -153,6 +153,15 @@ PARSE_STATUS_UNSUPPORTED = "unsupported"
 PARSE_STATUS_ERROR = "error"
 """语句解析失败，已记录到 parse-errors.json。"""
 
+EXTRACTION_METHOD_AST = "ast"
+"""表引用来自 AST 解析。"""
+
+EXTRACTION_METHOD_FALLBACK = "fallback"
+"""表引用来自 CTAS token scanner fallback（AST 解析为 Command）。"""
+
+EXTRACTION_METHOD_NONE = "none"
+"""未提取表引用（unsupported / error，或语句不产生表引用）。"""
+
 
 @dataclass
 class StatementRecord:
@@ -169,6 +178,7 @@ class StatementRecord:
     sql: str
     dialect: str
     parse_status: str
+    extraction_method: str
     content_file: str | None
 
     def to_dict(self) -> dict[str, Any]:
@@ -190,6 +200,7 @@ class TableReference:
     statement_id: int
     source_tables: list[str]
     target_tables: list[str]
+    extraction_method: str
     content_file: str | None
 
     def to_dict(self) -> dict[str, Any]:
@@ -209,6 +220,7 @@ class LineageEvidence:
     file_name: str | None
     node_id: int | str | None
     statement_id: int
+    extraction_method: str
     content_file: str | None
 
     def to_dict(self) -> dict[str, Any]:

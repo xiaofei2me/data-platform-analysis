@@ -1,381 +1,354 @@
-"""M2.2 SQL Fallback：当 AST 解析失败时，使用简单 scanner 提取表引用。
+"""M2.2 SQL Fallback：AST 解析失败时，用 token scanner 提取 CTAS 的表引用。
 
 原则：
 
-1. 仅在 AST 解析为 Command 或其他 unsupported 类型时使用 fallback。
-2. 使用简单的 scanner 提取 FROM/JOIN 后的表名（只在必要时使用）。
-3. 排除 alias、CTE、subquery。
-4. 支持 CTAS target 提取（CREATE TABLE <target> AS）。
-5. 保持现有的 project.table 格式，不做转换。
+1. 只在 AST 解析为 unsupported（exp.Command）且语句具备 CTAS 特征时使用。
+2. scanner 是单向前扫描：每一轮循环游标都必须严格前进。
+   任何分支都不允许停在同一个 token 上继续下一轮，否则会死循环。
+3. sqlglot tokenizer 不产出 SPACE token，代码不得依赖空白跳过。
+4. `${...}` DataWorks 参数整体收集，之后统一交给
+   normalize_scheduler_variables 归一化成 project.table 形式。
+5. LATERAL VIEW 是 function call，不是 subquery，也不产生表引用。
+6. 输出 (sources, targets) 均已去重、排序，保持 project.table 原始写法。
 
-问题修复：
+历史缺陷（本次重写修复）：
 
-1. ${...} DataWorks 参数必须完整保留，不能拆成 $ { xxx }
-2. LATERAL VIEW 是 function call，不是 subquery
-3. Physical table + alias 必须正确识别边界
+- 旧 `_extract_from_joins` 的 FROM 分支末尾 `continue` 却从不前进游标，
+  外层提取循环每次看到的第一个 token 仍是 FROM，命中 `else: break` 后
+  外层 `continue` 回到同一索引，形成无限循环。
 """
 
 from __future__ import annotations
 
-from sqlglot import exp
-from sqlglot.tokens import Tokenizer, TokenType
+import re
+
+from sqlglot.tokens import Token, Tokenizer, TokenType
 
 from .dialect import DIALECT, register_dialect
 from .naming import normalize_scheduler_variables
 
 register_dialect()
 
+TokenList = list[Token]
 
-def extract_ctas_references(
-    raw_sql: str,
-) -> tuple[list[str], list[str]]:
-    """从 CTAS (CREATE TABLE AS SELECT) 的 raw SQL 中提取 target 和 source 表。
+# CTAS 特征：CREATE TABLE ... AS <query>。
+#
+# 语句片段常带行首注释，AS 与 SELECT 之间也可能夹注释，
+# 因此这些位置用 _GAP 允许空白与注释。
+_GAP = r"(?:\s|--[^\n]*(?:\n|$)|/\*[\s\S]*?\*/)*"
+_CTAS_PATTERN = re.compile(
+    r"^" + _GAP + r"create\s+(?:or\s+replace\s+)?(?:temp(?:orary)?\s+|external\s+)?table\b"
+    r"[\s\S]*?\bas\b" + _GAP + r"\(?" + _GAP + r"(?:with|select)\b",
+    re.IGNORECASE,
+)
 
-    当 sqlglot 将语句解析为 Command 时调用此函数。
+# 可以出现在表名里的 token。
+# STRING 不在其中：它是字面量（例如 max_pt('...') 的参数），不是表名。
+_NAME_TOKENS = frozenset(
+    {
+        TokenType.VAR,
+        TokenType.IDENTIFIER,
+        TokenType.PARAMETER,
+    }
+)
 
-    返回 (sources, targets)，结果已去重并保持原始 project.table 格式。
+# CREATE 与 TABLE 之间允许的修饰词。
+# keyword 的 token 类型不统一（OR / REPLACE / TEMPORARY / VAR），按文本判断。
+_CREATE_MODIFIERS = frozenset({"OR", "REPLACE", "TEMP", "TEMPORARY", "EXTERNAL", "GLOBAL", "LOCAL"})
+
+# CREATE TABLE 之后可能出现的 IF NOT EXISTS。
+_IF_NOT_EXISTS = frozenset({"IF", "NOT", "EXISTS"})
+
+# 触发 relation 扫描的 keyword。
+_RELATION_KEYWORDS = (TokenType.FROM, TokenType.JOIN)
+
+
+def is_ctas_statement(fragment: str) -> bool:
+    """判断语句是否具备 CTAS 特征（CREATE TABLE ... AS <query>）。
+
+    用于给 fallback 加门槛：只有 CTAS 才交给 token scanner，
+    其他 unsupported 语句（例如 MSCK REPAIR TABLE）保持原有行为。
+    """
+
+    return _CTAS_PATTERN.match(fragment) is not None
+
+
+def extract_ctas_references(raw_sql: str) -> tuple[list[str], list[str]]:
+    """从 CTAS 的 raw SQL 中提取 (sources, targets)。
+
+    两个列表都已去重、排序；`${...}` 已归一化，
+    目标表不会同时出现在 sources 里。
+
+    tokenizer 失败时返回 ([], [])，由调用方决定是否保留 unsupported 状态。
     """
 
     try:
-        tokenizer = Tokenizer(dialect=DIALECT)
-        tokens = list(tokenizer.tokenize(raw_sql))
+        tokens = list(Tokenizer(dialect=DIALECT).tokenize(raw_sql))
     except Exception:
         return [], []
 
-    target = _extract_ctas_target(tokens)
-    targets = [target] if target else []
-    sources = _extract_from_joins(tokens)
+    targets = _extract_ctas_target(tokens)
+    target_set = set(targets)
+    cte_names = _cte_names(tokens)
+    sources = [name for name in _extract_sources(tokens, cte_names) if name not in target_set]
 
-    # 目标表不计入 source
-    targets_set = set(targets)
-    sources = [s for s in sources if s not in targets_set]
-
-    return sorted(set(sources)), sorted(targets)
+    return sorted(set(sources)), sorted(set(targets))
 
 
-def _extract_ctas_target(tokens: list) -> str | None:
-    """从 token 流中提取 CREATE TABLE 的 target 表。"""
-
-    for i, token in enumerate(tokens):
-        if token.token_type == TokenType.CREATE:
-            j = i + 1
-            while j < len(tokens) and tokens[j].token_type == TokenType.SPACE:
-                j += 1
-            if j < len(tokens) and tokens[j].token_type == TokenType.TABLE:
-                j += 1
-
-            while j < len(tokens) and tokens[j].token_type == TokenType.SPACE:
-                j += 1
-
-            if j < len(tokens) and tokens[j].text.upper() == "IF":
-                while j < len(tokens) and tokens[j].token_type in (TokenType.SPACE, TokenType.VAR):
-                    j += 1
-
-            while j < len(tokens) and tokens[j].token_type == TokenType.SPACE:
-                j += 1
-
-            if j >= len(tokens):
-                return None
-
-            parts = []
-            while j < len(tokens) and tokens[j].token_type in (
-                TokenType.VAR,
-                TokenType.PARAMETER,
-                TokenType.DOT,
-                TokenType.L_BRACE,
-                TokenType.R_BRACE,
-            ):
-                parts.append(tokens[j].text)
-                j += 1
-
-            if not parts:
-                return None
-
-            table_ref = "".join(parts)
-
-            while j < len(tokens) and tokens[j].token_type != TokenType.ALIAS:
-                if tokens[j].token_type == TokenType.SPACE:
-                    j += 1
-                    continue
-                if tokens[j].token_type == TokenType.VAR and tokens[j].text.upper() == "AS":
-                    break
-                parts.append(tokens[j].text)
-                j += 1
-
-            table_ref = "".join(parts).split(" AS ")[0].strip()
-
-            return normalize_scheduler_variables(table_ref)
-
-    return None
+# ============================================================
+# CREATE TABLE <target>
+# ============================================================
 
 
-def _is_alias_context(tokens: list, i: int) -> bool:
-    """判断位置 i 的 VAR token 是否是 alias 上下文。
-    
-    alias 通常在以下场景出现：
-    - FROM/JOIN 后的表名后面（implicit 或 AS）
-    - Subquery 闭合括号后
-    - LATERAL VIEW function call 后
-    """
-    
-    if i <= 0:
-        return False
-    
-    prev = tokens[i - 1]
-    
-    # 如果前一个 token 是 ) 或 R_BRACE，当前可能是 subquery alias
-    if prev.token_type in (TokenType.R_PAREN, TokenType.R_BRACE):
-        return True
-    
-    # 如果前一个 token 是 whitespace，当前可能是 alias
-    if prev.token_type == TokenType.SPACE:
-        # 查看前前 token 是否是 table name end
-        if i >= 2:
-            prev_prev = tokens[i - 2]
-            # 如果前前 token 是 VAR（表名的一部分）或 R_PAREN，当前可能是 alias
-            if prev_prev.token_type in (TokenType.VAR, TokenType.R_PAREN):
-                return True
-    
-    # 如果前一个 token 是 LATERAL VIEW，当前是 lateral view alias
-    if prev.token_type == TokenType.VIEW or (
-        prev.token_type == TokenType.VAR and prev.text.upper() == "LATERAL"
-    ):
-        return True
-    
-    return False
-
-
-def _extract_from_joins(tokens: list) -> list[str]:
-    """从 token 流中提取所有 FROM 和 JOIN 后的物理表。
-
-    使用状态机判断 alias，只提取 physical table。
-    """
-
-    sources: list[str] = []
-    seen_aliases: set[str] = set()
+def _extract_ctas_target(tokens: TokenList) -> list[str]:
+    """提取 CREATE TABLE <target> 的 target 表，最多返回一个。"""
 
     i = 0
-    while i < len(tokens):
-        token = tokens[i]
+    n = len(tokens)
 
-        # 跳过 WITH (CTE)
-        if token.token_type == TokenType.WITH:
+    while i < n:
+        if tokens[i].token_type is not TokenType.CREATE:
             i += 1
-            depth = 0
-            while i < len(tokens):
-                if tokens[i].token_type == TokenType.VAR:
-                    i += 1
-                    while i < len(tokens) and tokens[i].token_type != TokenType.ALIAS:
-                        if tokens[i].token_type == TokenType.L_PAREN:
-                            break
-                        i += 1
-                    continue
-                if tokens[i].token_type == TokenType.ALIAS:
-                    i += 1
-                    while i < len(tokens) and tokens[i].token_type == TokenType.VAR:
-                        i += 1
-                    continue
-                if tokens[i].token_type == TokenType.L_PAREN:
-                    depth += 1
-                elif tokens[i].token_type == TokenType.R_PAREN:
-                    depth -= 1
-                if tokens[i].token_type == TokenType.SELECT and depth == 0:
-                    break
-                i += 1
             continue
 
-        # 检查 FROM 或 JOIN
-        if token.token_type in (TokenType.FROM, TokenType.JOIN):
-            # 处理 LEFT JOIN
-            if token.token_type == TokenType.LEFT:
-                i += 1
-                # 跳过空白
-                while i < len(tokens) and tokens[i].token_type == TokenType.SPACE:
-                    i += 1
-                # 检查下一个是 JOIN
-                if i < len(tokens) and tokens[i].token_type == TokenType.JOIN:
-                    # 这是 LEFT JOIN，跳过整个 JOIN
-                    i += 1
-                else:
-                    # 单独的 LEFT，当成未知 token
-                    i += 1
-                    continue
+        name = _target_after_create(tokens, i, n)
 
-            # 跳过空白
-            while i < len(tokens) and tokens[i].token_type == TokenType.SPACE:
-                i += 1
+        if name:
+            return [normalize_scheduler_variables(name)]
 
-            if i >= len(tokens):
-                break
-
-            # 检查是否是子查询（用 L_PAREN）
-            if tokens[i].token_type == TokenType.L_PAREN:
-                depth = 1
-                i += 1
-
-                while i < len(tokens) and depth > 0:
-                    if tokens[i].token_type == TokenType.L_PAREN:
-                        depth += 1
-                    elif tokens[i].token_type == TokenType.R_PAREN:
-                        depth -= 1
-                    i += 1
-
-                # 跳过空白
-                while i < len(tokens) and tokens[i].token_type == TokenType.SPACE:
-                    i += 1
-
-                # 检查 alias (AS name 或 just name)
-                if i < len(tokens) and tokens[i].token_type == TokenType.VAR:
-                    alias = tokens[i].text
-                    seen_aliases.add(alias.lower())
-
-                continue
-
-            # 提取表名（直到空白、逗号、JOIN 或 WHERE）
-            parts = []
-
-            while i < len(tokens):
-                t = tokens[i]
-
-                # 跳过空白
-                if t.token_type == TokenType.SPACE:
-                    i += 1
-                    continue
-
-                # 检查是否是 JOIN/WHERE/COMMA（停止）
-                if t.token_type in (TokenType.COMMA, TokenType.JOIN, TokenType.WHERE):
-                    break
-                # LEFT JOIN 处理（上面已经处理了）
-                if t.token_type == TokenType.LEFT:
-                    # 这是另一个 LEFT JOIN，停止当前提取
-                    break
-
-                # LATERAL VIEW 处理：跳过整个 LATERAL VIEW，不提取 alias
-                if t.token_type == TokenType.LATERAL or (
-                    t.token_type == TokenType.VAR and t.text.upper() == "LATERAL"
-                ):
-                    # 跳过 LATERAL
-                    i += 1
-                    while i < len(tokens) and tokens[i].token_type != TokenType.VIEW:
-                        i += 1
-                    if i < len(tokens):
-                        i += 1  # 跳过 VIEW
-
-                    # 跳过 function name (例如 explode)
-                    while i < len(tokens) and tokens[i].token_type == TokenType.VAR:
-                        i += 1
-
-                    # 跳过 function call (例如 (...) 内容)
-                    while i < len(tokens):
-                        if tokens[i].token_type == TokenType.L_PAREN:
-                            depth = 1
-                            i += 1
-                            while i < len(tokens) and depth > 0:
-                                if tokens[i].token_type == TokenType.L_PAREN:
-                                    depth += 1
-                                elif tokens[i].token_type == TokenType.R_PAREN:
-                                    depth -= 1
-                                i += 1
-                        elif tokens[i].token_type in (TokenType.COMMA, TokenType.SPACE):
-                            i += 1
-                        else:
-                            break
-
-                    # 跳过 lateral view alias (例如 tt)
-                    while i < len(tokens) and tokens[i].token_type == TokenType.SPACE:
-                        i += 1
-
-                    if i < len(tokens) and tokens[i].token_type == TokenType.VAR:
-                        seen_aliases.add(tokens[i].text.lower())
-
-                    # 继续处理，但不 break（可能后面还有 JOIN）
-                    continue
-
-                # 检查 alias
-                if t.token_type == TokenType.ALIAS:
-                    i += 1
-                    # 跳过 AS 后的 alias 名称
-                    if i < len(tokens) and tokens[i].token_type == TokenType.VAR:
-                        seen_aliases.add(tokens[i].text.lower())
-                    # 停止提取当前表名
-                    break
-                
-                # 处理 implicit alias (没有 AS 关键字)
-                if t.token_type == TokenType.VAR and _is_alias_context(tokens, i):
-                    # 这是 alias，停止提取
-                    seen_aliases.add(t.text.lower())
-                    i += 1
-                    break
-
-                # ON 子句：跳过整个 ON 条件
-                if t.token_type == TokenType.ON:
-                    i += 1
-                    while i < len(tokens):
-                        if tokens[i].token_type in (
-                            TokenType.COMMA,
-                            TokenType.JOIN,
-                            TokenType.WHERE,
-                        ):
-                            break
-                        i += 1
-                    i += 1
-                    continue
-
-                # 收集表名部分（VAR, PARAMETER, DOT）
-                if t.token_type in (
-                    TokenType.VAR,
-                    TokenType.PARAMETER,
-                    TokenType.DOT,
-                    TokenType.IDENTIFIER,
-                ):
-                    parts.append(t.text)
-                    i += 1
-                elif t.token_type == TokenType.L_BRACE:
-                    # ${...} 参数：收集整个参数表达式
-                    parts.append(t.text)
-                    i += 1
-                    # 收集直到 R_BRACE
-                    while i < len(tokens) and tokens[i].token_type != TokenType.R_BRACE:
-                        parts.append(tokens[i].text)
-                        i += 1
-                    if i < len(tokens):
-                        parts.append(tokens[i].text)
-                        i += 1
-                else:
-                    # 其他 token，停止提取
-                    break
-
-            if parts:
-                table_ref = "".join(parts)
-
-                # 排除 alias
-                if table_ref.lower() not in seen_aliases:
-                    sources.append(normalize_scheduler_variables(table_ref))
-
-            # continue 回主循环，不执行 i += 1
-            continue
-
-        # UNION 处理
-        if token.token_type == TokenType.UNION:
-            i += 1
-            # 跳过 ALL
-            while i < len(tokens) and tokens[i].token_type == TokenType.ALL:
-                i += 1
-            # 跳过空白
-            while i < len(tokens) and tokens[i].token_type == TokenType.SPACE:
-                i += 1
-            # 检查 SELECT
-            if i < len(tokens) and tokens[i].token_type == TokenType.SELECT:
-                # 这是一个 UNION SELECT，继续处理
-                continue
-            continue
-
+        # 该 CREATE 不是 CREATE TABLE（例如 CREATE VIEW），继续找下一个。
         i += 1
+
+    return []
+
+
+def _target_after_create(tokens: TokenList, create_index: int, stop: int) -> str | None:
+    """从 CREATE 开始读取 target 表名，读不到返回 None。"""
+
+    i = create_index + 1
+
+    while i < stop and tokens[i].text.upper() in _CREATE_MODIFIERS:
+        i += 1
+
+    if i >= stop or tokens[i].token_type is not TokenType.TABLE:
+        return None
+
+    i += 1
+
+    while i < stop and tokens[i].text.upper() in _IF_NOT_EXISTS:
+        i += 1
+
+    name, _ = _collect_table_name(tokens, i, stop)
+
+    return name
+
+
+# ============================================================
+# FROM / JOIN
+# ============================================================
+
+
+def _extract_sources(tokens: TokenList, cte_names: frozenset[str]) -> list[str]:
+    """扫描全部 FROM / JOIN 后的物理表，排除 CTE 与 table function。"""
+
+    sources: list[str] = []
+    _scan_range(tokens, 0, len(tokens), sources, cte_names)
 
     return sources
 
 
-def should_fallback(expression: exp.Expression) -> bool:
-    """判断语句是否应该使用 fallback 提取表引用。"""
+def _scan_range(
+    tokens: TokenList,
+    i: int,
+    stop: int,
+    sources: list[str],
+    cte_names: frozenset[str],
+) -> int:
+    """扫描 [i, stop) 区间内的 FROM / JOIN，返回结束游标。
 
-    return isinstance(expression, exp.Command)
+    每轮循环游标严格前进：命中 keyword 后交给 _scan_relation（保证前进），
+    否则 i += 1，不存在停在同一 token 上的分支。
+    """
+
+    while i < stop:
+        if tokens[i].token_type in _RELATION_KEYWORDS:
+            i = _scan_relation(tokens, i + 1, stop, sources, cte_names)
+            continue
+
+        i += 1
+
+    return i
+
+
+def _scan_relation(
+    tokens: TokenList,
+    i: int,
+    stop: int,
+    sources: list[str],
+    cte_names: frozenset[str],
+) -> int:
+    """处理 FROM / JOIN 之后的一个 relation，返回游标。
+
+    返回值严格大于入参 i（入参 < stop 时），这是不产生死循环的关键。
+    """
+
+    # 子查询：先递归收集括号内部的 FROM / JOIN，再回到外层处理 alias 与逗号列表。
+    if i >= stop:
+        return i
+
+    from_subquery = False
+
+    while i < stop and tokens[i].token_type is TokenType.L_PAREN:
+        close = _matching_paren(tokens, i, stop)
+        _scan_range(tokens, i + 1, close, sources, cte_names)
+        i = close + 1
+        from_subquery = True
+
+    name: str | None = None
+
+    if not from_subquery and i < stop:
+        name, i = _collect_table_name(tokens, i, stop)
+
+        if name is None:
+            # 未识别的 token（例如 LATERAL）：跳过一个，交给外层继续扫描。
+            return i
+
+        # table function，例如 explode(...)：不是物理表。
+        if i < stop and tokens[i].token_type is TokenType.L_PAREN:
+            i = _matching_paren(tokens, i, stop) + 1
+            name = None
+
+    # alias：`as x` 或隐式 `x`，最多跳过一个名字 token。
+    # 子查询与 table function 之后只有 alias，没有物理表名。
+    if i < stop and tokens[i].token_type is TokenType.ALIAS:
+        i += 1
+
+        if i < stop and tokens[i].token_type in _NAME_TOKENS:
+            i += 1
+
+    elif i < stop and tokens[i].token_type in _NAME_TOKENS:
+        i += 1
+
+    if name is not None and name.casefold() not in cte_names:
+        sources.append(normalize_scheduler_variables(name))
+
+    # FROM 子句的逗号列表：from a, b
+    if i < stop and tokens[i].token_type is TokenType.COMMA:
+        return _scan_relation(tokens, i + 1, stop, sources, cte_names)
+
+    return i
+
+
+def _collect_table_name(tokens: TokenList, i: int, stop: int) -> tuple[str | None, int]:
+    """从 i 开始收集一个 dotted table reference。
+
+    返回 (name, next_i)；当 i < stop 时 next_i 严格大于 i，
+    保证调用方无论是否收集到表名都能前进。
+    """
+
+    start = i
+    parts: list[str] = []
+    expect_name = True
+
+    while i < stop:
+        token = tokens[i]
+
+        if expect_name:
+            if token.token_type not in _NAME_TOKENS:
+                break
+
+            if token.text == "$":
+                # ${param} 整体收集；裸 $ 不构成表名。
+                if i + 1 >= stop or tokens[i + 1].token_type is not TokenType.L_BRACE:
+                    break
+
+                buffer = ["$"]
+                j = i + 1
+
+                while j < stop and tokens[j].token_type is not TokenType.R_BRACE:
+                    buffer.append(tokens[j].text)
+                    j += 1
+
+                if j >= stop:
+                    # 未闭合参数：游标已推进到 stop。
+                    parts.append("".join(buffer))
+                    i = j
+                    break
+
+                buffer.append(tokens[j].text)
+                parts.append("".join(buffer))
+                i = j + 1
+
+            else:
+                parts.append(token.text)
+                i += 1
+
+            expect_name = False
+            continue
+
+        if token.token_type is TokenType.DOT:
+            parts.append(".")
+            i += 1
+            expect_name = True
+            continue
+
+        break
+
+    if not parts:
+        return None, (i if i > start else start + 1)
+
+    name = "".join(parts)
+
+    # `a.` 这类不完整的引用去掉结尾的点。
+    if expect_name and name.endswith("."):
+        name = name[:-1]
+
+    if not name:
+        return None, (i if i > start else start + 1)
+
+    return name, i
+
+
+def _matching_paren(tokens: TokenList, i: int, stop: int) -> int:
+    """返回 i 处 L_PAREN 的配对 R_PAREN 下标；未闭合时返回 stop。"""
+
+    depth = 0
+
+    while i < stop:
+        token_type = tokens[i].token_type
+
+        if token_type is TokenType.L_PAREN:
+            depth += 1
+
+        elif token_type is TokenType.R_PAREN:
+            depth -= 1
+
+            if depth == 0:
+                return i
+
+        i += 1
+
+    return stop
+
+
+def _cte_names(tokens: TokenList) -> frozenset[str]:
+    """收集 `<name> as (` 形式的 CTE 名称（仅当语句包含 WITH 时）。"""
+
+    if not any(token.token_type is TokenType.WITH for token in tokens):
+        return frozenset()
+
+    names: set[str] = set()
+    i = 0
+    limit = len(tokens) - 2
+
+    while i < limit:
+        if (
+            tokens[i].token_type in _NAME_TOKENS
+            and tokens[i + 1].token_type is TokenType.ALIAS
+            and tokens[i + 2].token_type is TokenType.L_PAREN
+        ):
+            names.add(tokens[i].text.casefold())
+
+        i += 1
+
+    return frozenset(names)

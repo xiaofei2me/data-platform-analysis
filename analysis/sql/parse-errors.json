@@ -1,15 +1,6 @@
 {
-  "count": 2,
+  "count": 1,
   "errors": [
-    {
-      "workspace_id": 466337,
-      "file_id": "504340625",
-      "node_id": 700006513476,
-      "statement_id": 2,
-      "error_type": "SQL_UNSUPPORTED_STATEMENT",
-      "message": "语句被解析为 Command，无法提取表引用",
-      "content_file": "dataworks/workspaces/466337/content/504340625__dwd_o2o_platform_sale_info.sql"
-    },
     {
       "workspace_id": 466339,
       "file_id": "504340939",

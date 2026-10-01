@@ -101,6 +101,7 @@ class LineageBuilder:
                 file_name=reference.file_name,
                 node_id=reference.node_id,
                 statement_id=reference.statement_id,
+                extraction_method=reference.extraction_method,
                 content_file=reference.content_file,
             )
 

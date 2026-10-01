@@ -8,8 +8,8 @@
       "in_inventory": true,
       "layer_candidate": "DWD",
       "upstream_count": 1,
-      "downstream_count": 115,
-      "evidence_count": 120
+      "downstream_count": 116,
+      "evidence_count": 121
     },
     {
       "table_key": "dme_cdm.dwd_master_data_customer_bu",
@@ -2083,6 +2083,15 @@
     },
     {
       "table_key": "dme_ods.s_monthly_actual_aging_report_bc",
+      "workspace_id": 466338,
+      "in_inventory": true,
+      "layer_candidate": null,
+      "upstream_count": 0,
+      "downstream_count": 3,
+      "evidence_count": 3
+    },
+    {
+      "table_key": "dme_ods.s_o2o_dmall_sale_info_all",
       "workspace_id": 466338,
       "in_inventory": true,
       "layer_candidate": null,
@@ -4611,7 +4620,7 @@
       "evidence_count": 2
     },
     {
-      "table_key": "dme_ods.s_o2o_dmall_sale_info_all",
+      "table_key": "dme_ods.s_o2o_platform_sale_info",
       "workspace_id": 466338,
       "in_inventory": true,
       "layer_candidate": null,
@@ -4765,6 +4774,15 @@
     },
     {
       "table_key": "dme_ods.s_tmkt_o2o_crv_province_mapping",
+      "workspace_id": 466338,
+      "in_inventory": true,
+      "layer_candidate": null,
+      "upstream_count": 0,
+      "downstream_count": 2,
+      "evidence_count": 2
+    },
+    {
+      "table_key": "dme_ods.s_tmkt_o2o_k1k2_mapping",
       "workspace_id": 466338,
       "in_inventory": true,
       "layer_candidate": null,
@@ -6223,6 +6241,15 @@
     },
     {
       "table_key": "dme_cdm.dwd_o2o_platform_sale_info",
+      "workspace_id": 466337,
+      "in_inventory": true,
+      "layer_candidate": "DWD",
+      "upstream_count": 4,
+      "downstream_count": 1,
+      "evidence_count": 5
+    },
+    {
+      "table_key": "dme_cdm.dwd_o2o_platform_sale_info_temp01",
       "workspace_id": 466337,
       "in_inventory": true,
       "layer_candidate": "DWD",
@@ -11388,15 +11415,6 @@
       "evidence_count": 1
     },
     {
-      "table_key": "dme_cdm.dwd_o2o_platform_sale_info_temp01",
-      "workspace_id": 466337,
-      "in_inventory": true,
-      "layer_candidate": "DWD",
-      "upstream_count": 0,
-      "downstream_count": 1,
-      "evidence_count": 1
-    },
-    {
       "table_key": "dme_cdm_dev.dwd_customer_mapping_bts",
       "workspace_id": null,
       "in_inventory": false,
@@ -13566,15 +13584,6 @@
       "evidence_count": 1
     },
     {
-      "table_key": "dme_ods.s_o2o_platform_sale_info",
-      "workspace_id": 466338,
-      "in_inventory": true,
-      "layer_candidate": null,
-      "upstream_count": 0,
-      "downstream_count": 1,
-      "evidence_count": 1
-    },
-    {
       "table_key": "dme_ods.s_o2o_pos_product_delete",
       "workspace_id": 466338,
       "in_inventory": true,
@@ -13927,15 +13936,6 @@
     },
     {
       "table_key": "dme_ods.s_target_sell_in_target_budget",
-      "workspace_id": 466338,
-      "in_inventory": true,
-      "layer_candidate": null,
-      "upstream_count": 0,
-      "downstream_count": 1,
-      "evidence_count": 1
-    },
-    {
-      "table_key": "dme_ods.s_tmkt_o2o_k1k2_mapping",
       "workspace_id": 466338,
       "in_inventory": true,
       "layer_candidate": null,

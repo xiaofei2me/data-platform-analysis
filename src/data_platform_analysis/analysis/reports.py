@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from .inventory import Inventory
 from .lineage import LineageResult
 from .models import (
+    EXTRACTION_METHOD_AST,
+    EXTRACTION_METHOD_FALLBACK,
     ColumnProfile,
     StatementRecord,
     TableProfile,
@@ -142,6 +144,7 @@ def render_analysis_summary(context: SummaryContext) -> str:
 
     inventory = context.inventory
     status_counts = Counter(item.parse_status for item in context.statements)
+    method_counts = Counter(item.extraction_method for item in context.statements)
     layer_counts = Counter(table.layer_candidate or "(未识别)" for table in inventory.tables)
     error_counts = Counter(
         (error.get("stage"), error.get("error_type")) for error in context.errors
@@ -254,6 +257,8 @@ def render_analysis_summary(context: SummaryContext) -> str:
         "",
         f"- 解析语句的 File：{len({item.file_id for item in context.statements})}",
         f"- 解析错误 / 不支持语句：{len(context.parse_errors)}",
+        f"- 表引用提取方式（按语句）：ast={method_counts.get(EXTRACTION_METHOD_AST, 0)}，"
+        f"fallback={method_counts.get(EXTRACTION_METHOD_FALLBACK, 0)}",
         f"- 因 NodeId 缺失被排除的 File：{len(excluded_files)}",
         "",
         "只有 NodeId 有效的 File 进入 SQL Analysis；被排除的 File 不产生任何 "

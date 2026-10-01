@@ -55,25 +55,28 @@ SELECT ... FROM s2
 
 ## 建议方案
 
-### 方案 1：字符串匹配 fallback（推荐）
+### 方案 1：CTAS fallback（✅ 已实施）
 
-当 sqlglot 无法解析为 Create/Insert 时，使用简单规则从 SQL 文本中提取 table names：
+AST 解析为 unsupported（`exp.Command`）且语句具备 CTAS 特征时，
+交给 token scanner 提取 target 与 source：
 
-```python
-# 使用 regex 提取潜在的表名
-import re
+- 门槛：`is_ctas_statement(fragment)`（`CREATE TABLE ... AS <select|with>`）；
+- 提取：`extract_ctas_references(fragment)`，单向前扫描，每轮游标严格前进；
+- 结果：提取成功按 `parse_status=success` + `extraction_method=fallback` 记录，
+  scanner 无结果时保持 `unsupported`（`SQL_UNSUPPORTED_STATEMENT`）；
+- 溯源：`statements.json` / `table-references.json` / `table-lineage.json` 的
+  evidence 都带 `extraction_method` 字段，可区分 ast 与 fallback。
 
-TABLE_PATTERN = r"\b(?:from|join|into|overwrite\s+table)\s+(?:\w+\.)?(\w+)"
-tables = re.findall(TABLE_PATTERN, sql_text)
-```
+实现位置：`src/data_platform_analysis/analysis/fallback.py`，
+测试：`tests/test_ctas_fallback.py`（含 Golden Case 与死循环看门狗）。
 
 **优点：**
-- 简单快速
-- 不依赖 parser
+- 不依赖 parser，只依赖 tokenizer；
+- 结果带提取方式标记，血缘证据可区分来源。
 
 **缺点：**
-- 可能误匹配 CTE、子查询别名等
-- 需要过滤非物理表
+- 只覆盖 CTAS 形态；其他 unsupported 语句仍按原样记录；
+- 复杂语法（函数当表、未闭合参数等）按保守策略丢弃，宁可少报不误报。
 
 ### 方案 2：记录为已知限制
 
@@ -88,11 +91,14 @@ tables = re.findall(TABLE_PATTERN, sql_text)
 
 1. ✅ 确认问题：SQL 结构和 sqlglot 版本
 2. ✅ 验证限制：测试不同组合
-3. ⏳ 实施方案：选择合适的 fallback 方法
-4. ⏳ 更新测试：覆盖此场景
+3. ✅ 实施方案：CTAS token scanner fallback（`analysis/fallback.py`）
+4. ✅ 更新测试：Golden Case + scanner 单元测试（`tests/test_ctas_fallback.py`）
 
 ## 结论
 
 **这不是代码 bug，而是 sqlglot 的已知限制。**
 
-建议采用 **方案 1（字符串匹配 fallback）** 来处理无法解析的 SQL，确保数据流证据不丢失。
+已实施 **方案 1（CTAS token scanner fallback）**：
+Golden Case `504340625` statement 2 不再记为 `SQL_UNSUPPORTED_STATEMENT`，
+按 `success` + `extraction_method=fallback` 产出 1 个 target 与 4 个 source，
+血缘多出 4 条边，`analysis/errors.json` 归零。

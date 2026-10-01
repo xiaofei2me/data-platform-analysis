@@ -13,6 +13,13 @@
     单条语句失败只影响该条语句，文件级与分析级继续执行；
     失败语句写入 analysis/sql/parse-errors.json 与 analysis/errors.json。
 
+CTAS Fallback：
+
+    AST 解析为 unsupported（Command）且语句具备 CTAS 特征时，
+    交给 token scanner 提取 source / target；
+    提取成功则按 success 记录，extraction_method = fallback，
+    scanner 无结果时保持 unsupported（SQL_UNSUPPORTED_STATEMENT）。
+
 输入范围：
 
     只有 NodeId 有效的 File 才进入 SQL Analysis；
@@ -31,7 +38,11 @@ from sqlglot.tokens import TokenType
 
 from .dialect import DIALECT, register_dialect
 from .errors import ErrorLedger
+from .fallback import extract_ctas_references, is_ctas_statement
 from .models import (
+    EXTRACTION_METHOD_AST,
+    EXTRACTION_METHOD_FALLBACK,
+    EXTRACTION_METHOD_NONE,
     PARSE_STATUS_ERROR,
     PARSE_STATUS_SUCCESS,
     PARSE_STATUS_UNSUPPORTED,
@@ -213,6 +224,22 @@ class SqlAnalyzer:
 
         status, expressions, message = parse_statement(fragment)
 
+        extraction_method = (
+            EXTRACTION_METHOD_AST if status == PARSE_STATUS_SUCCESS else EXTRACTION_METHOD_NONE
+        )
+        fallback_sources: list[str] = []
+        fallback_targets: list[str] = []
+
+        if status == PARSE_STATUS_UNSUPPORTED and is_ctas_statement(fragment):
+            fallback_sources, fallback_targets = extract_ctas_references(fragment)
+
+            if fallback_sources or fallback_targets:
+                # CTAS fallback 命中：按解析成功记录，只在 extraction_method 上留痕。
+                status = PARSE_STATUS_SUCCESS
+                extraction_method = EXTRACTION_METHOD_FALLBACK
+            else:
+                message = "语句被解析为 Command，CTAS fallback 未提取到表引用"
+
         result.statements.append(
             StatementRecord(
                 workspace_id=file.workspace_id,
@@ -223,12 +250,23 @@ class SqlAnalyzer:
                 sql=fragment,
                 dialect=DIALECT,
                 parse_status=status,
+                extraction_method=extraction_method,
                 content_file=file.content_file,
             )
         )
 
         if status == PARSE_STATUS_SUCCESS:
-            self._extract_references(result, file, statement_id, expressions)
+            if extraction_method == EXTRACTION_METHOD_FALLBACK:
+                self._append_reference(
+                    result,
+                    file,
+                    statement_id,
+                    fallback_sources,
+                    fallback_targets,
+                    EXTRACTION_METHOD_FALLBACK,
+                )
+            else:
+                self._extract_references(result, file, statement_id, expressions)
 
             return
 
@@ -258,8 +296,9 @@ class SqlAnalyzer:
             path=file.content_file,
         )
 
-    @staticmethod
+    @classmethod
     def _extract_references(
+        cls,
         result: SqlFileResult,
         file: FileInventory,
         statement_id: int,
@@ -276,6 +315,26 @@ class SqlAnalyzer:
             sources.extend(item for item in statement_sources if item not in sources)
             targets.extend(item for item in statement_targets if item not in targets)
 
+        cls._append_reference(
+            result,
+            file,
+            statement_id,
+            sources,
+            targets,
+            EXTRACTION_METHOD_AST,
+        )
+
+    @staticmethod
+    def _append_reference(
+        result: SqlFileResult,
+        file: FileInventory,
+        statement_id: int,
+        sources: list[str],
+        targets: list[str],
+        extraction_method: str,
+    ) -> None:
+        """追加一条表引用记录；source 与 target 都为空时不记录。"""
+
         if not sources and not targets:
             return
 
@@ -288,6 +347,7 @@ class SqlAnalyzer:
                 statement_id=statement_id,
                 source_tables=sorted(set(sources)),
                 target_tables=sorted(set(targets)),
+                extraction_method=extraction_method,
                 content_file=file.content_file,
             )
         )

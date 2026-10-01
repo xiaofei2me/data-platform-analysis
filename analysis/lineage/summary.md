@@ -1,7 +1,7 @@
 # M2.3 Table Lineage
 
-- 血缘边（去重后）：3432
-- 跨 Workspace 血缘：1556
+- 血缘边（去重后）：3436
+- 跨 Workspace 血缘：1559
 - 核心表候选：1789
 
 ## 跨 Workspace 血缘
@@ -213,7 +213,7 @@
 
 | table_key | downstream | upstream | evidence |
 | --- | --- | --- | --- |
-| dme_cdm.dwd_master_data_product_pos_bu | 115 | 1 | 120 |
+| dme_cdm.dwd_master_data_product_pos_bu | 116 | 1 | 121 |
 | dme_cdm.dwd_master_data_customer_bu | 99 | 4 | 104 |
 | dme_cdm.dwd_master_data_store_bu | 98 | 8 | 106 |
 | dme_cdm.dim_day | 90 | 0 | 90 |
