@@ -62,6 +62,35 @@ class FileInventory:
         return asdict(self)
 
 
+def has_valid_node_id(node_id: int | str | None) -> bool:
+    """判断 NodeId 是否有效。
+
+    有效 = 非 None，且字符串形态去除空白后非空。
+    None / "" / "   " 都视为没有 NodeId。
+    """
+
+    if node_id is None:
+        return False
+
+    if isinstance(node_id, str):
+        return bool(node_id.strip())
+
+    return True
+
+
+def is_analysis_eligible(file: FileInventory) -> bool:
+    """判断 File 是否属于正式 Analysis 输入范围。
+
+    只有存在有效 NodeId 的 File 才是已提交的 DataWorks 节点，
+    才进入 SQL / Table Reference / Lineage Analysis。
+
+    NodeId 为空的 File 仍然保留在 Snapshot Inventory 中，
+    这是 Analysis Scope Filter，不是 Analysis Error。
+    """
+
+    return has_valid_node_id(file.node_id)
+
+
 @dataclass
 class TableInventory:
     """MaxCompute Table 级分析清单。

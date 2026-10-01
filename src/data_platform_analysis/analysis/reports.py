@@ -16,6 +16,7 @@ from .models import (
     StatementRecord,
     TableProfile,
     TableReference,
+    is_analysis_eligible,
 )
 from .sql_analysis import ParseErrorRecord
 
@@ -145,6 +146,8 @@ def render_analysis_summary(context: SummaryContext) -> str:
     error_counts = Counter(
         (error.get("stage"), error.get("error_type")) for error in context.errors
     )
+    eligible_files = [item for item in inventory.files if is_analysis_eligible(item)]
+    excluded_files = [item for item in inventory.files if not is_analysis_eligible(item)]
 
     lines = [
         "# Phase 2 Analysis Summary",
@@ -158,7 +161,9 @@ def render_analysis_summary(context: SummaryContext) -> str:
             ["指标", "数值"],
             [
                 ["Workspace", len(inventory.workspaces)],
-                ["DataWorks File", len(inventory.files)],
+                ["DataWorks File（Snapshot 总数）", len(inventory.files)],
+                ["参与 Analysis 的 File（NodeId 有效）", len(eligible_files)],
+                ["排除的 File（NodeId 缺失）", len(excluded_files)],
                 ["MaxCompute Table", len(inventory.tables)],
                 ["Column", len(inventory.columns)],
                 ["SQL 语句", len(context.statements)],
@@ -167,6 +172,9 @@ def render_analysis_summary(context: SummaryContext) -> str:
                 ["可恢复错误", len(context.errors)],
             ],
         ),
+        "",
+        "Snapshot File 全量保留；只有 NodeId 有效的 File 进入 SQL / Table Reference / "
+        "Lineage Analysis，NodeId 缺失的 File 不产生 SQL Evidence，也不记为错误。",
         "",
         "## 2. Workspace Inventory",
         "",
@@ -198,6 +206,8 @@ def render_analysis_summary(context: SummaryContext) -> str:
                     "SQL 格式 File",
                     sum(1 for item in inventory.files if item.content_format.upper() == "SQL"),
                 ],
+                ["NodeId 有效（参与 SQL Analysis）", len(eligible_files)],
+                ["NodeId 缺失（仅保留在 Snapshot）", len(excluded_files)],
                 [
                     "已读取到内容的 File",
                     len({item.file_id for item in context.statements}),
@@ -244,6 +254,10 @@ def render_analysis_summary(context: SummaryContext) -> str:
         "",
         f"- 解析语句的 File：{len({item.file_id for item in context.statements})}",
         f"- 解析错误 / 不支持语句：{len(context.parse_errors)}",
+        f"- 因 NodeId 缺失被排除的 File：{len(excluded_files)}",
+        "",
+        "只有 NodeId 有效的 File 进入 SQL Analysis；被排除的 File 不产生任何 "
+        "statement / reference / lineage 证据。",
         "",
         "## 7. Table References",
         "",
@@ -328,6 +342,7 @@ def render_analysis_summary(context: SummaryContext) -> str:
 
 LIMITATION_BULLETS: tuple[str, ...] = (
     "- 只读取 `source/` Snapshot，不访问 DataWorks / MaxCompute / QuickBI 等外部 API。",
+    "- Analysis 输入只包含 NodeId 有效的 File；NodeId 缺失的 File 不产生 SQL Evidence。",
     "- 表级血缘来自 SQL 文本解析，未做 Column Lineage。",
     "- 层级、核心表均为 Candidate，不构成业务结论。",
     "- 没有行级数据样本，因此不做 null / distinct / 唯一性判断。",

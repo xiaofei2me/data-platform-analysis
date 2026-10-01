@@ -294,7 +294,8 @@ def run_analyze(
     console.print(
         "[green]Analysis 完成：[/green]"
         f"workspace={len(result.workspace_ids)}，"
-        f"file={result.file_count}，"
+        f"file={result.file_count}（eligible={result.eligible_file_count}，"
+        f"excluded={result.excluded_file_count}），"
         f"table={result.table_count}，"
         f"statement={result.statement_count}，"
         f"edge={result.edge_count}，"

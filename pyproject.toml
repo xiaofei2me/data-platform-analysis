@@ -38,6 +38,10 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.12"
 files = ["src"]
+# 让 `mypy .` 的检查范围与 files = ["src"] 一致：
+# - source/ analysis/ output/ 是数据产物（source/ 含采集到的 .py 作业内容）
+# - tests/ 由 pytest 覆盖，不在类型检查范围内
+exclude = ["^source/", "^analysis/", "^output/", "^tests/"]
 
 [[tool.mypy.overrides]]
 module = [

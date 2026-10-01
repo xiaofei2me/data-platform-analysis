@@ -6,11 +6,17 @@
 执行顺序：
 
     1. 读取 Workspace identity（失败即 Fatal Error）
-    2. M2.1 Inventory
-    3. M2.2 SQL Analysis
+    2. M2.1 Inventory（Snapshot 全量 File，不做 NodeId 过滤）
+    3. M2.2 SQL Analysis（只接受 NodeId 有效的 File）
     4. M2.3 Table Reference / Lineage
     5. M2.4 Metadata Profiling
     6. 写出 Summary 与错误账本
+
+Analysis 输入范围（Analysis Scope Filter）：
+
+    只有 NodeId 有效的 File 才进入 SQL / Reference / Lineage Analysis；
+    NodeId 为空的 File 保留在 Snapshot Inventory，不产生 SQL Evidence，
+    也不记录为 Analysis Error。
 """
 
 from __future__ import annotations
@@ -26,9 +32,11 @@ from .inventory import Inventory, InventoryBuilder
 from .lineage import LineageBuilder, LineageResult
 from .models import (
     ColumnProfile,
+    FileInventory,
     StatementRecord,
     TableProfile,
     TableReference,
+    is_analysis_eligible,
     numeric_id_sort_key,
 )
 from .profiling import MetadataProfiler
@@ -58,6 +66,8 @@ class AnalysisResult:
     analysis_dir: Path
     workspace_ids: list[int] = field(default_factory=list)
     file_count: int = 0
+    eligible_file_count: int = 0
+    excluded_file_count: int = 0
     table_count: int = 0
     column_count: int = 0
     statement_count: int = 0
@@ -103,7 +113,11 @@ class AnalysisPipeline:
 
         self._write_inventory(inventory)
 
-        statements, references, parse_errors = self._analyze_sql(inventory)
+        # Analysis 输入范围：只有 NodeId 有效的 File 才进入 SQL Analysis。
+        eligible_files = [item for item in inventory.files if is_analysis_eligible(item)]
+        excluded_file_count = len(inventory.files) - len(eligible_files)
+
+        statements, references, parse_errors = self._analyze_sql(eligible_files)
 
         self._write_sql(statements, references, parse_errors)
 
@@ -140,6 +154,8 @@ class AnalysisPipeline:
             analysis_dir=self.analysis_dir,
             workspace_ids=[identity.workspace_id for identity in identities],
             file_count=len(inventory.files),
+            eligible_file_count=len(eligible_files),
+            excluded_file_count=excluded_file_count,
             table_count=len(inventory.tables),
             column_count=len(inventory.columns),
             statement_count=len(statements),
@@ -150,10 +166,12 @@ class AnalysisPipeline:
         )
 
         logger.info(
-            "Analysis 完成：workspace=%s，file=%s，table=%s，statement=%s，"
-            "reference=%s，edge=%s，error=%s",
+            "Analysis 完成：workspace=%s，file=%s（eligible=%s，excluded=%s），table=%s，"
+            "statement=%s，reference=%s，edge=%s，error=%s",
             len(result.workspace_ids),
             result.file_count,
+            result.eligible_file_count,
+            result.excluded_file_count,
             result.table_count,
             result.statement_count,
             result.reference_count,
@@ -169,9 +187,12 @@ class AnalysisPipeline:
 
     def _analyze_sql(
         self,
-        inventory: Inventory,
+        files: list[FileInventory],
     ) -> tuple[list[StatementRecord], list[TableReference], list[ParseErrorRecord]]:
-        """分析全部 SQL 文件。"""
+        """分析全部 NodeId 有效的 SQL 文件。
+
+        入参是已经通过 Analysis Scope Filter 的 File 列表。
+        """
 
         analyzer = SqlAnalyzer(
             reader=self.reader,
@@ -182,9 +203,9 @@ class AnalysisPipeline:
         references: list[TableReference] = []
         parse_errors: list[ParseErrorRecord] = []
 
-        for position, file in enumerate(inventory.files, start=1):
+        for position, file in enumerate(files, start=1):
             if position % LOG_INTERVAL == 0:
-                logger.info("SQL 分析进度：%s / %s", position, len(inventory.files))
+                logger.info("SQL 分析进度：%s / %s", position, len(files))
 
             result = analyzer.analyze_file(file)
 

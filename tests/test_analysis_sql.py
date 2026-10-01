@@ -95,6 +95,7 @@ def test_parse_error_isolation(
                 "workspace_id": 9001,
                 "file_id": "301",
                 "file_name": "broken_then_good",
+                "node_id": "8001",
                 "content": (
                     "ALTER TABLE ${ws_a}.t1 ADD COLUMN (c STRING COMMENT 'x');\n"
                     "INSERT INTO ${ws_a}.t2 SELECT * FROM ${ws_a}.t1;\n"
@@ -104,6 +105,7 @@ def test_parse_error_isolation(
                 "workspace_id": 9001,
                 "file_id": "302",
                 "file_name": "unsupported",
+                "node_id": "8002",
                 "content": "MSCK REPAIR TABLE ${ws_a}.t1;\n",
             },
         ],
@@ -152,6 +154,7 @@ def test_non_sql_file_and_missing_content(
                 "workspace_id": 9001,
                 "file_id": "401",
                 "file_name": "python_job",
+                "node_id": "8101",
                 "content": "print('x')",
                 "file_type": 22,
                 "content_format": "PYTHON",
@@ -160,6 +163,7 @@ def test_non_sql_file_and_missing_content(
                 "workspace_id": 9001,
                 "file_id": "402",
                 "file_name": "missing_content",
+                "node_id": "8102",
                 "content": "INSERT INTO ${ws_a}.t1 SELECT 1;",
             },
         ],

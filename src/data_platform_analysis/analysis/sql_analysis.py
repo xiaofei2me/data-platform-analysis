@@ -12,6 +12,11 @@
 
     单条语句失败只影响该条语句，文件级与分析级继续执行；
     失败语句写入 analysis/sql/parse-errors.json 与 analysis/errors.json。
+
+输入范围：
+
+    只有 NodeId 有效的 File 才进入 SQL Analysis；
+    NodeId 为空的 File 直接跳过，不产生 statement / reference / parse error。
 """
 
 from __future__ import annotations
@@ -33,6 +38,7 @@ from .models import (
     FileInventory,
     StatementRecord,
     TableReference,
+    is_analysis_eligible,
 )
 from .references import extract_table_references
 from .snapshot import SnapshotReader
@@ -161,6 +167,9 @@ class SqlAnalyzer:
         """分析单个 DataWorks File，返回语句、表引用与解析错误。"""
 
         result = SqlFileResult()
+
+        if not is_analysis_eligible(file):
+            return result
 
         if file.content_format.upper() != "SQL":
             return result

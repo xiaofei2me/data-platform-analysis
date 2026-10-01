@@ -1,28 +1,18 @@
 # M2.3 Table Lineage
 
-- 血缘边（去重后）：6501
-- 跨 Workspace 血缘：2330
-- 核心表候选：3253
+- 血缘边（去重后）：3432
+- 跨 Workspace 血缘：1556
+- 核心表候选：1789
 
 ## 跨 Workspace 血缘
 
 | source | target | evidence |
 | --- | --- | --- |
-| dme_ads.tb_inventory_sku_sale_allchannel_mid | dme_cdm.dwd_so_pos_data_bts_v3_tmp2 | 1 |
-| dme_cdm.dim_day | dme_ods.s_master_data_product_active | 1 |
-| dme_ods.S_BHT_ADVERTISING_INVESTMENT_INFO | dme_cdm.dwd_bht_advertising_investment_info | 1 |
-| dme_ods.S_BHT_AIPL_ALI_INFO | dme_cdm.dwd_bht_aipl_info | 1 |
-| dme_ods.S_BHT_AIPL_DOUYIN_INFO | dme_cdm.dwd_bht_aipl_info | 1 |
-| dme_ods.S_BHT_AIPL_JD_INFO | dme_cdm.dwd_bht_aipl_info | 1 |
 | dme_ods.S_COMPETITOR_ECOM_PROMOTION_DETAIL_INFO | dme_cdm.dwd_competitor_ecom_promotion_detail_info | 1 |
 | dme_ods.S_COMPETITOR_O2O_PROMOTION_DETAIL_INFO | dme_cdm.dwd_competitor_o2o_promotion_detail_info | 1 |
 | dme_ods.S_COMPETITOR_OFFLINE_PROMOTION_DETAIL_INFO | dme_cdm.dwd_competitor_offline_promotion_detail_info | 1 |
-| dme_ods.S_DIM_DAY | dme_cdm.dim_day | 1 |
 | dme_ods.S_JD_SEARCH_INDEX_INFO | dme_cdm.dwd_jd_search_index_01 | 1 |
-| dme_ods.S_PRO_BUSINESS_PLAN_INFO | dme_cdm.dwd_pro_business_plan_info | 1 |
-| dme_ods.S_must_sales_prod_list | dme_cdm.dwd_must_sales_prod_list | 1 |
 | dme_ods.dim_area_trans | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
-| dme_ods.dim_crm_district_divide | dme_cdm.dwd_crm_trade | 1 |
 | dme_ods.s_act_cnwc_sales_controlling | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
 | dme_ods.s_allocation_customer_not_require_info | dme_cdm.dwd_allocation_customer_not_require_info | 1 |
 | dme_ods.s_allocation_customer_not_require_info | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
@@ -64,8 +54,6 @@
 | dme_ods.s_area_trans | dme_cdm.dim_area_trans | 1 |
 | dme_ods.s_bdp_rawdata_sop | dme_cdm.dwd_bdp_rawdata_temp | 1 |
 | dme_ods.s_bdp_rawdata_sop | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
-| dme_ods.s_bht_media_investment_info | dme_cdm.dwd_bht_media_investment_info | 1 |
-| dme_ods.s_bht_online_offline_mapping_info | dme_cdm.dim_bht_online_offline_mapping | 1 |
 | dme_ods.s_blue_table_foc_sell_in | dme_cdm.dwd_blue_table_foc_sell_in | 1 |
 | dme_ods.s_blue_table_foc_sell_in | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
 | dme_ods.s_blue_table_foc_sell_out_inventory | dme_cdm.dwd_blue_table_foc_sell_out_inventory | 1 |
@@ -127,13 +115,9 @@
 | dme_ods.s_controlling_blue_table_exchange_rate | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
 | dme_ods.s_controlling_channel_changes | dme_cdm.dwd_controlling_channel_changes_mf | 1 |
 | dme_ods.s_controlling_channel_changes | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
-| dme_ods.s_controlling_kp_dt_target | dme_cdm.dwd_controlling_target_mf_tmp1 | 1 |
 | dme_ods.s_controlling_kp_dt_target | dme_cdm.dwd_controlling_target_mf_v2_tmp1 | 1 |
-| dme_ods.s_controlling_kp_ecom_target | dme_cdm.dwd_controlling_target_mf_tmp1 | 1 |
 | dme_ods.s_controlling_kp_ecom_target | dme_cdm.dwd_controlling_target_mf_v2_tmp1 | 1 |
-| dme_ods.s_controlling_kp_nka_target | dme_cdm.dwd_controlling_target_mf_tmp1 | 1 |
 | dme_ods.s_controlling_kp_nka_target | dme_cdm.dwd_controlling_target_mf_v2_tmp1 | 1 |
-| dme_ods.s_controlling_kp_ws_target | dme_cdm.dwd_controlling_target_mf_tmp1 | 1 |
 | dme_ods.s_controlling_kp_ws_target | dme_cdm.dwd_controlling_target_mf_v2_tmp1 | 1 |
 | dme_ods.s_controlling_nes_report_lhc | dme_cdm.dwd_controlling_reports_database_mf | 1 |
 | dme_ods.s_controlling_reports_database | dme_cdm.dwd_controlling_reports_database_mf | 1 |
@@ -143,22 +127,11 @@
 | dme_ods.s_cp_new_distributor_info | dme_cdm.dwd_customer_mapping_bts_v4_tmp | 1 |
 | dme_ods.s_cp_new_distributor_info | dme_cdm.dwd_fcst_data_bts_v4_fcst_sales_temp00 | 1 |
 | dme_ods.s_cp_new_distributor_info | dme_cdm.dwd_fcst_data_bts_v4_tmp07 | 1 |
-| dme_ods.s_crm_membe_level_history | dme_cdm.dwd_crm_membe_level_history | 1 |
-| dme_ods.s_crm_member | dme_cdm.dwd_crm_member | 1 |
 | dme_ods.s_crm_member | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
-| dme_ods.s_crm_member_event_log | dme_cdm.dwd_crm_member_social_temp | 1 |
 | dme_ods.s_crm_member_event_log | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
-| dme_ods.s_crm_member_growth_history | dme_cdm.dwd_crm_member_growth_history | 1 |
-| dme_ods.s_crm_member_social | dme_cdm.dwd_crm_member_social | 1 |
-| dme_ods.s_crm_member_social | dme_cdm.dwd_crm_member_social_temp | 1 |
 | dme_ods.s_crm_member_social | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
-| dme_ods.s_crm_member_tag | dme_cdm.dwd_crm_member_tag_delta | 1 |
 | dme_ods.s_crm_member_tag | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
-| dme_ods.s_crm_product_info | dme_cdm.dwd_crm_product_info | 1 |
-| dme_ods.s_crm_product_sku | dme_cdm.dwd_crm_product_sku | 1 |
-| dme_ods.s_crm_trade | dme_cdm.dwd_crm_trade | 1 |
 | dme_ods.s_crm_trade | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
-| dme_ods.s_crm_trade_goods_detail | dme_cdm.dwd_crm_trade_goods_detail | 1 |
 | dme_ods.s_crm_trade_goods_detail | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
 | dme_ods.s_cs_sell_in_henkel_calendar_mapping | dme_cdm.dwd_sales_report_cnr_data_tmp1 | 1 |
 | dme_ods.s_cs_sell_in_henkel_calendar_mapping | dme_cdm.dwd_sales_report_va05_detail | 1 |
@@ -182,7 +155,6 @@
 | dme_ods.s_customer_mapping_info_bts | dme_cdm.dwd_customer_mapping_bts_v4 | 1 |
 | dme_ods.s_customer_master_mapping_sop | dme_cdm.dwd_customer_sales_head_mapping_sop | 1 |
 | dme_ods.s_customer_nka_sell_out_target_sop | dme_cdm.dwd_customer_ka_sell_out_target_sop | 1 |
-| dme_ods.s_customer_profitability_bts_kp_lhc | dme_cdm.dwd_controlling_target_mf_tmp1 | 1 |
 | dme_ods.s_customer_profitability_bts_kp_lhc | dme_cdm.dwd_controlling_target_mf_v2_tmp1 | 1 |
 | dme_ods.s_customer_profitability_bts_kp_lhc | dme_cdm.dwd_kp_sales_controlling_bts | 1 |
 | dme_ods.s_customer_profitability_bts_kp_lhc | dme_cdm.dwd_kp_sales_controlling_bts_v2 | 1 |
@@ -208,30 +180,58 @@
 | dme_ods.s_dms_dms_data_stock | dme_cdm.dwd_dms_data_stock_bu_temp_01 | 1 |
 | dme_ods.s_dms_dms_data_stock | dme_cdm.dwd_dms_data_stock_bu_temp_06 | 1 |
 | dme_ods.s_dms_dms_data_stock_maizhi | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
+| dme_ods.s_dms_dms_data_stock_maizhi | dme_cdm.dwd_dms_data_stock_bu_temp_02 | 1 |
+| dme_ods.s_dms_dms_data_stock_manual | dme_cdm.dwd_dms_data_stock_bu_temp_01 | 1 |
+| dme_ods.s_dms_mdm_distributor | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
+| dme_ods.s_dms_mdm_store | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
+| dme_ods.s_dms_mdm_store | dme_cdm.dwd_dms_mdm_store | 1 |
+| dme_ods.s_dt_dealercode_mapping_professional | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
+| dme_ods.s_dt_dealercode_mapping_professional | dme_cdm.dwd_dt_dealercode_mapping_professional | 1 |
+| dme_ods.s_dt_month_target_professional | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
+| dme_ods.s_ec_aoxuncai_sales_info | dme_cdm.dwd_dms_data_sale_bu_temp_02 | 1 |
+| dme_ods.s_ec_aoxuncai_stock_info | dme_cdm.dwd_dms_data_stock_bu_temp_01 | 1 |
+| dme_ods.s_ec_core_product_line | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
+| dme_ods.s_ec_core_product_line | dme_cdm.dwd_ecom_core_product_line | 1 |
+| dme_ods.s_ec_core_product_line | dme_cdm.dwd_master_data_product_bu | 1 |
+| dme_ods.s_ec_douyin_activity_type | dme_cdm.dwd_ec_douyin_activity_type_temp_01 | 1 |
+| dme_ods.s_ec_duomi_purchase_sales_inventory_info | dme_cdm.dwd_dms_data_sale_bu_temp_02 | 1 |
+| dme_ods.s_ec_duomi_purchase_sales_inventory_info | dme_cdm.dwd_dms_data_stock_bu_temp_01 | 1 |
+| dme_ods.s_ec_inventory_info_laundry | dme_cdm.dwd_data_source_list_update_monitor_temp_01 | 1 |
+| dme_ods.s_ec_inventory_info_laundry | dme_cdm.dwd_dms_data_stock_bu_temp_06 | 1 |
+| dme_ods.s_ec_kunc_inventory_info_laundry | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
+| dme_ods.s_ec_kunc_order_merge_info | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
+| dme_ods.s_ec_kunc_order_merge_info | dme_cdm.dwd_ecom_order_detail_info_kunc_temp | 1 |
+| dme_ods.s_ec_kunc_order_merge_info | dme_cdm.dwd_ecom_order_info | 1 |
+| dme_ods.s_ec_kunc_product_hierarchy_mapping_info | dme_cdm.dim_ecom_product_prop_mapping_temp_00 | 1 |
+| dme_ods.s_ec_kunc_product_info | dme_cdm.dwd_ecom_standard_product_mapping_kunc_temp_00 | 1 |
+| dme_ods.s_ec_kunc_product_mapping_info | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
+| dme_ods.s_ec_kunc_product_mapping_info | dme_cdm.dwd_ecom_standard_product_mapping_kunc_temp_01 | 1 |
+| dme_ods.s_ec_kunc_product_sub_sku | dme_cdm.dwd_ecom_standard_product_mapping_kunc_temp_01 | 1 |
+| dme_ods.s_ec_kunc_sales_daily | dme_cdm.dwd_data_source_list_update_monitor_temp_02 | 1 |
 
 ## 下游数量 Top 20
 
 | table_key | downstream | upstream | evidence |
 | --- | --- | --- | --- |
-| dme_cdm.dim_day | 144 | 1 | 148 |
-| dme_cdm.dwd_master_data_product_pos_bu | 144 | 1 | 159 |
-| dme_cdm.dwd_master_data_customer_bu | 117 | 4 | 129 |
-| dme_cdm.dwd_master_data_store_bu | 108 | 8 | 119 |
-| dme_cdm.dwd_master_data_product_bu | 78 | 6 | 85 |
-| dme_cdm.dwd_master_data_product_pos | 51 | 1 | 72 |
-| dme_cdm.dwd_sap_ke24_sale_info_bu | 50 | 1 | 53 |
-| dme_ads.tb_dashboard_mpd_sale_summary_date | 44 | 2 | 46 |
-| dme_cdm.dwd_master_data_ka | 43 | 1 | 44 |
-| dme_cdm.dwd_ka_pos_data_sales_daily | 42 | 3 | 47 |
-| dme_cdm.dwd_master_data_store_pos | 40 | 1 | 61 |
-| dme_cdm.dwd_ecom_order_detail_info_bu | 35 | 4 | 39 |
-| dme_cdm.dwd_master_data_customer | 33 | 1 | 34 |
-| dme_cdm.dwd_customer_mapping_bts_v3 | 30 | 2 | 32 |
-| dme_ads.tb_inventory_sku_sale_allchannel_mid | 30 | 0 | 31 |
-| dme_cdm.dwd_ka_pos_data_sales_monthly_bu | 27 | 3 | 31 |
-| dme_cdm.dwd_master_data_product | 24 | 1 | 25 |
+| dme_cdm.dwd_master_data_product_pos_bu | 115 | 1 | 120 |
+| dme_cdm.dwd_master_data_customer_bu | 99 | 4 | 104 |
+| dme_cdm.dwd_master_data_store_bu | 98 | 8 | 106 |
+| dme_cdm.dim_day | 90 | 0 | 90 |
+| dme_cdm.dwd_master_data_product_bu | 65 | 6 | 71 |
+| dme_cdm.dwd_master_data_ka | 42 | 1 | 43 |
+| dme_cdm.dwd_sap_ke24_sale_info_bu | 40 | 1 | 41 |
+| dme_ads.tb_dashboard_mpd_sale_summary_date | 28 | 2 | 30 |
+| dme_cdm.dwd_ecom_order_detail_info_bu | 27 | 4 | 31 |
+| dme_ads.tb_inventory_sku_sale_allchannel_mid | 26 | 0 | 26 |
+| dme_cdm.dwd_customer_mapping_bts_v3 | 24 | 2 | 26 |
 | dme_cdm.dwd_customer_mapping_bts_v4 | 22 | 2 | 24 |
-| dme_cdm.dwd_ka_pos_data_sales_monthly | 21 | 5 | 28 |
-| dme_cdm.dwd_sap_ke24_sale_info | 20 | 4 | 24 |
+| dme_ods.s_city_province_mapping | 19 | 0 | 19 |
+| dme_cdm.dwd_ka_pos_data_sales_monthly_bu | 18 | 3 | 21 |
+| dme_ads.tb_dashboard_pos_sale_summary_nka | 17 | 5 | 22 |
+| dme_cdm.dwd_ka_pos_data_sales_daily | 16 | 3 | 19 |
+| dme_ads.tb_dashboard_mpd_sale_summary_pos_mid | 16 | 2 | 18 |
+| dme_cdm.dwd_dms_data_stock_bu | 15 | 4 | 19 |
+| dme_ads.tb_fcst_ar_allowance_bts_v2_tmp0 | 15 | 1 | 16 |
+| dme_cdm.dwd_watsons_mapping_time_df | 15 | 0 | 15 |
 
 排序依据 downstream_count 降序，只反映数据流向，不代表业务价值。
