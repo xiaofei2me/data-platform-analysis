@@ -1,7 +1,7 @@
 # M2.3 Table Lineage
 
-- 血缘边（去重后）：3436
-- 跨 Workspace 血缘：1559
+- 血缘边（去重后）：3442
+- 跨 Workspace 血缘：1560
 - 核心表候选：1789
 
 ## 跨 Workspace 血缘

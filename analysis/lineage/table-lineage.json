@@ -1,5 +1,5 @@
 {
-  "count": 3436,
+  "count": 3442,
   "edges": [
     {
       "workspace_id": 466337,
@@ -32340,6 +32340,27 @@
     },
     {
       "workspace_id": 466339,
+      "source_table": "dme_ads.tb_controlling_reports_database_by_customer_mf",
+      "target_table": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_key": "dme_ads.tb_controlling_reports_database_by_customer_mf",
+      "target_key": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_workspace_id": 466339,
+      "target_workspace_id": 466339,
+      "source_layer_candidate": null,
+      "target_layer_candidate": null,
+      "evidence": [
+        {
+          "file_id": "504340939",
+          "file_name": "tb_sales_city_attack_customer",
+          "node_id": 700006513666,
+          "statement_id": 8,
+          "extraction_method": "ast",
+          "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
+        }
+      ]
+    },
+    {
+      "workspace_id": 466339,
       "source_table": "dme_ads.tb_controlling_reports_database_by_customer_mf_v2",
       "target_table": "dme_ads.tb_actual_data_bts_v2_tmp1",
       "source_key": "dme_ads.tb_controlling_reports_database_by_customer_mf_v2",
@@ -32501,6 +32522,27 @@
           "file_name": "tb_sales_city_attack_customer",
           "node_id": 700006513666,
           "statement_id": 4,
+          "extraction_method": "ast",
+          "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
+        }
+      ]
+    },
+    {
+      "workspace_id": 466339,
+      "source_table": "dme_ads.tb_controlling_reports_database_by_customer_mf_v2",
+      "target_table": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_key": "dme_ads.tb_controlling_reports_database_by_customer_mf_v2",
+      "target_key": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_workspace_id": 466339,
+      "target_workspace_id": 466339,
+      "source_layer_candidate": null,
+      "target_layer_candidate": null,
+      "evidence": [
+        {
+          "file_id": "504340939",
+          "file_name": "tb_sales_city_attack_customer",
+          "node_id": 700006513666,
+          "statement_id": 8,
           "extraction_method": "ast",
           "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
         }
@@ -49408,6 +49450,69 @@
           "statement_id": 1,
           "extraction_method": "ast",
           "content_file": "dataworks/workspaces/466339/content/504340937__tb_sales_city_attack_by_city.sql"
+        }
+      ]
+    },
+    {
+      "workspace_id": 466339,
+      "source_table": "dme_ads.tb_sales_city_attack_customer_tmp0",
+      "target_table": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_key": "dme_ads.tb_sales_city_attack_customer_tmp0",
+      "target_key": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_workspace_id": 466339,
+      "target_workspace_id": 466339,
+      "source_layer_candidate": null,
+      "target_layer_candidate": null,
+      "evidence": [
+        {
+          "file_id": "504340939",
+          "file_name": "tb_sales_city_attack_customer",
+          "node_id": 700006513666,
+          "statement_id": 8,
+          "extraction_method": "ast",
+          "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
+        }
+      ]
+    },
+    {
+      "workspace_id": 466339,
+      "source_table": "dme_ads.tb_sales_city_attack_customer_tmp1",
+      "target_table": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_key": "dme_ads.tb_sales_city_attack_customer_tmp1",
+      "target_key": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_workspace_id": 466339,
+      "target_workspace_id": 466339,
+      "source_layer_candidate": null,
+      "target_layer_candidate": null,
+      "evidence": [
+        {
+          "file_id": "504340939",
+          "file_name": "tb_sales_city_attack_customer",
+          "node_id": 700006513666,
+          "statement_id": 8,
+          "extraction_method": "ast",
+          "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
+        }
+      ]
+    },
+    {
+      "workspace_id": 466339,
+      "source_table": "dme_ads.tb_sales_city_attack_customer_tmp1_01",
+      "target_table": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_key": "dme_ads.tb_sales_city_attack_customer_tmp1_01",
+      "target_key": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_workspace_id": 466339,
+      "target_workspace_id": 466339,
+      "source_layer_candidate": null,
+      "target_layer_candidate": null,
+      "evidence": [
+        {
+          "file_id": "504340939",
+          "file_name": "tb_sales_city_attack_customer",
+          "node_id": 700006513666,
+          "statement_id": 8,
+          "extraction_method": "ast",
+          "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
         }
       ]
     },
@@ -68020,6 +68125,27 @@
           "file_name": "tb_sales_city_attack_customer",
           "node_id": 700006513666,
           "statement_id": 6,
+          "extraction_method": "ast",
+          "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
+        }
+      ]
+    },
+    {
+      "workspace_id": 466339,
+      "source_table": "dme_cdm.dwd_sap_customer_summary_bu",
+      "target_table": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_key": "dme_cdm.dwd_sap_customer_summary_bu",
+      "target_key": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "source_workspace_id": 466337,
+      "target_workspace_id": 466339,
+      "source_layer_candidate": "DWD",
+      "target_layer_candidate": null,
+      "evidence": [
+        {
+          "file_id": "504340939",
+          "file_name": "tb_sales_city_attack_customer",
+          "node_id": 700006513666,
+          "statement_id": 8,
           "extraction_method": "ast",
           "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
         }

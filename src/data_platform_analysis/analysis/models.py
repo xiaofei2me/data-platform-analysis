@@ -168,6 +168,10 @@ class StatementRecord:
     """单条 SQL 语句。
 
     一个 DataWorks File 可以产生多条语句，statement_id 从 1 开始。
+
+    sql 永远是 Snapshot content 切出来的 raw fragment；
+    Parser Compatibility Normalization 只作用于 parser input，
+    不改写这里的原文，因此 normalizations 是可追溯的派生信息。
     """
 
     workspace_id: int
@@ -180,6 +184,11 @@ class StatementRecord:
     parse_status: str
     extraction_method: str
     content_file: str | None
+    normalization_applied: bool = False
+    """该语句交给 parser 前是否发生了 Parser Compatibility Normalization。"""
+
+    normalizations: list[dict[str, Any]] = field(default_factory=list)
+    """替换明细，例如 [{"from": "）", "to": ")", "count": 1}]；顺序确定。"""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

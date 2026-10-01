@@ -1,0 +1,23 @@
+{
+  "workspace": {
+    "id": 466339,
+    "name": "dme_ads"
+  },
+  "count": 1,
+  "files": [
+    {
+      "workspace_id": 466339,
+      "file_id": "504340939",
+      "file_name": "tb_sales_city_attack_customer",
+      "node_id": "700006513666",
+      "use_type": "NORMAL",
+      "file_type": 10,
+      "task_type": "ODPS_SQL",
+      "file_type_name": "ODPS_SQL",
+      "category": "TASK",
+      "content_format": "SQL",
+      "raw_file": "dataworks/workspaces/466339/files/504340939__tb_sales_city_attack_customer.json",
+      "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
+    }
+  ]
+}

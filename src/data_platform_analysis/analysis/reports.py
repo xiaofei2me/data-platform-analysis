@@ -259,10 +259,15 @@ def render_analysis_summary(context: SummaryContext) -> str:
         f"- 解析错误 / 不支持语句：{len(context.parse_errors)}",
         f"- 表引用提取方式（按语句）：ast={method_counts.get(EXTRACTION_METHOD_AST, 0)}，"
         f"fallback={method_counts.get(EXTRACTION_METHOD_FALLBACK, 0)}",
+        f"- Parser Compatibility Normalization 生效语句："
+        f"{sum(1 for item in context.statements if item.normalization_applied)}",
         f"- 因 NodeId 缺失被排除的 File：{len(excluded_files)}",
         "",
         "只有 NodeId 有效的 File 进入 SQL Analysis；被排除的 File 不产生任何 "
         "statement / reference / lineage 证据。",
+        "",
+        "Parser Compatibility Normalization 只在 syntax context 替换全角括号，"
+        "string literal 与 comment 原样保留；statement.sql 仍是 raw SQL。",
         "",
         "## 7. Table References",
         "",

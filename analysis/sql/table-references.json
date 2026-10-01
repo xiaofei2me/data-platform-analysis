@@ -1,5 +1,5 @@
 {
-  "count": 1272,
+  "count": 1273,
   "references": [
     {
       "workspace_id": 466337,
@@ -11525,6 +11525,26 @@
       ],
       "target_tables": [
         "dme_ads.tb_sales_city_attack_customer_tmp1_01"
+      ],
+      "extraction_method": "ast",
+      "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
+    },
+    {
+      "workspace_id": 466339,
+      "file_id": "504340939",
+      "node_id": 700006513666,
+      "file_name": "tb_sales_city_attack_customer",
+      "statement_id": 8,
+      "source_tables": [
+        "dme_ads.tb_controlling_reports_database_by_customer_mf",
+        "dme_ads.tb_controlling_reports_database_by_customer_mf_v2",
+        "dme_ads.tb_sales_city_attack_customer_tmp0",
+        "dme_ads.tb_sales_city_attack_customer_tmp1",
+        "dme_ads.tb_sales_city_attack_customer_tmp1_01",
+        "dme_cdm.dwd_sap_customer_summary_bu"
+      ],
+      "target_tables": [
+        "dme_ads.tb_sales_city_attack_customer_tmp2"
       ],
       "extraction_method": "ast",
       "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"

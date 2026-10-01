@@ -1,14 +1,4 @@
 {
-  "count": 1,
-  "errors": [
-    {
-      "workspace_id": 466339,
-      "file_id": "504340939",
-      "node_id": 700006513666,
-      "statement_id": 8,
-      "error_type": "SQL_PARSE_ERROR",
-      "message": "Expecting ). Line 226, Col: 51.\n  omer_name  end\n     ,a.bu_1\n     ,a.bu_2\n ) t\n) a\nwhere if(UPPER(a.bu_2) in ('BEAUTY CARE','LAUNDRY'\u001b[4m）\u001b[0m and a.months<'202405',a.data_type='old',a.data_type='new')",
-      "content_file": "dataworks/workspaces/466339/content/504340939__tb_sales_city_attack_customer.sql"
-    }
-  ]
+  "count": 0,
+  "errors": []
 }

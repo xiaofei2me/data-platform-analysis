@@ -309,6 +309,24 @@
       "evidence_count": 11
     },
     {
+      "table_key": "dme_ads.tb_controlling_reports_database_by_customer_mf_v2",
+      "workspace_id": 466339,
+      "in_inventory": true,
+      "layer_candidate": null,
+      "upstream_count": 1,
+      "downstream_count": 9,
+      "evidence_count": 10
+    },
+    {
+      "table_key": "dme_cdm.dwd_sap_customer_summary_bu",
+      "workspace_id": 466337,
+      "in_inventory": true,
+      "layer_candidate": "DWD",
+      "upstream_count": 1,
+      "downstream_count": 9,
+      "evidence_count": 10
+    },
+    {
       "table_key": "dme_cdm.dwd_allocation_customer_ges_ytd_proportion",
       "workspace_id": 466337,
       "in_inventory": true,
@@ -316,15 +334,6 @@
       "upstream_count": 2,
       "downstream_count": 8,
       "evidence_count": 10
-    },
-    {
-      "table_key": "dme_ads.tb_controlling_reports_database_by_customer_mf_v2",
-      "workspace_id": 466339,
-      "in_inventory": true,
-      "layer_candidate": null,
-      "upstream_count": 1,
-      "downstream_count": 8,
-      "evidence_count": 9
     },
     {
       "table_key": "dme_ads.tb_dashboard_nka_sale_summary_pos_temp_03_add_vs",
@@ -388,15 +397,6 @@
       "upstream_count": 1,
       "downstream_count": 8,
       "evidence_count": 13
-    },
-    {
-      "table_key": "dme_cdm.dwd_sap_customer_summary_bu",
-      "workspace_id": 466337,
-      "in_inventory": true,
-      "layer_candidate": "DWD",
-      "upstream_count": 1,
-      "downstream_count": 8,
-      "evidence_count": 9
     },
     {
       "table_key": "dme_ads.tb_dashboard_mpd_sellout_summary_temp02_add_vs",
@@ -777,6 +777,15 @@
       "evidence_count": 11
     },
     {
+      "table_key": "dme_ads.tb_sales_city_attack_customer_tmp2",
+      "workspace_id": 466339,
+      "in_inventory": true,
+      "layer_candidate": null,
+      "upstream_count": 6,
+      "downstream_count": 4,
+      "evidence_count": 10
+    },
+    {
       "table_key": "dme_cdm.dwd_ka_pos_target_sop",
       "workspace_id": 466337,
       "in_inventory": true,
@@ -1153,15 +1162,6 @@
       "upstream_count": 1,
       "downstream_count": 4,
       "evidence_count": 5
-    },
-    {
-      "table_key": "dme_ads.tb_sales_city_attack_customer_tmp2",
-      "workspace_id": 466339,
-      "in_inventory": true,
-      "layer_candidate": null,
-      "upstream_count": 0,
-      "downstream_count": 4,
-      "evidence_count": 4
     },
     {
       "table_key": "dme_ods.s_cs_sell_in_working_days_mapping",
@@ -3592,6 +3592,15 @@
       "upstream_count": 1,
       "downstream_count": 2,
       "evidence_count": 3
+    },
+    {
+      "table_key": "dme_ads.tb_controlling_reports_database_by_customer_mf",
+      "workspace_id": 466339,
+      "in_inventory": true,
+      "layer_candidate": null,
+      "upstream_count": 0,
+      "downstream_count": 2,
+      "evidence_count": 2
     },
     {
       "table_key": "dme_ads.tb_ecom_pos_mapping_time_all",
@@ -7977,6 +7986,33 @@
       "evidence_count": 3
     },
     {
+      "table_key": "dme_ads.tb_sales_city_attack_customer_tmp0",
+      "workspace_id": 466339,
+      "in_inventory": true,
+      "layer_candidate": null,
+      "upstream_count": 2,
+      "downstream_count": 1,
+      "evidence_count": 3
+    },
+    {
+      "table_key": "dme_ads.tb_sales_city_attack_customer_tmp1",
+      "workspace_id": 466339,
+      "in_inventory": true,
+      "layer_candidate": null,
+      "upstream_count": 2,
+      "downstream_count": 1,
+      "evidence_count": 3
+    },
+    {
+      "table_key": "dme_ads.tb_sales_city_attack_customer_tmp1_01",
+      "workspace_id": 466339,
+      "in_inventory": true,
+      "layer_candidate": null,
+      "upstream_count": 2,
+      "downstream_count": 1,
+      "evidence_count": 3
+    },
+    {
       "table_key": "dme_ads.tb_sales_city_attack_customer_tmp4_02",
       "workspace_id": 466339,
       "in_inventory": true,
@@ -11254,15 +11290,6 @@
     },
     {
       "table_key": "dme_ads.tb_allocation_customer_detail_ttl_index",
-      "workspace_id": 466339,
-      "in_inventory": true,
-      "layer_candidate": null,
-      "upstream_count": 0,
-      "downstream_count": 1,
-      "evidence_count": 1
-    },
-    {
-      "table_key": "dme_ads.tb_controlling_reports_database_by_customer_mf",
       "workspace_id": 466339,
       "in_inventory": true,
       "layer_candidate": null,
@@ -14935,33 +14962,6 @@
     },
     {
       "table_key": "dme_ads.tb_sales_city_attack_by_city",
-      "workspace_id": 466339,
-      "in_inventory": true,
-      "layer_candidate": null,
-      "upstream_count": 2,
-      "downstream_count": 0,
-      "evidence_count": 2
-    },
-    {
-      "table_key": "dme_ads.tb_sales_city_attack_customer_tmp0",
-      "workspace_id": 466339,
-      "in_inventory": true,
-      "layer_candidate": null,
-      "upstream_count": 2,
-      "downstream_count": 0,
-      "evidence_count": 2
-    },
-    {
-      "table_key": "dme_ads.tb_sales_city_attack_customer_tmp1",
-      "workspace_id": 466339,
-      "in_inventory": true,
-      "layer_candidate": null,
-      "upstream_count": 2,
-      "downstream_count": 0,
-      "evidence_count": 2
-    },
-    {
-      "table_key": "dme_ads.tb_sales_city_attack_customer_tmp1_01",
       "workspace_id": 466339,
       "in_inventory": true,
       "layer_candidate": null,

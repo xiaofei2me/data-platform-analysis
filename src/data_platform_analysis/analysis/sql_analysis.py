@@ -4,14 +4,16 @@
 
     content 文本
       → 按顶层分号切分语句（基于 tokenizer，字符串里的分号不会被切开）
+      → Parser Compatibility Normalization（只改 syntax context，见 normalization.py）
       → 逐条解析（dialect=odps）
-      → 记录 parse_status 与语句原文
+      → 记录 parse_status、normalization_applied 与语句原文
       → 对解析成功的语句提取 source / target 表引用
 
 失败处理：
 
     单条语句失败只影响该条语句，文件级与分析级继续执行；
     失败语句写入 analysis/sql/parse-errors.json 与 analysis/errors.json。
+    归一化不会把真正的 parse error 伪装成 success。
 
 CTAS Fallback：
 
@@ -19,6 +21,8 @@ CTAS Fallback：
     交给 token scanner 提取 source / target；
     提取成功则按 success 记录，extraction_method = fallback，
     scanner 无结果时保持 unsupported（SQL_UNSUPPORTED_STATEMENT）。
+    fallback 属于 Fallback Extraction，与 Parser Compatibility Normalization
+    是两个独立阶段：全角括号走 normalization，CTAS 走 fallback，互不混用。
 
 输入范围：
 
@@ -51,6 +55,7 @@ from .models import (
     TableReference,
     is_analysis_eligible,
 )
+from .normalization import normalize_for_parser
 from .references import extract_table_references
 from .snapshot import SnapshotReader
 
@@ -136,11 +141,15 @@ def split_statements(content: str) -> tuple[list[str], str | None]:
     return [fragment.strip() for fragment in fragments if fragment.strip()], None
 
 
-def parse_statement(fragment: str) -> tuple[str, list[exp.Expression], str | None]:
-    """解析单条语句，返回 (parse_status, expressions, message)。"""
+def parse_statement(parser_sql: str) -> tuple[str, list[exp.Expression], str | None]:
+    """解析单条语句，返回 (parse_status, expressions, message)。
+
+    入参是 parser input（raw fragment 或其归一化副本），
+    原始 SQL 由调用方另行保留。
+    """
 
     try:
-        parsed = sqlglot.parse(fragment, dialect=DIALECT)
+        parsed = sqlglot.parse(parser_sql, dialect=DIALECT)
 
     except ParseError as exc:
         return PARSE_STATUS_ERROR, [], _truncate(str(exc))
@@ -220,9 +229,16 @@ class SqlAnalyzer:
         statement_id: int,
         fragment: str,
     ) -> None:
-        """分析单条语句并把结果追加到 SqlFileResult。"""
+        """分析单条语句并把结果追加到 SqlFileResult。
 
-        status, expressions, message = parse_statement(fragment)
+        fragment 是 raw SQL；归一化只产生 parser input，
+        StatementRecord.sql 始终记录 fragment。
+        """
+
+        normalized = normalize_for_parser(fragment)
+        parser_sql = normalized.sql
+
+        status, expressions, message = parse_statement(parser_sql)
 
         extraction_method = (
             EXTRACTION_METHOD_AST if status == PARSE_STATUS_SUCCESS else EXTRACTION_METHOD_NONE
@@ -230,8 +246,8 @@ class SqlAnalyzer:
         fallback_sources: list[str] = []
         fallback_targets: list[str] = []
 
-        if status == PARSE_STATUS_UNSUPPORTED and is_ctas_statement(fragment):
-            fallback_sources, fallback_targets = extract_ctas_references(fragment)
+        if status == PARSE_STATUS_UNSUPPORTED and is_ctas_statement(parser_sql):
+            fallback_sources, fallback_targets = extract_ctas_references(parser_sql)
 
             if fallback_sources or fallback_targets:
                 # CTAS fallback 命中：按解析成功记录，只在 extraction_method 上留痕。
@@ -252,6 +268,8 @@ class SqlAnalyzer:
                 parse_status=status,
                 extraction_method=extraction_method,
                 content_file=file.content_file,
+                normalization_applied=normalized.applied,
+                normalizations=[change.to_dict() for change in normalized.changes],
             )
         )
 
