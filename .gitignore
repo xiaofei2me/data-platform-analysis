@@ -40,8 +40,8 @@ __pycache__/
 /source/*
 !/source/.gitkeep
 
-#/analysis/*
-#!/analysis/.gitkeep
+/analysis/*
+!/analysis/.gitkeep
 
 /output/*
 !/output/.gitkeep
