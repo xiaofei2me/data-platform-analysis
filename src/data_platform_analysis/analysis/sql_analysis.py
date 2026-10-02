@@ -1,4 +1,4 @@
-"""M2.2 SQL Analysis：把 DataWorks SQL 文件拆成语句并解析成 AST。
+"""M2.3 SQL Analysis：把 DataWorks SQL 文件拆成语句并解析成 AST。
 
 处理流程：
 

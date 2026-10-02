@@ -1,4 +1,4 @@
-"""M2.5 Layer Assessment。
+"""M2.2 Layer Assessment。
 
 目标：
 
@@ -76,7 +76,7 @@ def _display_path(path: Path) -> str:
 
 
 class LayerAssessmentError(RuntimeError):
-    """M2.5 无法继续的配置 / 输入错误。"""
+    """M2.2 无法继续的配置 / 输入错误。"""
 
 
 # ============================================================
@@ -336,7 +336,7 @@ def assess_tables(
     rules: LayerRules,
     tables: Sequence[Mapping[str, Any]],
 ) -> list[LayerAssessment]:
-    """对全部 Inventory 表记录执行 M2.5 识别。
+    """对全部 Inventory 表记录执行 M2.2 识别。
 
     结果按 (workspace_id, project, table_name) 稳定排序，
     保证重复运行 deterministic。
@@ -532,7 +532,7 @@ def _inventory_text(entry: Mapping[str, Any], key: str, position: int) -> str:
 
 @dataclass
 class LayerAssessmentResult:
-    """一次 M2.5 运行的结果。"""
+    """一次 M2.2 运行的结果。"""
 
     rules_path: Path
     rules_version: str
@@ -600,7 +600,7 @@ def run_layer_assessment(
     rules_path: Path,
     output_dir: Path,
 ) -> LayerAssessmentResult:
-    """执行 M2.5 并写出 analysis/layer 产物。
+    """执行 M2.2 并写出 analysis/layer 产物。
 
     CLI 子命令与 AnalysisPipeline 共用这一个入口，保证两条路径行为一致。
     """
@@ -628,7 +628,7 @@ def run_layer_assessment(
 
     if conflicts:
         logger.warning(
-            "M2.5 检出 %s 条 CONFLICT（prefix 与 suffix 命中不同子层），"
+            "M2.2 检出 %s 条 CONFLICT（prefix 与 suffix 命中不同子层），"
             "需人工判定，明细见 %s",
             conflicts,
             _display_path(output_dir / "summary.md"),
@@ -640,7 +640,7 @@ def run_layer_assessment(
 
     if cross_layer:
         logger.warning(
-            "M2.5 检出 %s 张表带其他层命名前缀（跨层命名提示），"
+            "M2.2 检出 %s 张表带其他层命名前缀（跨层命名提示），"
             "candidate_layer 仍按 workspace_layer 判定，明细见 %s",
             cross_layer,
             _display_path(output_dir / "summary.md"),
@@ -649,7 +649,7 @@ def run_layer_assessment(
     write_layer_assessment(result, output_dir)
 
     logger.info(
-        "M2.5 Layer Assessment 完成：table=%s，%s，未配置 workspace=%s",
+        "M2.2 Layer Assessment 完成：table=%s，%s，未配置 workspace=%s",
         len(result.assessments),
         "，".join(f"{key}={value}" for key, value in result.status_counts.items()),
         len(unconfigured),
@@ -688,7 +688,7 @@ def write_layer_assessment(
     )
 
     logger.info(
-        "M2.5 产物已写出：%s，%s",
+        "M2.2 产物已写出：%s，%s",
         _display_path(assessments_path),
         _display_path(summary_path),
     )

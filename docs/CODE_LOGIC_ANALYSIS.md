@@ -1,7 +1,7 @@
 # 现有代码逻辑分析：数仓反向识别与改造的分析底座
 
 > 编写日期：2026-10-02
-> 对应代码：`main` @ `70a5777`（其后含 M2.5 层级收敛改动，见 ADR-0003）
+> 对应代码：`main` @ `70a5777`（其后含 M2.2 层级收敛改动，见 ADR-0003）
 > 文档定位：把**当前代码做了什么、怎么做的、产出什么、边界在哪**讲清楚，作为"从现有数仓实际情况反向识别业务 → 完成数仓改造优化"这一目标的分析底座。不含未来的目标分层设计与业务域定义（属后续阶段）。
 
 ---
@@ -46,7 +46,7 @@ Convention Assessment → 目标分层设计 → DWS / Semantic Layer  → 数�
 | `dataworks` / `maxcompute` | 分别采集 |
 | `summary` | 由 Snapshot 重新生成 `source/Summary.md` |
 | `analyze` | 基于已有 Snapshot 生成 `analysis/` 证据链（全流程） |
-| `analyze-layer` | 基于已有 `analysis/inventory` 单独执行 M2.5 |
+| `analyze-layer` | 基于已有 `analysis/inventory` 单独执行 M2.2 |
 | `config` | 打印生效的非敏感配置 |
 
 ### 2.2 DataWorks 采集（`dataworks.py` + `export.py`）
@@ -68,7 +68,7 @@ Workspace.name（即 MaxCompute Project） → ListTables → 逐个 GetTable
 ```
 
 - 只读元数据（PyODPS）：注释、字段、分区字段、大小、生命周期、创建/修改时间。
-- 默认不采集分区实例（`MAXCOMPUTE_INCLUDE_PARTITIONS=false`）；**不采集行级数据**——这决定了 M2.4 只能是 Metadata Profiling。
+- 默认不采集分区实例（`MAXCOMPUTE_INCLUDE_PARTITIONS=false`）；**不采集行级数据**——这决定了 M2.5 只能是 Metadata Profiling。
 
 ### 2.4 Snapshot 布局与身份契约（ADR-0001）
 
@@ -96,14 +96,14 @@ source/
 读 Workspace identity（失败即 Fatal）
   → 清空 analysis/ 自有产物
   → M2.1 Inventory            写 inventory/*.json
-  → M2.5 Layer Assessment     写 layer/*          （只依赖 M2.1 + 规则配置）
-  → M2.2 SQL Analysis         写 sql/*            （只吃 NodeId 有效 File）
-  → M2.3 Reference / Lineage  写 lineage/*        （层级标注取 M2.5）
-  → M2.4 Metadata Profiling   写 profiling/*
+  → M2.2 Layer Assessment     写 layer/*          （只依赖 M2.1 + 规则配置）
+  → M2.3 SQL Analysis         写 sql/*            （只吃 NodeId 有效 File）
+  → M2.4 Reference / Lineage  写 lineage/*        （层级标注取 M2.2）
+  → M2.5 Metadata Profiling   写 profiling/*
   → 写 Summary.md + errors.json
 ```
 
-执行顺序 `M2.1 → M2.5 → M2.2 → M2.3 → M2.4` 是刻意的：M2.5 只依赖表清单与规则配置，必须先于 M2.3 完成，血缘才能直接引用 `candidate_layer`（见 ADR-0003）。
+执行顺序 `M2.1 → M2.2 → M2.3 → M2.4 → M2.5` 是刻意的：M2.2 只依赖表清单与规则配置，必须先于 M2.4 完成，血缘才能直接引用 `candidate_layer`（见 ADR-0003）。
 
 ### 3.1 M2.1 Warehouse Inventory（`inventory.py`）
 
@@ -118,7 +118,7 @@ source/
 
 **产出字段（tables.json）**：`workspace_id / workspace_name / project / schema / table / table_key / comment / column_count / partition_count / size / is_virtual_view / lifecycle / creation_time / last_modified_time / raw_file`。
 
-### 3.2 M2.5 Layer Assessment（`layer_assessment.py`）——唯一的层级判定
+### 3.2 M2.2 Layer Assessment（`layer_assessment.py`）——唯一的层级判定
 
 **输入**：`analysis/inventory/tables.json` + `config/layer-rules.yaml`（外部配置，改规则不用改代码）。
 
@@ -150,7 +150,7 @@ matching: {case_sensitive: false}
 - 排序：`(workspace_id, project, table_name)`；JSON 信封 `{count, assessments[]}`。
 - **历史决策**：取代 M2.1 的 `naming.layer_candidate`（纯表名前缀、不看 workspace，对本项目 69% 表失效且有 35 条错判），见 `docs/adr/0003-layer-candidate-single-source.md`。
 
-### 3.3 M2.2 SQL Analysis（`sql_analysis.py` + `normalization.py` + `dialect.py` + `fallback.py`）
+### 3.3 M2.3 SQL Analysis（`sql_analysis.py` + `normalization.py` + `dialect.py` + `fallback.py`）
 
 **处理流水**：
 
@@ -171,7 +171,7 @@ content（只取 NodeId 有效 File）
 
 **当前实测**：1963 条语句全部 `success`（ast=1962、fallback=1），归一化生效 1 条，unsupported=0、error=0。
 
-### 3.4 M2.3 Table Reference / Lineage（`references.py` + `lineage.py`）
+### 3.4 M2.4 Table Reference / Lineage（`references.py` + `lineage.py`）
 
 **引用提取规则（`references.py`）**：
 
@@ -184,11 +184,11 @@ content（只取 NodeId 有效 File）
 
 - edge 身份 = `(workspace_id, source_key, target_key)`，同一条边只保留一次，多条 SQL 证据收进 `evidence[]`（带 file_id / statement_id / extraction_method），可回答"为什么认为这两张表有上下游关系"。
 - `source_key/target_key` 是补齐 Project 后的规范标识，据此识别**跨 Workspace** 血缘。
-- `source_layer_candidate / target_layer_candidate` 与核心表 `layer_candidate` **取自 M2.5 的 `candidate_layer`**，M2.3 不自行判定层级。
+- `source_layer_candidate / target_layer_candidate` 与核心表 `layer_candidate` **取自 M2.2 的 `candidate_layer`**，M2.4 不自行判定层级。
 - 核心表候选排序：`downstream_count` 降序 → `upstream_count` → `table_key`；只反映数据流向，不代表业务价值。
 - 引用了但不在 Inventory 的表也保留（`in_inventory=false`），不静默丢弃。
 
-### 3.5 M2.4 Metadata Profiling（`profiling.py`）
+### 3.5 M2.5 Metadata Profiling（`profiling.py`）
 
 - 唯一来源是 Inventory 元数据，`profile_status` 恒为 `metadata_only`。
 - `row_count / distinct_count / min / max / sample_values` 一律 `null`；`is_candidate_key` 恒为 false（缺唯一性证据）——**不伪造统计量**。
@@ -198,7 +198,7 @@ content（只取 NodeId 有效 File）
 
 | 类型 | 触发条件 | 处理 |
 | --- | --- | --- |
-| Fatal Error | `source/` 不存在；无法确定 Workspace identity；`--workspace` 不在 Snapshot 中；M2.5 规则配置非法 | 立即非零退出 |
+| Fatal Error | `source/` 不存在；无法确定 Workspace identity；`--workspace` 不在 Snapshot 中；M2.2 规则配置非法 | 立即非零退出 |
 | Recoverable Error | 单个 index/raw 损坏、单条 SQL 解析失败、content 缺失、单表 metadata 缺失 | 记录后继续，最终进 `errors.json`（SQL 同时进 `parse-errors.json`） |
 
 当前实测可恢复错误 = 0。
@@ -224,13 +224,13 @@ content（只取 NodeId 有效 File）
 | `errors.json` | 可恢复错误账本（0） | stage / error_type | 可信度证明 |
 | `Summary.md` | 总报告（12 节） | 见下 | 一屏看全貌 |
 
-**Summary.md 章节**：1 概览 → 2 Workspace → 3 File Inventory → 4 Table Inventory → 5 SQL Analysis → 6 Table References → 7 Table Lineage → 8 Core Table Candidates → 9 Data Profiling → 10 Layer Assessment（M2.5）→ 11 错误摘要 → 12 Analysis Limitations。
+**Summary.md 章节**：1 概览 → 2 Workspace → 3 File Inventory → 4 Table Inventory → 5 SQL Analysis → 6 Table References → 7 Table Lineage → 8 Core Table Candidates → 9 Data Profiling → 10 Layer Assessment（M2.2）→ 11 错误摘要 → 12 Analysis Limitations。
 
 ---
 
 ## 5. 数据模型与确定性契约（`models.py`）
 
-记录一览：`WorkspaceInventory` / `FileInventory` / `TableInventory` / `ColumnInventory`（M2.1）→ `LayerAssessment` + 状态与 evidence 常量（M2.5）→ `StatementRecord` / `TableReference`（M2.2/2.3）→ `LineageEvidence` / `LineageEdge` / `CoreTableCandidate`（M2.3）→ `TableProfile` / `ColumnProfile`（M2.4）。
+记录一览：`WorkspaceInventory` / `FileInventory` / `TableInventory` / `ColumnInventory`（M2.1）→ `LayerAssessment` + 状态与 evidence 常量（M2.2）→ `StatementRecord` / `TableReference`（M2.3/2.4）→ `LineageEvidence` / `LineageEdge` / `CoreTableCandidate`（M2.4）→ `TableProfile` / `ColumnProfile`（M2.5）。
 
 - 所有记录 `to_dict()`（`asdict`），字段顺序稳定。
 - ID 可能是数字也可能是字符串，统一用 `numeric_id_sort_key` 归一，保证排序确定。
@@ -247,7 +247,7 @@ content（只取 NodeId 有效 File）
 ```bash
 uv run data-platform-analysis export          # 采集（需外部 API）
 uv run data-platform-analysis analyze         # 全量分析（只读 source/）
-uv run data-platform-analysis analyze-layer   # 仅重跑 M2.5
+uv run data-platform-analysis analyze-layer   # 仅重跑 M2.2
 uv run pytest -q && uv run ruff check . && uv run mypy   # 126 tests / lint / types
 ```
 
@@ -269,7 +269,7 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # 126 tests / lint / ty
 | 核心表候选 | 1789 |
 | 可恢复错误 | 0 |
 
-### 7.2 分层现状（M2.5）
+### 7.2 分层现状（M2.2）
 
 | 指标 | 数值 |
 | --- | --- |
@@ -300,7 +300,7 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # 126 tests / lint / ty
 4. **解析能力**：ODPS 方言基于 Hive 注册，未覆盖的语法会走 unsupported/fallback；当前 unsupported=0 属健康状态，但新增 SQL 写法需回归 `test_golden_*`。
 5. **层级是配置事实**：新增/改名 workspace 必须同步 `layer-rules.yaml`，否则整表落入 UNKNOWN（有显式告警，不会静默）。
 6. **文档漂移**：`README.md` 仍写"当前阶段只负责 Collection"，`临时想法.md` 的 P0–P10 排期已滞后于实际进度，引用时以本文档与 `docs/` 为准。
-7. **冻结状态**：`docs/EVIDENCE_LAYER_FREEZE_REPORT.md` 的 M2.1~M2.4 冻结因 ADR-0003 部分解冻并重新审计，其余冻结项仍有效。
+7. **冻结状态**：`docs/EVIDENCE_LAYER_FREEZE_REPORT.md` 收尾/冻结范围为现 M2.1～M2.4（Inventory / Layer / SQL / Lineage，2026-10-02 重编号后对齐），其中 Inventory / Lineage 曾因 ADR-0003 部分解冻并重新审计；M2.5 Profiling 不在本轮收尾范围。
 
 ---
 

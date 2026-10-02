@@ -1,4 +1,4 @@
-"""Phase 2 Analysis 编排：M2.1 → M2.5 → M2.2 → M2.3 → M2.4。
+"""Phase 2 Analysis 编排：M2.1 → M2.2 → M2.3 → M2.4 → M2.5。
 
 输入：source/ Snapshot（只读）
 输出：analysis/ Evidence Chain（每次全量重写，可重复执行）
@@ -7,11 +7,11 @@
 
     1. 读取 Workspace identity（失败即 Fatal Error）
     2. M2.1 Inventory（Snapshot 全量 File，不做 NodeId 过滤）
-    3. M2.5 Layer Assessment（依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
+    3. M2.2 Layer Assessment（依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
        产出唯一层级判定 candidate_layer，供 Lineage 引用）
-    4. M2.2 SQL Analysis（只接受 NodeId 有效的 File）
-    5. M2.3 Table Reference / Lineage（层级标注取自 M2.5 candidate_layer）
-    6. M2.4 Metadata Profiling
+    4. M2.3 SQL Analysis（只接受 NodeId 有效的 File）
+    5. M2.4 Table Reference / Lineage（层级标注取自 M2.2 candidate_layer）
+    6. M2.5 Metadata Profiling
     7. 写出 Summary 与错误账本
 
 Analysis 输入范围（Analysis Scope Filter）：
@@ -123,7 +123,7 @@ class AnalysisPipeline:
 
         self._write_inventory(inventory)
 
-        # M2.5：只依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
+        # M2.2：只依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
         # 先于 SQL / Lineage 执行，Lineage 的层级标注直接引用其 candidate_layer。
         layer_result = self._run_layer_assessment()
 
@@ -201,7 +201,7 @@ class AnalysisPipeline:
         return result
 
     # ==========================================================
-    # M2.2 SQL Analysis
+    # M2.3 SQL Analysis
     # ==========================================================
 
     def _analyze_sql(
@@ -257,11 +257,11 @@ class AnalysisPipeline:
         return statements, references, parse_errors
 
     # ==========================================================
-    # M2.5 Layer Assessment
+    # M2.2 Layer Assessment
     # ==========================================================
 
     def _run_layer_assessment(self) -> LayerAssessmentResult:
-        """执行 M2.5 Layer Assessment，写出 analysis/layer 产物。
+        """执行 M2.2 Layer Assessment，写出 analysis/layer 产物。
 
         输入固定为刚写出的 inventory/tables.json 与 layer-rules 配置；
         配置缺失或非法视为 Fatal Error，不静默跳过。
@@ -275,7 +275,7 @@ class AnalysisPipeline:
             )
 
         except LayerAssessmentError as exc:
-            raise AnalysisFatalError(f"M2.5 Layer Assessment 无法继续：{exc}") from exc
+            raise AnalysisFatalError(f"M2.2 Layer Assessment 无法继续：{exc}") from exc
 
     # ==========================================================
     # 产物写出
@@ -319,7 +319,7 @@ class AnalysisPipeline:
         references: list[TableReference],
         parse_errors: list[ParseErrorRecord],
     ) -> None:
-        """写出 M2.2 产物。"""
+        """写出 M2.3 产物。"""
 
         self._write(
             "sql/statements.json",
@@ -344,7 +344,7 @@ class AnalysisPipeline:
         )
 
     def _write_lineage(self, lineage: LineageResult) -> None:
-        """写出 M2.3 产物。"""
+        """写出 M2.4 产物。"""
 
         self._write(
             "lineage/table-lineage.json",
@@ -367,7 +367,7 @@ class AnalysisPipeline:
         table_profiles: list[TableProfile],
         column_profiles: list[ColumnProfile],
     ) -> None:
-        """写出 M2.4 产物。"""
+        """写出 M2.5 产物。"""
 
         self._write(
             "profiling/tables.json",

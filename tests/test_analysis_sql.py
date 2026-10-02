@@ -1,4 +1,4 @@
-"""M2.2 SQL Analysis 的黑盒测试。"""
+"""M2.3 SQL Analysis 的黑盒测试。"""
 
 from __future__ import annotations
 

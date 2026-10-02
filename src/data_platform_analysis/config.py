@@ -190,7 +190,7 @@ class Settings(BaseSettings):
     #   保持原路径不变。
     analysis_dir: Path = Path("analysis")
 
-    # M2.5 Layer Rules 配置文件。
+    # M2.2 Layer Rules 配置文件。
     #
     # 只读配置，Analysis 不会修改该文件。
     #

@@ -139,7 +139,7 @@ class ColumnInventory:
 
 
 # ============================================================
-# M2.2 SQL Analysis
+# M2.3 SQL Analysis
 # ============================================================
 
 PARSE_STATUS_SUCCESS = "success"
@@ -215,7 +215,7 @@ class TableReference:
 
 
 # ============================================================
-# M2.3 Table Lineage
+# M2.4 Table Lineage
 # ============================================================
 
 
@@ -259,7 +259,7 @@ class LineageEdge:
 
 
 # ============================================================
-# M2.4 Data Profiling
+# M2.5 Data Profiling
 # ============================================================
 
 PROFILE_STATUS_METADATA_ONLY = "metadata_only"
@@ -354,7 +354,7 @@ class CoreTableCandidate:
 
 
 # ============================================================
-# M2.5 Layer Assessment
+# M2.2 Layer Assessment
 # ============================================================
 
 LAYER_STATUS_MATCH = "MATCH"
@@ -378,7 +378,7 @@ EVIDENCE_TYPE_SUFFIX = "suffix"
 
 @dataclass
 class LayerAssessment:
-    """单张表的 M2.5 Layer Assessment。
+    """单张表的 M2.2 Layer Assessment。
 
     1. workspace_layer 是 Observed / Configured Fact，来自 workspace_id 查表。
     2. candidate_layer 是唯一的层级候选：ODS / ADS 取 workspace_layer，

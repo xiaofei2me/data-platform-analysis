@@ -92,7 +92,7 @@ def test_inventory_lists(
 
     dwd_order = table_by_name["dwd_order"]
     assert dwd_order["table_key"] == "ws_a.dwd_order"
-    # 层级判定属于 M2.5，M2.1 不再产出 layer_candidate 字段。
+    # 层级判定属于 M2.2，M2.1 不再产出 layer_candidate 字段。
     assert "layer_candidate" not in dwd_order
     assert "layer_candidate_evidence" not in dwd_order
     assert "layer" not in dwd_order

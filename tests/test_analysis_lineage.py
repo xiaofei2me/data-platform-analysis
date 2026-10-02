@@ -1,4 +1,4 @@
-"""M2.3 Table Lineage 的黑盒测试。"""
+"""M2.4 Table Lineage 的黑盒测试。"""
 
 from __future__ import annotations
 
@@ -129,7 +129,7 @@ def test_lineage_dedup_cross_workspace_and_candidates(
     assert cross["source_table"] == "ws_b.dim_y"
     assert cross["source_workspace_id"] == 9002
     assert cross["target_workspace_id"] == 9001
-    # 层级来自 M2.5：workspace 事实优先于表名前缀（ws_b 是 ADS，表名是 dim_）。
+    # 层级来自 M2.2：workspace 事实优先于表名前缀（ws_b 是 ADS，表名是 dim_）。
     assert cross["source_layer_candidate"] == "ADS"
     # target 不在 Inventory 中，层级无从判定。
     assert cross["target_layer_candidate"] is None

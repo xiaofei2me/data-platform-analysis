@@ -9,7 +9,7 @@
 1. 调度变量归一化（只作用于提取出来的表名，不改写原始 SQL）。
 2. 表标识（project.table）的补齐与拆解，用于保留跨 Project 信息。
 
-层级候选（candidate_layer）由 M2.5 Layer Assessment 依据 workspace 事实
+层级候选（candidate_layer）由 M2.2 Layer Assessment 依据 workspace 事实
 与 config/layer-rules.yaml 产出，不在本模块范围内。
 
 禁止在这里做业务推断，例如 business_domain / grain / fact。

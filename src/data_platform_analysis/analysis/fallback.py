@@ -1,4 +1,4 @@
-"""M2.2 SQL Fallback：AST 解析失败时，用 token scanner 提取 CTAS 的表引用。
+"""M2.3 SQL Fallback：AST 解析失败时，用 token scanner 提取 CTAS 的表引用。
 
 原则：
 

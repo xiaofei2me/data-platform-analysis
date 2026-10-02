@@ -1,4 +1,4 @@
-"""M2.5 Layer Assessment 的测试。
+"""M2.2 Layer Assessment 的测试。
 
 覆盖任务要求的 11 个场景：ODS / ADS / CDM 子层命中 / UNKNOWN / CONFLICT /
 同层多规则 evidence / 大小写 / 排序确定性 / 未配置 workspace / 错误路径 /
@@ -511,7 +511,7 @@ def test_analyze_layer_command_writes_outputs(
     assert unconfigured["evidence"][0]["configured"] is False
 
     summary = Path("analysis/layer/summary.md").read_text(encoding="utf-8")
-    assert "# M2.5 Layer Assessment" in summary
+    assert "# M2.2 Layer Assessment" in summary
     assert "999999" in summary
     assert "未配置 Workspace" in summary
     assert "## 跨层命名提示" in summary
@@ -563,7 +563,7 @@ def test_analyze_produces_layer_outputs(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze 一并产出 analysis/layer（M2.5 步骤已接入流水线）。"""
+    """analyze 一并产出 analysis/layer（M2.2 步骤已接入流水线）。"""
 
     rules_path = _write_rules(tmp_path / "config" / "layer-rules.yaml")
     monkeypatch.setenv("LAYER_RULES_PATH", str(rules_path))
@@ -589,9 +589,9 @@ def test_analyze_produces_layer_outputs(
 
     assert Path("analysis/layer/summary.md").exists()
 
-    # 总 Summary 包含 M2.5 一节。
+    # 总 Summary 包含 M2.2 一节。
     summary = Path("analysis/Summary.md").read_text(encoding="utf-8")
-    assert "Layer Assessment（M2.5）" in summary
+    assert "Layer Assessment（M2.2）" in summary
     assert "| MATCH | 1 |" in summary
     assert "| UNKNOWN | 0 |" in summary
     assert "| 参与评估的表 | 1 |" in summary

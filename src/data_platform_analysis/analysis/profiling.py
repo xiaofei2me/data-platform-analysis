@@ -1,4 +1,4 @@
-"""M2.4 Data Profiling：基于 Snapshot 元数据的 Metadata Profiling。
+"""M2.5 Data Profiling：基于 Snapshot 元数据的 Metadata Profiling。
 
 当前 Snapshot 只有表结构与文件元数据，没有行级数据样本，因此：
 
@@ -69,7 +69,7 @@ class MetadataProfiler:
         )
 
         logger.info(
-            "M2.4 Profiling 完成：table=%s，column=%s（metadata_only）",
+            "M2.5 Profiling 完成：table=%s，column=%s（metadata_only）",
             len(tables),
             len(columns),
         )

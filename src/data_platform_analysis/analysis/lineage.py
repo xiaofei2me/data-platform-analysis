@@ -1,4 +1,4 @@
-"""M2.3 Table Lineage：把表引用汇总成去重的表级血缘。
+"""M2.4 Table Lineage：把表引用汇总成去重的表级血缘。
 
 输出：
 
@@ -13,8 +13,8 @@
 2. source_table / target_table 保留 SQL 原始写法；
    source_key / target_key 是补齐 Project 后的规范标识。
 3. 只描述数据流向，不推断业务含义。
-4. source / target_layer_candidate 取自 M2.5 Layer Assessment 的
-   candidate_layer（唯一层级判定），M2.3 不自行判定层级。
+4. source / target_layer_candidate 取自 M2.2 Layer Assessment 的
+   candidate_layer（唯一层级判定），M2.4 不自行判定层级。
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class LineageResult:
-    """M2.3 的血缘结果。"""
+    """M2.4 的血缘结果。"""
 
     edges: list[LineageEdge] = field(default_factory=list)
     candidates: list[CoreTableCandidate] = field(default_factory=list)
@@ -84,7 +84,7 @@ class LineageBuilder:
         self.workspace_by_key: dict[str, int] = {}
         self.key_by_casefold: dict[str, str] = {}
 
-        # 层级来自 M2.5 Layer Assessment 的 candidate_layer（唯一层级判定）。
+        # 层级来自 M2.2 Layer Assessment 的 candidate_layer（唯一层级判定）。
         for item in layer_assessments:
             self.layer_by_key[item.table_identifier] = item.candidate_layer
 
@@ -160,7 +160,7 @@ class LineageBuilder:
         candidates = self._build_candidates(sorted_edges)
 
         logger.info(
-            "M2.3 Lineage 完成：edge=%s，cross_workspace=%s，candidate=%s",
+            "M2.4 Lineage 完成：edge=%s，cross_workspace=%s，candidate=%s",
             len(sorted_edges),
             len([edge for edge in sorted_edges if self._is_cross_workspace(edge)]),
             len(candidates),
@@ -197,7 +197,7 @@ class LineageBuilder:
         return self.project_workspace_ids.get(project.casefold())
 
     def _layer_of(self, table_key: str) -> str | None:
-        """按规范标识反查层级候选（来自 M2.5 candidate_layer）。"""
+        """按规范标识反查层级候选（来自 M2.2 candidate_layer）。"""
 
         layer = self.layer_by_key.get(table_key)
 

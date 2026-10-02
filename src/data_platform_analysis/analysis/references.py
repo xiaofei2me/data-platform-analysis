@@ -1,4 +1,4 @@
-"""M2.3 Table Reference：从 SQL AST 提取 source / target 表引用。
+"""M2.4 Table Reference：从 SQL AST 提取 source / target 表引用。
 
 提取规则：
 

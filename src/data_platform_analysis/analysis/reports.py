@@ -67,7 +67,7 @@ def render_lineage_summary(lineage: LineageResult) -> str:
     cross = lineage.cross_workspace_edges
 
     lines = [
-        "# M2.3 Table Lineage",
+        "# M2.4 Table Lineage",
         "",
         f"- 血缘边（去重后）：{len(lineage.edges)}",
         f"- 跨 Workspace 血缘：{len(cross)}",
@@ -113,7 +113,7 @@ def render_profiling_summary(
     commented = sum(1 for item in columns if item.comment)
 
     lines = [
-        "# M2.4 Data Profiling",
+        "# M2.5 Data Profiling",
         "",
         f"- 表级 Profiling：{len(tables)}",
         f"- 字段级 Profiling：{len(columns)}",
@@ -138,7 +138,7 @@ def render_layer_summary(
 ) -> str:
     """生成 analysis/layer/summary.md。
 
-    只做纯渲染：status / candidate_layer / evidence 都来自 M2.5 评估结果，
+    只做纯渲染：status / candidate_layer / evidence 都来自 M2.2 评估结果，
     这里不产生新的判断，也不把 UNKNOWN 写成违规。
     """
 
@@ -217,7 +217,7 @@ def render_layer_summary(
     )
 
     lines = [
-        "# M2.5 Layer Assessment",
+        "# M2.2 Layer Assessment",
         "",
         f"- 参与分析的表：{len(assessments)}",
         f"- 输入：`{inventory_path}`",
@@ -507,7 +507,7 @@ def render_analysis_summary(context: SummaryContext) -> str:
         "",
         "全部为 metadata_only，未伪造任何行级统计量。",
         "",
-        "## 10. Layer Assessment（M2.5）",
+        "## 10. Layer Assessment（M2.2）",
         "",
         _table(
             ["指标", "数值"],
@@ -566,7 +566,7 @@ LIMITATION_BULLETS: tuple[str, ...] = (
     "- Analysis 输入只包含 NodeId 有效的 File；NodeId 缺失的 File 不产生 SQL Evidence。",
     "- 表级血缘来自 SQL 文本解析，未做 Column Lineage。",
     "- 层级、核心表均为 Candidate，不构成业务结论。",
-    "- M2.5 的 UNKNOWN 只表示现有证据不足以判定 CDM 子层，不等于命名违规。",
+    "- M2.2 的 UNKNOWN 只表示现有证据不足以判定 CDM 子层，不等于命名违规。",
     "- 没有行级数据样本，因此不做 null / distinct / 唯一性判断。",
     "- 调度依赖（周期任务上下游）不在本阶段范围内。",
     "- 语句级解析失败的表引用无法提取，对应语句记录在 parse-errors.json。",

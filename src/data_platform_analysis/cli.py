@@ -166,10 +166,10 @@ def build_parser() -> argparse.ArgumentParser:
     # Analyze Layer
     # ========================================================
 
-    # 基于已有 Inventory 输出执行 M2.5，不重跑 SQL / Lineage / Profiling。
+    # 基于已有 Inventory 输出执行 M2.2，不重跑 SQL / Lineage / Profiling。
     subparsers.add_parser(
         "analyze-layer",
-        help="基于已有 analysis/inventory 输出执行 M2.5 Layer Assessment。",
+        help="基于已有 analysis/inventory 输出执行 M2.2 Layer Assessment。",
     )
 
     # ========================================================
@@ -320,7 +320,7 @@ def run_analyze(
 
 
 def run_analyze_layer() -> None:
-    """基于已有 Inventory 输出执行 M2.5 Layer Assessment。"""
+    """基于已有 Inventory 输出执行 M2.2 Layer Assessment。"""
 
     try:
         result = run_layer_assessment(
