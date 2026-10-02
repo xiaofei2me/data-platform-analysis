@@ -1,0 +1,62 @@
+# M3.3 Business Process Candidate Analysis 过程信号规则配置。
+#
+# 用途：
+#   本文件提供「Process Signal」匹配规则，供 M3.3 从 inventory/columns.json 的
+#   字段名中识别 transaction_id / transaction_measure / event_time / status 四类
+#   列级信号，并据此与其他证据一起形成 Business Process Candidate。
+#
+# 边界（重要）：
+# 1. 这些规则是「过程信号识别规则」，不是企业业务过程标准；
+#    命中规则只说明字段具备某类过程信号，不等于识别出一个业务过程。
+# 2. 本文件不得出现业务过程命名（例如 xxx_process），
+#    过程命名属于后续人工确认环节，机器阶段只输出 process_key。
+# 3. 匹配一律忽略大小写，按分词后的 token 连续子序列匹配：
+#    列名 order_date 分词为 [order, date]，规则 date 命中；
+#    列名 runtime 分词为 [runtime]，规则 time 不命中。
+# 4. 分词复用 business_understanding.tokenize_identifier（支持 camelCase 与下划线）。
+#
+# 约束：
+# - 只被 analyze-business-processes 读取；M2 / M3 / M3.1 / M3.2 不读取本文件。
+# - 配置缺失或非法时 analyze-business-processes 直接报错退出，不回退默认值。
+# - 同一 signal_type 内的规则重复、或不同 signal_type 之间的规则重复，视为配置错误。
+
+version: "1.0"
+
+# ============================================================
+# 列级过程信号规则
+# ============================================================
+
+# 事务标识：指向「一条业务事务」的标识字段。
+transaction_identifiers:
+  - order_id
+  - order_no
+  - transaction_id
+  - sales_id
+
+# 事务度量：可聚合的业务度量字段（金额、数量、价格等）。
+transaction_measures:
+  - amount
+  - quantity
+  - price
+  - cost
+  - revenue
+  - discount
+
+# 事件时间：业务事件发生 / 更新的时间字段。
+event_time:
+  - date
+  - time
+  - created_at
+  - updated_at
+
+# 状态：业务对象或事务的生命周期状态字段。
+status:
+  - status
+  - state
+
+# ============================================================
+# 表级信号说明（无需配置）
+# ============================================================
+# multi_object：同一张表同时参与 ≥2 个 Business Object Candidate。
+# lifecycle：同一张表同时出现 status 与 event_time 两类列级信号。
+# 两者由 analyze-business-processes 直接推导，不在本文件配置。

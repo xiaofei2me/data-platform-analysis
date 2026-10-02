@@ -201,6 +201,28 @@ class Settings(BaseSettings):
     #   保持原路径不变。
     layer_rules_path: Path = Path("config/layer-rules.yaml")
 
+    # M3 Business Rules 词典配置文件。
+    #
+    # 只读配置，Analysis 不会修改该文件。
+    #
+    # 相对路径：
+    #   相对于项目根目录解析。
+    #
+    # 绝对路径：
+    #   保持原路径不变。
+    business_rules_path: Path = Path("config/business-rules.yaml")
+
+    # M3.3 Process Signal 规则配置文件。
+    #
+    # 只读配置，Analysis 不会修改该文件。
+    #
+    # 相对路径：
+    #   相对于项目根目录解析。
+    #
+    # 绝对路径：
+    #   保持原路径不变。
+    process_rules_path: Path = Path("config/process-rules.yaml")
+
     # 是否覆盖已经存在的文件。
     export_overwrite: bool = True
 
@@ -341,6 +363,8 @@ class Settings(BaseSettings):
         self.source_dir = resolve_project_path(self.source_dir)
         self.analysis_dir = resolve_project_path(self.analysis_dir)
         self.layer_rules_path = resolve_project_path(self.layer_rules_path)
+        self.business_rules_path = resolve_project_path(self.business_rules_path)
+        self.process_rules_path = resolve_project_path(self.process_rules_path)
 
         return self
 

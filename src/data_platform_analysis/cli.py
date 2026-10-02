@@ -10,6 +10,26 @@ from rich.console import Console
 from rich.table import Table
 
 from .analysis import AnalysisPipeline
+from .analysis.business_grain import (
+    BusinessGrainError,
+    run_business_grain_analysis,
+)
+from .analysis.business_objects import (
+    BusinessObjectsError,
+    run_business_object_analysis,
+)
+from .analysis.business_processes import (
+    BusinessProcessesError,
+    run_business_process_analysis,
+)
+from .analysis.business_quality import (
+    BusinessQualityError,
+    run_business_quality_assessment,
+)
+from .analysis.business_understanding import (
+    BusinessUnderstandingError,
+    run_business_understanding,
+)
 from .analysis.errors import AnalysisFatalError
 from .analysis.layer_assessment import LayerAssessmentError, run_layer_assessment
 from .config import settings
@@ -173,6 +193,66 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # ========================================================
+    # Analyze Business
+    # ========================================================
+
+    # 基于已有 M2 产物执行 M3 Business Understanding，只产出候选与证据。
+    subparsers.add_parser(
+        "analyze-business",
+        help="基于已有 M2 产物执行 M3 Business Understanding（候选 + 证据）。",
+    )
+
+    # ========================================================
+    # Analyze Business Quality
+    # ========================================================
+
+    # 基于已有 M2 / M3 产物执行 M3.1 质量评估，只评估不识别。
+    subparsers.add_parser(
+        "analyze-business-quality",
+        help="基于已有 M2 / M3 产物执行 M3.1 业务理解质量评估（只评估，不识别）。",
+    )
+
+    # ========================================================
+    # Analyze Business Objects
+    # ========================================================
+
+    # 基于已有 M2 / M3 / M3.1 产物执行 M3.2 Object & Relationship 证据结构。
+    subparsers.add_parser(
+        "analyze-business-objects",
+        help=(
+            "基于已有 M2 / M3 / M3.1 产物执行 M3.2 Business Object & "
+            "Relationship Analysis（只建证据结构，不重新分类）。"
+        ),
+    )
+
+    # ========================================================
+    # Analyze Business Processes
+    # ========================================================
+
+    # 基于已有 M2 / M3 / M3.1 / M3.2 产物执行 M3.3 Process Candidate 分析。
+    subparsers.add_parser(
+        "analyze-business-processes",
+        help=(
+            "基于已有 M2 / M3 / M3.1 / M3.2 产物执行 M3.3 Business Process "
+            "Candidate Analysis（只产出 process candidate 与信号，不命名、不判 Grain）。"
+        ),
+    )
+
+    # ========================================================
+    # Analyze Business Grain
+    # ========================================================
+
+    # 基于已有 M2 / M3 / M3.1 / M3.2 / M3.3 产物执行 M3.4 Grain Candidate 分析。
+    subparsers.add_parser(
+        "analyze-business-grain",
+        help=(
+            "基于已有 M2 / M3 / M3.1 / M3.2 / M3.3 产物执行 M3.4 Grain "
+            "Candidate Analysis（只产出 grain candidate 与信号，"
+            "不产出 confirmed grain，不命名事实表 / 维度表）。"
+        ),
+    )
+
+    # ========================================================
     # Config
     # ========================================================
 
@@ -207,6 +287,7 @@ def print_config() -> None:
         "SOURCE_DIR": str(settings.source_dir),
         "ANALYSIS_DIR": str(settings.analysis_dir),
         "LAYER_RULES_PATH": str(settings.layer_rules_path),
+        "BUSINESS_RULES_PATH": str(settings.business_rules_path),
         "EXPORT_OVERWRITE": str(settings.export_overwrite),
     }
 
@@ -344,6 +425,144 @@ def run_analyze_layer() -> None:
     console.print(f"[green]产物：[/green]{settings.analysis_dir / 'layer'}")
 
 
+def run_analyze_business() -> None:
+    """基于已有 M2 产物执行 M3 Business Understanding。"""
+
+    try:
+        result = run_business_understanding(
+            analysis_dir=settings.analysis_dir,
+            rules_path=settings.business_rules_path,
+            output_dir=settings.analysis_dir / "business",
+        )
+
+    except BusinessUnderstandingError as exc:
+        logger.error("Business Understanding 无法继续：%s", exc)
+
+        sys.exit(1)
+
+    console.print(
+        "[green]Business Understanding 完成：[/green]"
+        f"table={len(result.tables)}，term={len(result.terms)}，"
+        f"domain={sum(1 for item in result.domains if item.table_count)}，"
+        f"object={sum(1 for item in result.objects if item.table_count)}，"
+        f"unknown={result.unknown_table_count}，ambiguous={result.ambiguous_table_count}"
+    )
+    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'business'}")
+
+
+def run_analyze_business_quality() -> None:
+    """基于已有 M2 / M3 产物执行 M3.1 Business Quality Assessment。"""
+
+    try:
+        result = run_business_quality_assessment(
+            analysis_dir=settings.analysis_dir,
+            output_dir=settings.analysis_dir / "business",
+        )
+
+    except BusinessQualityError as exc:
+        logger.error("Business Quality Assessment 无法继续：%s", exc)
+
+        sys.exit(1)
+
+    summary = result.summary
+
+    console.print(
+        "[green]Business Quality Assessment 完成：[/green]"
+        f"table={summary.get('table_count')}，"
+        f"unknown={summary.get('unknown_count')}，"
+        f"ambiguous={summary.get('ambiguous_count')}，"
+        f"core_unknown={summary.get('core_unknown_count')}，"
+        f"core_ambiguous={summary.get('core_ambiguous_count')}"
+    )
+    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'business'}")
+
+
+def run_analyze_business_objects() -> None:
+    """基于已有 M2 / M3 / M3.1 产物执行 M3.2 Business Object Analysis。"""
+
+    try:
+        result = run_business_object_analysis(
+            analysis_dir=settings.analysis_dir,
+            output_dir=settings.analysis_dir / "business",
+        )
+
+    except BusinessObjectsError as exc:
+        logger.error("Business Object Analysis 无法继续：%s", exc)
+
+        sys.exit(1)
+
+    status_text = "，".join(
+        f"{key}={value}" for key, value in result.association_status_counts.items()
+    )
+
+    console.print(
+        "[green]Business Object Analysis 完成：[/green]"
+        f"object={result.object_count}，association={result.association_count}"
+        f"（{status_text}），"
+        f"relationship={result.relationship_count}"
+        f"（core={result.core_relationship_count}）"
+    )
+    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'business'}")
+
+
+def run_analyze_business_processes() -> None:
+    """基于已有 M2 / M3 / M3.1 / M3.2 产物执行 M3.3 Process Candidate Analysis。"""
+
+    try:
+        result = run_business_process_analysis(
+            analysis_dir=settings.analysis_dir,
+            output_dir=settings.analysis_dir / "business",
+            rules_path=settings.process_rules_path,
+        )
+
+    except BusinessProcessesError as exc:
+        logger.error("Business Process Candidate Analysis 无法继续：%s", exc)
+
+        sys.exit(1)
+
+    strength_text = "，".join(
+        f"{key}={value}" for key, value in result.process_strength_counts.items()
+    )
+
+    console.print(
+        "[green]Business Process Candidate Analysis 完成：[/green]"
+        f"signal={result.signal_count}，"
+        f"process candidate={result.process_count}（{strength_text}），"
+        f"process table={result.process_table_count}"
+    )
+    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'business'}")
+
+
+def run_analyze_business_grain() -> None:
+    """基于已有 M2 / M3 / M3.1 / M3.2 / M3.3 产物执行 M3.4 Grain Candidate Analysis。"""
+
+    try:
+        result = run_business_grain_analysis(
+            analysis_dir=settings.analysis_dir,
+            output_dir=settings.analysis_dir / "business",
+        )
+
+    except BusinessGrainError as exc:
+        logger.error("Grain Candidate Analysis 无法继续：%s", exc)
+
+        sys.exit(1)
+
+    pattern_text = "，".join(
+        f"{key}={value}" for key, value in result.pattern_counts.items()
+    )
+    status_text = "，".join(
+        f"{key}={value}" for key, value in result.status_counts.items()
+    )
+
+    console.print(
+        "[green]Grain Candidate Analysis 完成：[/green]"
+        f"signal={result.signal_count}，"
+        f"grain candidate={result.candidate_count}（{pattern_text}；{status_text}），"
+        f"grain table={result.grain_table_count}"
+    )
+    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'business'}")
+
+
 def main() -> None:
     """CLI 程序入口。"""
 
@@ -391,6 +610,26 @@ def main() -> None:
 
         if args.command == "analyze-layer":
             run_analyze_layer()
+            return
+
+        if args.command == "analyze-business":
+            run_analyze_business()
+            return
+
+        if args.command == "analyze-business-quality":
+            run_analyze_business_quality()
+            return
+
+        if args.command == "analyze-business-objects":
+            run_analyze_business_objects()
+            return
+
+        if args.command == "analyze-business-processes":
+            run_analyze_business_processes()
+            return
+
+        if args.command == "analyze-business-grain":
+            run_analyze_business_grain()
             return
 
         parser.error(f"未知命令：{args.command}")
