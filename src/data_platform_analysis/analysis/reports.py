@@ -8,13 +8,19 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .inventory import Inventory
 from .lineage import LineageResult
 from .models import (
+    EVIDENCE_TYPE_WORKSPACE,
     EXTRACTION_METHOD_AST,
     EXTRACTION_METHOD_FALLBACK,
+    LAYER_STATUS_CONFLICT,
+    LAYER_STATUS_MATCH,
+    LAYER_STATUS_UNKNOWN,
     ColumnProfile,
+    LayerAssessment,
     StatementRecord,
     TableProfile,
     TableReference,
@@ -49,22 +55,6 @@ def render_inventory_summary(inventory: Inventory) -> str:
                 for item in inventory.workspaces
             ],
         ),
-        "",
-        "## 层级候选",
-        "",
-        _table(
-            ["layer_candidate", "table_count"],
-            [
-                [layer, count]
-                for layer, count in sorted(
-                    Counter(
-                        table.layer_candidate or "(未识别)" for table in inventory.tables
-                    ).items()
-                )
-            ],
-        ),
-        "",
-        "层级依据 table_name_prefix 推断，属于候选，不是分层结论。",
         "",
     ]
 
@@ -139,18 +129,215 @@ def render_profiling_summary(
     return "\n".join(lines)
 
 
+def render_layer_summary(
+    assessments: list[LayerAssessment],
+    *,
+    rules_path: str | Path,
+    rules_version: str,
+    inventory_path: str | Path,
+) -> str:
+    """生成 analysis/layer/summary.md。
+
+    只做纯渲染：status / candidate_layer / evidence 都来自 M2.5 评估结果，
+    这里不产生新的判断，也不把 UNKNOWN 写成违规。
+    """
+
+    unconfigured_label = "(未配置)"
+    undetermined_label = "(未确定)"
+    conflict_limit = 20
+    unknown_limit = 20
+
+    status_counts = Counter(item.status for item in assessments)
+    candidate_counts = Counter(
+        item.candidate_layer or undetermined_label for item in assessments
+    )
+    workspace_counts = Counter(
+        (item.workspace_id, item.workspace_name, item.workspace_layer or unconfigured_label)
+        for item in assessments
+    )
+    conflicts = [item for item in assessments if item.status == LAYER_STATUS_CONFLICT]
+    unknowns = [item for item in assessments if item.status == LAYER_STATUS_UNKNOWN]
+    cross_layer_items = [item for item in assessments if item.cross_layer_hits]
+
+    ordered_status = [
+        status
+        for status in (LAYER_STATUS_MATCH, LAYER_STATUS_UNKNOWN, LAYER_STATUS_CONFLICT)
+        if status in status_counts
+    ]
+
+    conflict_rows: list[list[object]] = [
+        [
+            item.table_identifier,
+            ", ".join(
+                dict.fromkeys(
+                    str(hit.get("layer"))
+                    for hit in item.evidence
+                    if hit.get("type") != EVIDENCE_TYPE_WORKSPACE
+                )
+            ),
+        ]
+        for item in conflicts
+    ]
+
+    conflict_note = (
+        f"只列出前 {conflict_limit} 条，"
+        "完整明细见 `analysis/layer/assessments.json`。"
+        if len(conflict_rows) > conflict_limit
+        else "完整明细见 `analysis/layer/assessments.json`。"
+    )
+
+    unknown_rows: list[list[object]] = [
+        [item.table_identifier, item.workspace_id, item.workspace_name]
+        for item in unknowns
+    ]
+
+    unknown_note = (
+        f"只列出前 {unknown_limit} 条，"
+        "完整明细见 `analysis/layer/assessments.json`。"
+        if len(unknown_rows) > unknown_limit
+        else "完整明细见 `analysis/layer/assessments.json`。"
+    )
+
+    cross_rows: list[list[object]] = [
+        [
+            item.table_identifier,
+            item.workspace_layer,
+            ", ".join(
+                dict.fromkeys(str(hit.get("layer")) for hit in item.cross_layer_hits)
+            ),
+        ]
+        for item in cross_layer_items
+    ]
+
+    cross_note = (
+        f"只列出前 {conflict_limit} 条，"
+        "完整明细见 `analysis/layer/assessments.json`。"
+        if len(cross_rows) > conflict_limit
+        else "完整明细见 `analysis/layer/assessments.json`。"
+    )
+
+    lines = [
+        "# M2.5 Layer Assessment",
+        "",
+        f"- 参与分析的表：{len(assessments)}",
+        f"- 输入：`{inventory_path}`",
+        f"- 规则配置：`{rules_path}`（version {rules_version}）",
+        "",
+        "## Workspace Layer",
+        "",
+        _table(
+            ["workspace_id", "workspace_name", "workspace_layer", "table_count"],
+            [
+                [workspace_id, workspace_name, layer, count]
+                for (workspace_id, workspace_name, layer), count in sorted(
+                    workspace_counts.items()
+                )
+            ],
+        ),
+        "",
+        "workspace_layer 由 workspace_id 查 `workspace_layers` 得到，是结构事实，不是候选。",
+        "",
+        "## 状态分布",
+        "",
+        _table(
+            ["status", "table_count"],
+            [[status, status_counts[status]] for status in ordered_status],
+        ),
+        "",
+        "## candidate_layer 分布",
+        "",
+        _table(
+            ["candidate_layer", "table_count"],
+            [
+                [candidate, count]
+                for candidate, count in sorted(candidate_counts.items())
+            ],
+        ),
+        "",
+        "## 未配置 Workspace",
+        "",
+        _table(
+            ["workspace_id", "workspace_name", "table_count"],
+            [
+                [workspace_id, workspace_name, count]
+                for (workspace_id, workspace_name, layer), count in sorted(
+                    workspace_counts.items()
+                )
+                if layer == unconfigured_label
+            ],
+        ),
+        "",
+        "未配置的 workspace_id 不做任何推断（不按 workspace_name 猜测），一律记为 UNKNOWN。",
+        "",
+        "## UNKNOWN 明细",
+        "",
+        _table(
+            ["table_identifier", "workspace_id", "workspace_name"],
+            unknown_rows,
+            limit=unknown_limit,
+        ),
+        "",
+        unknown_note,
+        "",
+        "## 跨层命名提示",
+        "",
+        _table(
+            ["table_identifier", "workspace_layer", "命中其他层"],
+            cross_rows,
+            limit=conflict_limit,
+        ),
+        "",
+        cross_note,
+        "",
+        "candidate_layer 仍按 workspace_layer 判定，这里只提示表名带其他层命名前缀。",
+        "",
+        "## CONFLICT 明细",
+        "",
+        _table(
+            ["table_identifier", "命中的子层"],
+            conflict_rows,
+            limit=conflict_limit,
+        ),
+        "",
+        conflict_note,
+        "",
+        "## 说明",
+        "",
+        "- workspace_layer 是配置事实；candidate_layer 是子层候选，两者都不是合规结论。",
+        "- CDM 是 DIM / DWD / DWS 的公共层总称，与子层不是同一级 Layer。",
+        "- UNKNOWN 只表示现有 Evidence 不足以判断 CDM 子层，不代表不符合命名规范；",
+        "  是否构成命名规范问题由后续 Convention Assessment 判定。",
+        "- CONFLICT 表示同时命中多个不同子层，candidate_layer 留空，不擅自选择。",
+        "- 只有同一张表命中分属不同子层的规则时才判定 CONFLICT；",
+        "  单条 prefix 规则或多个同层 prefix 不会产生 CONFLICT。",
+        "- ODS / ADS 的 candidate_layer 直接等于 workspace_layer；其他层的",
+        "  prefix / suffix 命中只记入 evidence（跨层命名提示），不改变 candidate。",
+        "- 只读 Inventory 输出与规则配置，不读取 SQL / Lineage / Profiling，",
+        "  也不修改 Inventory 与规则配置；Inventory 更新后需重新执行本阶段。",
+        "",
+    ]
+
+    return "\n".join(lines)
+
+
 def render_analysis_summary(context: SummaryContext) -> str:
     """生成 analysis/Summary.md。"""
 
     inventory = context.inventory
     status_counts = Counter(item.parse_status for item in context.statements)
     method_counts = Counter(item.extraction_method for item in context.statements)
-    layer_counts = Counter(table.layer_candidate or "(未识别)" for table in inventory.tables)
     error_counts = Counter(
         (error.get("stage"), error.get("error_type")) for error in context.errors
     )
     eligible_files = [item for item in inventory.files if is_analysis_eligible(item)]
     excluded_files = [item for item in inventory.files if not is_analysis_eligible(item)]
+    layer_status_counts = Counter(item.status for item in context.layer_assessments)
+    layer_candidate_counts = Counter(
+        item.candidate_layer or "(未确定)" for item in context.layer_assessments
+    )
+    unconfigured_table_count = sum(
+        1 for item in context.layer_assessments if item.workspace_layer is None
+    )
 
     lines = [
         "# Phase 2 Analysis Summary",
@@ -236,16 +423,7 @@ def render_analysis_summary(context: SummaryContext) -> str:
             ],
         ),
         "",
-        "## 5. 层级候选（Layer Candidate）",
-        "",
-        _table(
-            ["layer_candidate", "table_count"],
-            [[layer, count] for layer, count in sorted(layer_counts.items())],
-        ),
-        "",
-        "依据 table_name_prefix 推断，只能写作 layer_candidate。",
-        "",
-        "## 6. SQL Analysis",
+        "## 5. SQL Analysis",
         "",
         _table(
             ["parse_status", "statement_count"],
@@ -269,7 +447,7 @@ def render_analysis_summary(context: SummaryContext) -> str:
         "Parser Compatibility Normalization 只在 syntax context 替换全角括号，"
         "string literal 与 comment 原样保留；statement.sql 仍是 raw SQL。",
         "",
-        "## 7. Table References",
+        "## 6. Table References",
         "",
         _table(
             ["指标", "数值"],
@@ -281,7 +459,7 @@ def render_analysis_summary(context: SummaryContext) -> str:
             ],
         ),
         "",
-        "## 8. Table Lineage",
+        "## 7. Table Lineage",
         "",
         _table(
             ["指标", "数值"],
@@ -295,7 +473,7 @@ def render_analysis_summary(context: SummaryContext) -> str:
             ],
         ),
         "",
-        "## 9. Core Table Candidates",
+        "## 8. Core Table Candidates",
         "",
         _table(
             ["table_key", "downstream", "upstream", "evidence"],
@@ -313,7 +491,7 @@ def render_analysis_summary(context: SummaryContext) -> str:
         "排序依据 downstream_count 降序，属于候选，不代表业务优先级。",
         "完整列表见 `analysis/lineage/core-table-candidates.json`。",
         "",
-        "## 10. Data Profiling",
+        "## 9. Data Profiling",
         "",
         _table(
             ["指标", "数值"],
@@ -328,6 +506,39 @@ def render_analysis_summary(context: SummaryContext) -> str:
         ),
         "",
         "全部为 metadata_only，未伪造任何行级统计量。",
+        "",
+        "## 10. Layer Assessment（M2.5）",
+        "",
+        _table(
+            ["指标", "数值"],
+            [
+                ["参与评估的表", len(context.layer_assessments)],
+                ["MATCH", layer_status_counts.get(LAYER_STATUS_MATCH, 0)],
+                ["UNKNOWN", layer_status_counts.get(LAYER_STATUS_UNKNOWN, 0)],
+                ["CONFLICT", layer_status_counts.get(LAYER_STATUS_CONFLICT, 0)],
+                ["未配置 workspace 的表", unconfigured_table_count],
+                [
+                    "跨层命名提示",
+                    sum(
+                        1
+                        for item in context.layer_assessments
+                        if item.cross_layer_hits
+                    ),
+                ],
+            ],
+        ),
+        "",
+        _table(
+            ["candidate_layer", "table_count"],
+            [
+                [layer, count]
+                for layer, count in sorted(layer_candidate_counts.items())
+            ],
+        ),
+        "",
+        "workspace_layer 是配置事实，candidate_layer 是子层候选；UNKNOWN 只表示证据不足，",
+        "不代表命名违规。跨层命名提示只提示表名带其他层前缀，不改变 candidate。",
+        "完整明细见 `analysis/layer/summary.md`。",
         "",
         "## 11. 错误摘要",
         "",
@@ -355,9 +566,9 @@ LIMITATION_BULLETS: tuple[str, ...] = (
     "- Analysis 输入只包含 NodeId 有效的 File；NodeId 缺失的 File 不产生 SQL Evidence。",
     "- 表级血缘来自 SQL 文本解析，未做 Column Lineage。",
     "- 层级、核心表均为 Candidate，不构成业务结论。",
+    "- M2.5 的 UNKNOWN 只表示现有证据不足以判定 CDM 子层，不等于命名违规。",
     "- 没有行级数据样本，因此不做 null / distinct / 唯一性判断。",
     "- 调度依赖（周期任务上下游）不在本阶段范围内。",
-    "- 表名前缀未命中的表不给出 layer_candidate。",
     "- 语句级解析失败的表引用无法提取，对应语句记录在 parse-errors.json。",
 )
 
@@ -373,6 +584,7 @@ class SummaryContext:
     parse_errors: list[ParseErrorRecord] = field(default_factory=list)
     table_profiles: list[TableProfile] = field(default_factory=list)
     column_profiles: list[ColumnProfile] = field(default_factory=list)
+    layer_assessments: list[LayerAssessment] = field(default_factory=list)
     errors: list[dict[str, object]] = field(default_factory=list)
 
 
@@ -401,6 +613,7 @@ __all__ = [
     "SummaryContext",
     "render_analysis_summary",
     "render_inventory_summary",
+    "render_layer_summary",
     "render_lineage_summary",
     "render_profiling_summary",
 ]

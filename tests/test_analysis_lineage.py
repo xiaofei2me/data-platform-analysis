@@ -13,11 +13,46 @@ def _read(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+RULES_TEXT = """\
+version: "1.0"
+
+workspace_layers:
+  - workspace_id: 9001
+    workspace_name: ws_a
+    layer: CDM
+
+  - workspace_id: 9002
+    workspace_name: ws_b
+    layer: ADS
+
+sub_layers:
+  CDM:
+    DWD:
+      prefixes:
+        - "dwd_"
+      suffixes: []
+    DIM:
+      prefixes:
+        - "dim_"
+      suffixes: []
+
+matching:
+  case_sensitive: false
+"""
+
+
 def test_lineage_dedup_cross_workspace_and_candidates(
     cli_env: Any,
     run_cli: Any,
+    tmp_path: Any,
+    monkeypatch: Any,
 ) -> None:
     """同一条边去重、跨 Workspace 识别、核心表按指标排序。"""
+
+    rules_path = tmp_path / "config" / "layer-rules.yaml"
+    rules_path.parent.mkdir(parents=True, exist_ok=True)
+    rules_path.write_text(RULES_TEXT, encoding="utf-8")
+    monkeypatch.setenv("LAYER_RULES_PATH", str(rules_path))
 
     write_snapshot(
         Path("source"),
@@ -84,7 +119,8 @@ def test_lineage_dedup_cross_workspace_and_candidates(
     deduped = by_target["ws_a.dwd_order"]
     assert deduped["source_key"] == "ws_a.ods_order"
     assert [item["file_id"] for item in deduped["evidence"]] == ["101", "102"]
-    assert deduped["source_layer_candidate"] == "ODS"
+    # ws_a 是 CDM：target 命中 dwd_ 规则；source 无 ods_ 规则 → UNKNOWN。
+    assert deduped["source_layer_candidate"] is None
     assert deduped["target_layer_candidate"] == "DWD"
     assert deduped["source_workspace_id"] == 9001
     assert deduped["target_workspace_id"] == 9001
@@ -93,6 +129,10 @@ def test_lineage_dedup_cross_workspace_and_candidates(
     assert cross["source_table"] == "ws_b.dim_y"
     assert cross["source_workspace_id"] == 9002
     assert cross["target_workspace_id"] == 9001
+    # 层级来自 M2.5：workspace 事实优先于表名前缀（ws_b 是 ADS，表名是 dim_）。
+    assert cross["source_layer_candidate"] == "ADS"
+    # target 不在 Inventory 中，层级无从判定。
+    assert cross["target_layer_candidate"] is None
 
     unknown = by_target["ws_a.dwd_z"]
     assert unknown["source_workspace_id"] is None
@@ -110,6 +150,7 @@ def test_lineage_dedup_cross_workspace_and_candidates(
     assert by_key["ws_a.ods_order"]["downstream_count"] == 1
     assert by_key["ws_a.dwd_order"]["upstream_count"] == 1
     assert by_key["ws_a.dwd_order"]["layer_candidate"] == "DWD"
+    assert by_key["ws_b.dim_y"]["layer_candidate"] == "ADS"
     assert by_key["other.unknown_table"]["in_inventory"] is False
     assert by_key["other.unknown_table"]["workspace_id"] is None
 

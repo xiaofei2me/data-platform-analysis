@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.9,<3.0",
     "pydantic-settings>=2.6,<3.0",
     "pyodps>=0.12,<1.0",
+    "pyyaml>=6.0,<7.0",
     "rich>=13.9,<15.0",
     "sqlglot>=25.0.0",
     "tenacity>=9.0,<10.0",
@@ -51,6 +52,9 @@ module = [
     "alibabacloud_dataworks_public20200518.*",
     "alibabacloud_tea_openapi",
     "alibabacloud_tea_openapi.*",
+    # PyYAML 未提供 py.typed，配置解析只依赖 safe_load。
+    "yaml",
+    "yaml.*",
 ]
 ignore_missing_imports = true
 

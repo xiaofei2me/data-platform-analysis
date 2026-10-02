@@ -13,11 +13,11 @@ def _read(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_inventory_lists_and_layer_candidates(
+def test_inventory_lists(
     cli_env: Any,
     run_cli: Any,
 ) -> None:
-    """清单计数、层级候选与证据字段都来自 Snapshot。"""
+    """清单计数与身份字段都来自 Snapshot，不夹带层级判定。"""
 
     write_snapshot(
         Path("source"),
@@ -92,12 +92,11 @@ def test_inventory_lists_and_layer_candidates(
 
     dwd_order = table_by_name["dwd_order"]
     assert dwd_order["table_key"] == "ws_a.dwd_order"
-    assert dwd_order["layer_candidate"] == "DWD"
-    assert dwd_order["layer_candidate_evidence"] == "table_name_prefix"
+    # 层级判定属于 M2.5，M2.1 不再产出 layer_candidate 字段。
+    assert "layer_candidate" not in dwd_order
+    assert "layer_candidate_evidence" not in dwd_order
     assert "layer" not in dwd_order
     assert not any(key.startswith("confirmed_") for key in dwd_order)
-
-    assert table_by_name["s_ods_log"]["layer_candidate"] is None
 
     columns = _read(Path("analysis/inventory/columns.json"))
     assert columns["count"] == 4

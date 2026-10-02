@@ -18,7 +18,8 @@
 1. 稳定身份：Workspace=workspace_id；File=workspace_id+file_id；
    Table=project.table（table_key），不包含 schema。
 2. index 用于导航，raw JSON 是 Source of Truth；冲突时 raw 优先。
-3. 层级只产出 layer_candidate（依据 table_name_prefix），不产出分层结论。
+3. 层级判定不在 M2.1 范围：由 M2.5 Layer Assessment 依据 workspace 事实
+   与 config/layer-rules.yaml 产出唯一层级候选（candidate_layer）。
 """
 
 from __future__ import annotations
@@ -35,13 +36,9 @@ from .models import (
     WorkspaceInventory,
     numeric_id_sort_key,
 )
-from .naming import layer_candidate, table_name_of
 from .snapshot import SnapshotReader, WorkspaceIdentity, to_int
 
 logger = logging.getLogger(__name__)
-
-LAYER_CANDIDATE_EVIDENCE = "table_name_prefix"
-"""层级候选的唯一证据类型。"""
 
 
 @dataclass
@@ -299,8 +296,6 @@ class InventoryBuilder:
                 raw_file=raw_relative,
             )
 
-            candidate = layer_candidate(table_name_of(table_key))
-
             inventory.tables.append(
                 TableInventory(
                     workspace_id=workspace_id,
@@ -333,8 +328,6 @@ class InventoryBuilder:
                     creation_time=_non_empty_str((raw or {}).get("creation_time")),
                     last_modified_time=_non_empty_str((raw or {}).get("last_modified_time")),
                     table_key=table_key,
-                    layer_candidate=candidate,
-                    layer_candidate_evidence=(LAYER_CANDIDATE_EVIDENCE if candidate else None),
                     raw_file=raw_relative,
                 )
             )

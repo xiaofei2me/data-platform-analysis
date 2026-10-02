@@ -13,6 +13,8 @@
 2. source_table / target_table 保留 SQL 原始写法；
    source_key / target_key 是补齐 Project 后的规范标识。
 3. 只描述数据流向，不推断业务含义。
+4. source / target_layer_candidate 取自 M2.5 Layer Assessment 的
+   candidate_layer（唯一层级判定），M2.3 不自行判定层级。
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from dataclasses import dataclass, field
 from .inventory import Inventory
 from .models import (
     CoreTableCandidate,
+    LayerAssessment,
     LineageEdge,
     LineageEvidence,
     TableReference,
@@ -61,6 +64,7 @@ class LineageBuilder:
         self,
         references: list[TableReference],
         inventory: Inventory,
+        layer_assessments: list[LayerAssessment],
     ) -> None:
         self.references = references
         self.inventory = inventory
@@ -80,8 +84,11 @@ class LineageBuilder:
         self.workspace_by_key: dict[str, int] = {}
         self.key_by_casefold: dict[str, str] = {}
 
+        # 层级来自 M2.5 Layer Assessment 的 candidate_layer（唯一层级判定）。
+        for item in layer_assessments:
+            self.layer_by_key[item.table_identifier] = item.candidate_layer
+
         for table in inventory.tables:
-            self.layer_by_key[table.table_key] = table.layer_candidate
             self.workspace_by_key[table.table_key] = table.workspace_id
             self.key_by_casefold.setdefault(
                 table.table_key.casefold(),
@@ -190,7 +197,7 @@ class LineageBuilder:
         return self.project_workspace_ids.get(project.casefold())
 
     def _layer_of(self, table_key: str) -> str | None:
-        """按规范标识反查层级候选。"""
+        """按规范标识反查层级候选（来自 M2.5 candidate_layer）。"""
 
         layer = self.layer_by_key.get(table_key)
 

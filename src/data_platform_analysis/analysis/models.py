@@ -1,4 +1,4 @@
-"""M2.1～M2.4 的分析记录模型。
+"""M2.1～M2.5 的分析记录模型。
 
 设计原则：
 
@@ -113,8 +113,6 @@ class TableInventory:
     creation_time: str | None
     last_modified_time: str | None
     table_key: str
-    layer_candidate: str | None = None
-    layer_candidate_evidence: str | None = None
     raw_file: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -350,6 +348,74 @@ class CoreTableCandidate:
     upstream_count: int
     downstream_count: int
     evidence_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+# ============================================================
+# M2.5 Layer Assessment
+# ============================================================
+
+LAYER_STATUS_MATCH = "MATCH"
+"""唯一确定一个子层（或 Workspace Layer 本身就是终点层）。"""
+
+LAYER_STATUS_UNKNOWN = "UNKNOWN"
+"""Evidence 不足以判断子层；不代表不符合命名规范。"""
+
+LAYER_STATUS_CONFLICT = "CONFLICT"
+"""同时命中多个不同子层，不擅自选择。"""
+
+EVIDENCE_TYPE_WORKSPACE = "workspace"
+"""来自 workspace_layers 配置的 Workspace Layer 事实。"""
+
+EVIDENCE_TYPE_PREFIX = "prefix"
+"""命中某条 prefix 规则。"""
+
+EVIDENCE_TYPE_SUFFIX = "suffix"
+"""命中某条 suffix 规则。"""
+
+
+@dataclass
+class LayerAssessment:
+    """单张表的 M2.5 Layer Assessment。
+
+    1. workspace_layer 是 Observed / Configured Fact，来自 workspace_id 查表。
+    2. candidate_layer 是唯一的层级候选：ODS / ADS 取 workspace_layer，
+       CDM 取子层规则命中，未配置或未命中为 None。
+    3. status=UNKNOWN 只表示 Evidence 不足，不产生 violation。
+    4. evidence 保留全部命中规则，供后续 Convention Assessment 复用。
+    """
+
+    workspace_id: int
+    workspace_name: str
+    workspace_layer: str | None
+    project: str
+    table_name: str
+    table_identifier: str
+
+    candidate_layer: str | None
+    status: str
+
+    evidence: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def cross_layer_hits(self) -> list[dict[str, Any]]:
+        """evidence 中与 candidate_layer 不一致的子层命中（跨层命名提示）。
+
+        只提示，不改变 candidate_layer：candidate 按 workspace 事实判定，
+        表名带其他层命名前缀（如 ODS workspace 里的 dim_ 表）在这里暴露。
+        """
+
+        if self.candidate_layer is None:
+            return []
+
+        return [
+            hit
+            for hit in self.evidence
+            if hit.get("type") != EVIDENCE_TYPE_WORKSPACE
+            and hit.get("layer") != self.candidate_layer
+        ]
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

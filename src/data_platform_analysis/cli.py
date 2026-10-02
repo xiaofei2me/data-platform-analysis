@@ -11,6 +11,7 @@ from rich.table import Table
 
 from .analysis import AnalysisPipeline
 from .analysis.errors import AnalysisFatalError
+from .analysis.layer_assessment import LayerAssessmentError, run_layer_assessment
 from .config import settings
 from .export import SnapshotExporter
 from .logging_utils import setup_logging
@@ -162,6 +163,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # ========================================================
+    # Analyze Layer
+    # ========================================================
+
+    # 基于已有 Inventory 输出执行 M2.5，不重跑 SQL / Lineage / Profiling。
+    subparsers.add_parser(
+        "analyze-layer",
+        help="基于已有 analysis/inventory 输出执行 M2.5 Layer Assessment。",
+    )
+
+    # ========================================================
     # Config
     # ========================================================
 
@@ -195,6 +206,7 @@ def print_config() -> None:
         "MAXCOMPUTE_INCLUDE_PARTITIONS": str(settings.maxcompute_include_partitions),
         "SOURCE_DIR": str(settings.source_dir),
         "ANALYSIS_DIR": str(settings.analysis_dir),
+        "LAYER_RULES_PATH": str(settings.layer_rules_path),
         "EXPORT_OVERWRITE": str(settings.export_overwrite),
     }
 
@@ -283,6 +295,7 @@ def run_analyze(
         result = AnalysisPipeline(
             source_dir=settings.source_dir,
             analysis_dir=settings.analysis_dir,
+            layer_rules_path=settings.layer_rules_path,
             workspace_id=workspace_id,
         ).run()
 
@@ -304,6 +317,31 @@ def run_analyze(
 
     if result.summary_path is not None:
         console.print(f"[green]Summary：[/green]{result.summary_path}")
+
+
+def run_analyze_layer() -> None:
+    """基于已有 Inventory 输出执行 M2.5 Layer Assessment。"""
+
+    try:
+        result = run_layer_assessment(
+            inventory_path=settings.analysis_dir / "inventory" / "tables.json",
+            rules_path=settings.layer_rules_path,
+            output_dir=settings.analysis_dir / "layer",
+        )
+
+    except LayerAssessmentError as exc:
+        logger.error("Layer Assessment 无法继续：%s", exc)
+
+        sys.exit(1)
+
+    status_text = "，".join(f"{key}={value}" for key, value in result.status_counts.items())
+
+    console.print(
+        "[green]Layer Assessment 完成：[/green]"
+        f"table={len(result.assessments)}，{status_text}，"
+        f"未配置 workspace={len(result.unconfigured_workspace_ids)}"
+    )
+    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'layer'}")
 
 
 def main() -> None:
@@ -349,6 +387,10 @@ def main() -> None:
             run_analyze(
                 workspace_id=args.workspace,
             )
+            return
+
+        if args.command == "analyze-layer":
+            run_analyze_layer()
             return
 
         parser.error(f"未知命令：{args.command}")

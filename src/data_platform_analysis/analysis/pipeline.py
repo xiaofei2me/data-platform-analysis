@@ -1,4 +1,4 @@
-"""Phase 2 Analysis 编排：M2.1 → M2.2 → M2.3 → M2.4。
+"""Phase 2 Analysis 编排：M2.1 → M2.5 → M2.2 → M2.3 → M2.4。
 
 输入：source/ Snapshot（只读）
 输出：analysis/ Evidence Chain（每次全量重写，可重复执行）
@@ -7,10 +7,12 @@
 
     1. 读取 Workspace identity（失败即 Fatal Error）
     2. M2.1 Inventory（Snapshot 全量 File，不做 NodeId 过滤）
-    3. M2.2 SQL Analysis（只接受 NodeId 有效的 File）
-    4. M2.3 Table Reference / Lineage
-    5. M2.4 Metadata Profiling
-    6. 写出 Summary 与错误账本
+    3. M2.5 Layer Assessment（依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
+       产出唯一层级判定 candidate_layer，供 Lineage 引用）
+    4. M2.2 SQL Analysis（只接受 NodeId 有效的 File）
+    5. M2.3 Table Reference / Lineage（层级标注取自 M2.5 candidate_layer）
+    6. M2.4 Metadata Profiling
+    7. 写出 Summary 与错误账本
 
 Analysis 输入范围（Analysis Scope Filter）：
 
@@ -27,12 +29,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..io_utils import ensure_dir, write_json, write_text
-from .errors import ErrorLedger
+from .errors import AnalysisFatalError, ErrorLedger
 from .inventory import Inventory, InventoryBuilder
+from .layer_assessment import (
+    LayerAssessmentError,
+    LayerAssessmentResult,
+    run_layer_assessment,
+)
 from .lineage import LineageBuilder, LineageResult
 from .models import (
     ColumnProfile,
     FileInventory,
+    LayerAssessment,
     StatementRecord,
     TableProfile,
     TableReference,
@@ -52,7 +60,7 @@ from .sql_analysis import ParseErrorRecord, SqlAnalyzer
 
 logger = logging.getLogger(__name__)
 
-PRODUCTION_DIRS: tuple[str, ...] = ("inventory", "sql", "lineage", "profiling")
+PRODUCTION_DIRS: tuple[str, ...] = ("inventory", "sql", "lineage", "profiling", "layer")
 PRODUCTION_FILES: tuple[str, ...] = ("errors.json", "Summary.md")
 
 LOG_INTERVAL = 500
@@ -85,10 +93,12 @@ class AnalysisPipeline:
         *,
         source_dir: Path,
         analysis_dir: Path,
+        layer_rules_path: Path,
         workspace_id: int | None = None,
     ) -> None:
         self.source_dir = source_dir
         self.analysis_dir = analysis_dir
+        self.layer_rules_path = layer_rules_path
         self.workspace_id = workspace_id
         self.ledger = ErrorLedger()
         self.reader = SnapshotReader(
@@ -113,6 +123,10 @@ class AnalysisPipeline:
 
         self._write_inventory(inventory)
 
+        # M2.5：只依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
+        # 先于 SQL / Lineage 执行，Lineage 的层级标注直接引用其 candidate_layer。
+        layer_result = self._run_layer_assessment()
+
         # Analysis 输入范围：只有 NodeId 有效的 File 才进入 SQL Analysis。
         eligible_files = [item for item in inventory.files if is_analysis_eligible(item)]
         excluded_file_count = len(inventory.files) - len(eligible_files)
@@ -121,7 +135,11 @@ class AnalysisPipeline:
 
         self._write_sql(statements, references, parse_errors)
 
-        lineage = LineageBuilder(references, inventory).build()
+        lineage = LineageBuilder(
+            references,
+            inventory,
+            layer_result.assessments,
+        ).build()
 
         self._write_lineage(lineage)
 
@@ -139,6 +157,7 @@ class AnalysisPipeline:
             lineage=lineage,
             table_profiles=table_profiles,
             column_profiles=column_profiles,
+            layer_assessments=layer_result.assessments,
             errors=errors,
         )
 
@@ -236,6 +255,27 @@ class AnalysisPipeline:
         )
 
         return statements, references, parse_errors
+
+    # ==========================================================
+    # M2.5 Layer Assessment
+    # ==========================================================
+
+    def _run_layer_assessment(self) -> LayerAssessmentResult:
+        """执行 M2.5 Layer Assessment，写出 analysis/layer 产物。
+
+        输入固定为刚写出的 inventory/tables.json 与 layer-rules 配置；
+        配置缺失或非法视为 Fatal Error，不静默跳过。
+        """
+
+        try:
+            return run_layer_assessment(
+                inventory_path=self.analysis_dir / "inventory" / "tables.json",
+                rules_path=self.layer_rules_path,
+                output_dir=self.analysis_dir / "layer",
+            )
+
+        except LayerAssessmentError as exc:
+            raise AnalysisFatalError(f"M2.5 Layer Assessment 无法继续：{exc}") from exc
 
     # ==========================================================
     # 产物写出
@@ -354,6 +394,7 @@ class AnalysisPipeline:
         lineage: LineageResult,
         table_profiles: list[TableProfile],
         column_profiles: list[ColumnProfile],
+        layer_assessments: list[LayerAssessment],
         errors: list[dict[str, object]],
     ) -> Path:
         """写出各阶段 Summary 与总 Summary。"""
@@ -384,6 +425,7 @@ class AnalysisPipeline:
                     parse_errors=parse_errors,
                     table_profiles=table_profiles,
                     column_profiles=column_profiles,
+                    layer_assessments=layer_assessments,
                     errors=errors,
                 )
             ),

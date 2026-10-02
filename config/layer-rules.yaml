@@ -1,0 +1,66 @@
+# M2.5 Layer Assessment 规则配置。
+#
+# 两层语义，不要混用：
+#
+# 1. workspace_layers：Workspace Layer 是当前平台的结构事实
+#    （Observed / Configured Fact），按 workspace_id 查表得到。
+# 2. sub_layers：CDM 下 DIM / DWD / DWS 的子层候选识别规则。
+#    这是「现状识别规则」，不是最终标准规范；命中与否都不构成合规结论。
+#
+# 约束：
+# - CDM 是 DIM / DWD / DWS 的公共层总称，四者不是同一级 Layer。
+# - ODS / ADS 的 candidate_layer 直接等于 workspace_layer；其他层的
+#   prefix / suffix 命中只记入 evidence（跨层命名提示），不改变 candidate。
+# - prefix / suffix 不在本文件中臆造；来源于现有代码的规则迁移。
+
+version: "1.0"
+
+# ============================================================
+# Workspace Layer（配置事实）
+# ============================================================
+workspace_layers:
+  - workspace_id: 466338
+    workspace_name: dme_ods
+    layer: ODS
+
+  - workspace_id: 466337
+    workspace_name: dme_cdm
+    layer: CDM
+
+  - workspace_id: 466339
+    workspace_name: dme_ads
+    layer: ADS
+
+# ============================================================
+# CDM 子层候选规则（现状识别规则）
+# ============================================================
+# 前缀迁移自原 analysis/naming.py 的 LAYER_PREFIXES（该常量已随
+# M2.1 layer_candidate 一并删除，本文件是唯一的层级规则来源）：
+#
+#   dwd_ → DWD、dws_ → DWS、dim_ → DIM
+#
+# ods_ / ads_ 不迁入：ODS、ADS 由 Workspace Layer 事实决定，不做表名识别。
+# suffixes 当前代码没有对应规则，保留空列表；未来按需追加。
+sub_layers:
+  CDM:
+    DIM:
+      prefixes:
+        - dim_
+      suffixes: []
+
+    DWD:
+      prefixes:
+        - dwd_
+      suffixes: []
+
+    DWS:
+      prefixes:
+        - dws_
+      suffixes: []
+
+# ============================================================
+# 匹配方式
+# ============================================================
+# false：prefix / suffix 匹配忽略大小写（evidence 中保留配置原文）。
+matching:
+  case_sensitive: false

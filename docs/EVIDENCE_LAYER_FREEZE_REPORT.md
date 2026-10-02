@@ -1,5 +1,10 @@
 # Evidence Layer 冻结报告
 
+> **解冻说明（2026-10-02）**：依据 [ADR-0003](adr/0003-layer-candidate-single-source.md)，
+> M2.1 的 `layer_candidate` 已删除、层级判定收敛到 M2.5，本次变更涉及冻结范围内的
+> `inventory.py` / `lineage.py` / `pipeline.py` 及产物 `tables.json` / `table-lineage.json` /
+> `Summary.md`。上述范围**自该 ADR 起部分解冻并重新审计**，其余冻结项维持有效。
+
 ## 1. 审计概要
 
 ### 目标

@@ -1,4 +1,4 @@
-"""表名归一化与命名候选工具。
+"""表名归一化与表标识工具。
 
 本阶段的硬性原则：
 
@@ -7,8 +7,10 @@
 因此这里只提供：
 
 1. 调度变量归一化（只作用于提取出来的表名，不改写原始 SQL）。
-2. 层级命名候选（layer_candidate）+ 证据类型（table_name_prefix）。
-3. 表标识（project.table）的补齐与拆解，用于保留跨 Project 信息。
+2. 表标识（project.table）的补齐与拆解，用于保留跨 Project 信息。
+
+层级候选（candidate_layer）由 M2.5 Layer Assessment 依据 workspace 事实
+与 config/layer-rules.yaml 产出，不在本模块范围内。
 
 禁止在这里做业务推断，例如 business_domain / grain / fact。
 """
@@ -19,18 +21,6 @@ import re
 
 # DataWorks 调度变量，例如 ${dme_cdm}、${bizdate}。
 SCHEDULER_VARIABLE_RE = re.compile(r"\$\{([^{}]*)\}")
-
-# 命名前缀 → 层级候选。
-#
-# 这里的判断依据只有 table_name_prefix，
-# 结果只能写成 layer_candidate，不能写成 layer。
-LAYER_PREFIXES: tuple[tuple[str, str], ...] = (
-    ("ods_", "ODS"),
-    ("dwd_", "DWD"),
-    ("dws_", "DWS"),
-    ("ads_", "ADS"),
-    ("dim_", "DIM"),
-)
 
 
 def normalize_scheduler_variables(text: str) -> str:
@@ -72,21 +62,6 @@ def project_of(table_ref: str) -> str | None:
         return None
 
     return parts[0]
-
-
-def layer_candidate(table_ref: str) -> str | None:
-    """根据表名前缀给出层级候选。
-
-    仅基于 table_name_prefix，属于 Candidate，不是最终分层结论。
-    """
-
-    name = table_name_of(table_ref).lower()
-
-    for prefix, layer in LAYER_PREFIXES:
-        if name.startswith(prefix):
-            return layer
-
-    return None
 
 
 def qualify_table_ref(table_ref: str, project: str | None) -> str:

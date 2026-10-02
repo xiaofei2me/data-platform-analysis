@@ -17,7 +17,7 @@
 - [x] Table 身份 = `project.table` (table_key)
 - [x] project 正确提取
 - [x] schema 字段存在但不参与 identity
-- [x] layer_candidate 依据 table_name_prefix
+- [x] 表层级判定不在 M2.1（layer_candidate 已删除，见 ADR-0003），由 M2.5 产出
 
 ### 确定性
 - [x] 连续运行两次产出完全一致

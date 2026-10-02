@@ -6,9 +6,12 @@
           ↓
     M2.1 Warehouse Inventory
           ↓
+    M2.5 Layer Assessment（只依赖 M2.1 输出与 config/layer-rules.yaml，
+                          产出唯一层级判定 candidate_layer）
+          ↓
     M2.2 SQL Analysis
           ↓
-    M2.3 Table Reference / Table Lineage
+    M2.3 Table Reference / Table Lineage（层级标注取自 M2.5 candidate_layer）
           ↓
     M2.4 Data Profiling（当前为 Metadata Profiling）
           ↓
