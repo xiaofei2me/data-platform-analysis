@@ -25,7 +25,24 @@ uv run data-platform-analysis [--log-level LEVEL] <command> [options]
 | `dataworks` | 只采集 DataWorks（File → Raw GetFile → Content → files-index） |
 | `maxcompute` | 只采集 MaxCompute（Table → Metadata → tables-index） |
 | `export` | `dataworks` + `maxcompute` 组合；全量时额外写入 `manifest.json` |
+| `summary` | 根据已有 Snapshot 重新生成 `Summary.md` |
 | `config` | 打印当前生效的非敏感配置（不含密钥），不发起任何采集 |
+
+分析命令（只读 Snapshot / 上一阶段产物，不发起任何采集）：
+
+| 命令 | 作用 |
+| --- | --- |
+| `analyze` | 基于已有 Snapshot 生成 `analysis/` Evidence Chain（M2.1–M2.5）；可选 `--workspace <id>` |
+| `analyze-layer` | 基于已有 `analysis/inventory` 执行 M2.2 Layer Assessment，不重跑 SQL / Lineage / Profiling |
+| `analyze-business` | 基于已有 M2 产物执行 M3 Business Understanding（Domain / Object 候选 + 证据） |
+| `analyze-business-quality` | 基于已有 M2 / M3 产物执行 M3.1 质量评估（只评估，不识别） |
+| `analyze-business-objects` | 基于已有 M2 / M3 / M3.1 产物执行 M3.2 Object & Relationship 证据结构 |
+| `analyze-business-processes` | 基于已有 M2 ~ M3.1 产物执行 M3.3 Process Candidate Analysis |
+| `analyze-business-grain` | 基于已有 M2 ~ M3.2 产物执行 M3.4 Grain Candidate Analysis |
+| `analyze-business-model` | 基于已有 M2 ~ M3.4 产物执行 M3.5 Fact / Dimension Candidate Analysis（candidate + 证据，不产出 DWD / DWS / Semantic Layer） |
+| `analyze-current-state-model` | 基于已有 M2 ~ M3.5 产物执行 M3.6 Current-State Model Review（只评审：当前形态分类 + 18 类 finding + 人工清单），并附带 M3.6 v2 Problem Assessment（finding → problem candidate + 13 类 taxonomy + 证据 / 影响 / 根因 + 人工清单），一次写出 9 个产物，不设计 Target DWD、不改上游产物 |
+
+分析命令共性：无参数、无专用配置，只读上游产物并写 `analysis/`；上游缺失或跨文件引用未知即退出码 1（不回退执行前置阶段）。等价入口：`uv run python -m data_platform_analysis.cli <子命令>`。
 
 `dataworks` / `maxcompute` / `export` 都接受：
 
@@ -62,6 +79,17 @@ uv run data-platform-analysis config
 
 # 根据已有 Snapshot 重新生成 Summary
 uv run data-platform-analysis summary
+
+# 分析链（按阶段，逐级只读上一阶段产物）
+uv run data-platform-analysis analyze
+uv run data-platform-analysis analyze-layer
+uv run data-platform-analysis analyze-business
+uv run data-platform-analysis analyze-business-quality
+uv run data-platform-analysis analyze-business-objects
+uv run data-platform-analysis analyze-business-processes
+uv run data-platform-analysis analyze-business-grain
+uv run data-platform-analysis analyze-business-model
+uv run data-platform-analysis analyze-current-state-model
 ```
 
 ## `--limit` 语义

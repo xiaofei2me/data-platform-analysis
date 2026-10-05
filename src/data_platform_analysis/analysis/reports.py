@@ -15,7 +15,12 @@ from typing import Any
 from .inventory import Inventory
 from .lineage import LineageResult
 from .models import (
+    AGGREGATE_ASSESSMENT_ORDER,
     BUSINESS_CONFIDENCE_ORDER,
+    CURRENT_MODEL_ROLE_ORDER,
+    CURRENT_MODEL_SHAPE_ORDER,
+    CURRENT_STATE_NOTE,
+    DIMENSION_EVIDENCE_ORDER,
     EVIDENCE_STRENGTH_MODERATE,
     EVIDENCE_STRENGTH_ORDER,
     EVIDENCE_STRENGTH_STRONG,
@@ -23,6 +28,11 @@ from .models import (
     EVIDENCE_TYPE_WORKSPACE,
     EXTRACTION_METHOD_AST,
     EXTRACTION_METHOD_FALLBACK,
+    FACT_EVIDENCE_ORDER,
+    FINDING_CANDIDATE_NOTE,
+    FINDING_TYPE_ORDER,
+    FINDING_TYPE_PRIORITY,
+    GRAIN_ASSESSMENT_ORDER,
     GRAIN_CANDIDATE_NOTE,
     GRAIN_EVIDENCE_ORDER,
     GRAIN_PATTERN_ORDER,
@@ -38,7 +48,38 @@ from .models import (
     LAYER_STATUS_CONFLICT,
     LAYER_STATUS_MATCH,
     LAYER_STATUS_UNKNOWN,
+    MODEL_ATTRIBUTE_LIMIT,
+    MODEL_CANDIDATE_NOTE,
+    MODEL_CANDIDATE_TYPE_DIMENSION,
+    MODEL_CANDIDATE_TYPE_FACT,
+    MODEL_CANDIDATE_TYPE_RELATIONSHIP,
+    MODEL_CHECKLIST_HEADERS,
+    MODEL_CHECKLIST_ROW_LIMIT,
+    MODEL_DIMENSION_UNRESOLVED_ORDER,
+    MODEL_FACT_UNRESOLVED_ORDER,
+    MODEL_PRIORITY_HINT,
+    MODEL_PRIORITY_ORDER,
+    MODEL_PRIORITY_TITLE,
+    MODEL_REL_EVIDENCE_ORDER,
+    MODEL_REL_UNRESOLVED_ORDER,
+    MODEL_REPORT_ROW_LIMIT,
+    MODEL_ROLE_STATUS_ORDER,
+    MODEL_STATUS_ORDER,
     OBJECT_STATUS_ORDER,
+    OVERLAP_CLASS_ORDER,
+    PROBLEM_CANDIDATE_NOTE,
+    PROBLEM_CHECKLIST_HEADERS,
+    PROBLEM_CHECKLIST_ROW_LIMIT,
+    PROBLEM_EVIDENCE_ORDER,
+    PROBLEM_IMPACT_ORDER,
+    PROBLEM_IMPACT_TITLE,
+    PROBLEM_ROOT_CAUSE_ORDER,
+    PROBLEM_ROOT_CAUSE_TITLE,
+    PROBLEM_STATUS_ORDER,
+    PROBLEM_SUMMARY_ROW_LIMIT,
+    PROBLEM_TYPE_ORDER,
+    PROBLEM_TYPE_PRIORITY,
+    PROBLEM_TYPE_TITLE,
     PROCESS_COLUMN_SIGNAL_ORDER,
     PROCESS_LEVEL_ORDER,
     PROCESS_REPORT_ROW_LIMIT,
@@ -54,11 +95,20 @@ from .models import (
     QUALITY_REPORT_SAMPLE_LIMIT,
     RELATIONSHIP_EVIDENCE_ORDER,
     RELATIONSHIP_TYPE_CANDIDATE,
+    REVIEW_CHECKLIST_HEADERS,
+    REVIEW_GROUP_HINT,
+    REVIEW_GROUP_ORDER,
+    REVIEW_GROUP_TITLE,
+    REVIEW_PRIORITY_ORDER,
+    REVIEW_PRIORITY_TITLE,
+    REVIEW_REPORT_ROW_LIMIT,
+    UNKNOWN_REASON_ORDER,
     BusinessTableUnderstanding,
     BusinessTerm,
     ColumnProfile,
     DomainSummary,
     LayerAssessment,
+    ModelChecklistRow,
     ObjectSummary,
     QualityChecklistRow,
     StatementRecord,
@@ -66,6 +116,7 @@ from .models import (
     TableReference,
     evidence_type_sort_key,
     is_analysis_eligible,
+    normalize_human_status,
 )
 from .sql_analysis import ParseErrorRecord
 
@@ -2326,6 +2377,1185 @@ class SummaryContext:
     errors: list[dict[str, object]] = field(default_factory=list)
 
 
+def render_model_summary(
+    *,
+    fact_candidates: Mapping[str, Any],
+    dimension_candidates: Mapping[str, Any],
+    relationships: Mapping[str, Any],
+    fact_tables: Mapping[str, Any],
+    dimension_tables: Mapping[str, Any],
+    evidence_matrix: Mapping[str, Any],
+    processes: Sequence[Mapping[str, Any]],
+    inventory_table_count: int,
+    grain_candidate_count: int,
+    priority_counts: Mapping[str, int],
+    profiling: Mapping[str, Any],
+    analysis_dir: Path | str,
+) -> str:
+    """生成 analysis/business/model-summary.md（8 节）。
+
+    只做纯渲染：所有数字都来自 M3.5 构建结果。措辞停留在
+    「fact / dimension / relationship candidate + 证据 + 未决问题」，
+    不判 confirmed 模型，不命名 Fact / Dimension 表，不产出 DWD / DWS /
+    Semantic Layer 结论。
+    """
+
+    fact_rows = list(fact_candidates.get("candidates") or [])
+    dimension_rows = list(dimension_candidates.get("candidates") or [])
+    relationship_rows = list(relationships.get("relationships") or [])
+    matrix_rows = list(evidence_matrix.get("rows") or [])
+
+    gate = fact_candidates.get("gate") or {}
+    gate_reasons = gate.get("rejected_reason_counts") or {}
+    validated_process_count = sum(
+        1 for row in processes if row.get("human_validated")
+    )
+
+    fact_status = fact_candidates.get("status_counts") or {}
+    fact_strength = fact_candidates.get("strength_counts") or {}
+    dimension_status = dimension_candidates.get("status_counts") or {}
+    dimension_strength = dimension_candidates.get("strength_counts") or {}
+    dimension_role_status = dimension_candidates.get("role_status_counts") or {}
+    relationship_status = relationships.get("status_counts") or {}
+    relationship_strength = relationships.get("strength_counts") or {}
+    pattern_counts = fact_candidates.get("pattern_counts") or {}
+    fact_role_counts = fact_tables.get("role_counts") or {}
+    dimension_role_counts = dimension_tables.get("role_counts") or {}
+
+    fact_unresolved = fact_candidates.get("unresolved_counts") or {}
+    dimension_unresolved = dimension_candidates.get("unresolved_counts") or {}
+    relationship_unresolved = relationships.get("unresolved_counts") or {}
+
+    fact_evidence_totals = {
+        source: sum(
+            int((row.get("evidence_counts") or {}).get(source) or 0)
+            for row in matrix_rows
+            if row.get("candidate_type") == MODEL_CANDIDATE_TYPE_FACT
+        )
+        for source in FACT_EVIDENCE_ORDER
+    }
+    dimension_evidence_totals = {
+        source: sum(
+            int((row.get("evidence_counts") or {}).get(source) or 0)
+            for row in matrix_rows
+            if row.get("candidate_type") == MODEL_CANDIDATE_TYPE_DIMENSION
+        )
+        for source in DIMENSION_EVIDENCE_ORDER
+    }
+
+    def status_text(counts: Mapping[str, Any], order: Sequence[str]) -> str:
+        return "，".join(
+            f"{status}={int(counts.get(status) or 0)}" for status in order
+        )
+
+    def unresolved_cell(row: Mapping[str, Any]) -> str:
+        return (
+            ", ".join(str(item) for item in row.get("unresolved_reasons") or [])
+            or "-"
+        )
+
+    def joined_cell(value: Any) -> str:
+        items = [str(item) for item in value or []]
+        return "、".join(items) if items else "-"
+
+    weak_fact = int(fact_strength.get(EVIDENCE_STRENGTH_WEAK) or 0)
+    weak_dimension = int(dimension_strength.get(EVIDENCE_STRENGTH_WEAK) or 0)
+    weak_relationship = int(relationship_strength.get(EVIDENCE_STRENGTH_WEAK) or 0)
+
+    return "\n".join(
+        [
+            "# M3.5 Fact / Dimension Candidate Analysis",
+            "",
+            "## 1. Overview",
+            "",
+            f"- Inventory 表数量：{inventory_table_count}",
+            f"- 输入 grain candidate 数量：{grain_candidate_count}",
+            f"- Process candidate 数量：{len(processes)}"
+            f"（人工已确认 {validated_process_count}）",
+            f"- Fact Gate：通过 {int(gate.get('qualified_count') or 0)}，"
+            f"未通过 {int(gate.get('rejected_count') or 0)}"
+            + (
+                "（"
+                + "，".join(
+                    f"{reason}={int(count or 0)}"
+                    for reason, count in sorted(gate_reasons.items())
+                )
+                + "）"
+                if gate_reasons
+                else ""
+            ),
+            f"- Fact candidate 数量：{fact_candidates.get('count', 0)}"
+            f"（{status_text(fact_status, MODEL_STATUS_ORDER)}）",
+            "- fact 的 grain_pattern 分布："
+            + "，".join(
+                f"{pattern}={int(pattern_counts.get(pattern) or 0)}"
+                for pattern in GRAIN_PATTERN_ORDER
+            ),
+            f"- Dimension candidate 数量：{dimension_candidates.get('count', 0)}"
+            f"（{status_text(dimension_status, MODEL_STATUS_ORDER)}；"
+            f"role：{status_text(dimension_role_status, MODEL_ROLE_STATUS_ORDER)}）",
+            f"- Fact ↔ Dimension relationship 数量："
+            f"{relationships.get('count', 0)}"
+            f"（{status_text(relationship_status, MODEL_STATUS_ORDER)}）",
+            f"- fact → table 行数：{fact_tables.get('count', 0)}"
+            f"（{status_text(fact_role_counts, GRAIN_ROLE_ORDER)}）",
+            f"- dimension → table 行数：{dimension_tables.get('count', 0)}"
+            f"（{status_text(dimension_role_counts, GRAIN_ROLE_ORDER)}）",
+            f"- evidence matrix 行数：{evidence_matrix.get('count', 0)}"
+            "（fact + dimension，关系证据见 relationship 产物）",
+            f"- 覆盖 process 数量：{fact_candidates.get('process_count', 0)}，"
+            f"覆盖表数量：{fact_candidates.get('table_count', 0)}，"
+            f"覆盖 Object 数量：{fact_candidates.get('object_count', 0)}",
+            f"- Profiling：is_candidate_key=true 的列 "
+            f"{int(profiling.get('candidate_key_count') or 0)}，"
+            f"metadata_only 列 {int(profiling.get('metadata_only_column_count') or 0)}"
+            f" / {int(profiling.get('column_count') or 0)}"
+            "（metadata-only，不伪造行级唯一性）",
+            f"- 输入：`{analysis_dir}`",
+            "",
+            "本报告只产出 **Fact / Dimension Candidate**：候选来自 M3.4 grain "
+            "candidate 与 M3.1 Object，"
+            f"status 恒为 candidate（{MODEL_CANDIDATE_NOTE}）。"
+            "机器阶段不写 confirmed，确认必须回填清单后重跑。",
+            "",
+            "## 2. Fact Candidates",
+            "",
+            "- Fact Gate 规则：transaction / event / snapshot 直接通过；"
+            "periodic / aggregation / unknown 必须有 measure 字段，"
+            "否则记 `missing_measure_evidence`，该 grain candidate 不生成 fact。",
+            "",
+            _table(
+                ["grain_pattern", "fact candidates"],
+                [
+                    [pattern, int(pattern_counts.get(pattern) or 0)]
+                    for pattern in GRAIN_PATTERN_ORDER
+                ],
+            ),
+            "",
+            _table(
+                [
+                    "fact_key",
+                    "process",
+                    "grain",
+                    "pattern",
+                    "tables",
+                    "objects",
+                    "strength",
+                    "unresolved",
+                ],
+                [
+                    [
+                        row.get("fact_key"),
+                        row.get("process_candidate_id"),
+                        row.get("grain_candidate_id"),
+                        row.get("grain_pattern"),
+                        len(row.get("table_keys") or []),
+                        joined_cell(row.get("object_keys")),
+                        row.get("evidence_strength"),
+                        unresolved_cell(row),
+                    ]
+                    for row in fact_rows
+                ],
+                limit=MODEL_REPORT_ROW_LIMIT,
+            ),
+            "",
+            _truncated_note(len(fact_rows), "fact-candidates.json"),
+            "",
+            "读法：每个 fact candidate = 「一个 grain candidate 在其候选表上的 "
+            "fact 候选 + 7 类证据」；同一 grain 的多个候选表合并成一条候选，"
+            "不挑 winner。",
+            "",
+            "## 3. Dimension Candidates",
+            "",
+            f"- dimension 按 M3.1 Object 逐个生成（{len(dimension_rows)} 个）；"
+            "attributes 只是关联表里观察到的字段清单，"
+            f"每条最多列出 {MODEL_ATTRIBUTE_LIMIT} 个。",
+            "",
+            _table(
+                [
+                    "dimension_key",
+                    "object",
+                    "tables",
+                    "attributes",
+                    "referenced facts",
+                    "strength",
+                    "unresolved",
+                ],
+                [
+                    [
+                        row.get("dimension_key"),
+                        row.get("object_name"),
+                        row.get("table_count"),
+                        row.get("attribute_count"),
+                        len(row.get("referenced_by_facts") or []),
+                        row.get("evidence_strength"),
+                        unresolved_cell(row),
+                    ]
+                    for row in dimension_rows
+                ],
+                limit=MODEL_REPORT_ROW_LIMIT,
+            ),
+            "",
+            _truncated_note(len(dimension_rows), "dimension-candidates.json"),
+            "",
+            f"- role_status：{status_text(dimension_role_status, MODEL_ROLE_STATUS_ORDER)}"
+            "；`ambiguous` = 同一 Object 同时出现在 fact 关系里，"
+            "必须人工裁决主角色。",
+            "- modeling_roles 可以多选：一个 Object 可以同时是 dimension "
+            "candidate 与 fact related object。",
+            "",
+            "## 4. Fact ↔ Dimension Relationships",
+            "",
+            f"- relationship 行数：{relationships.get('count', 0)}；"
+            "每行至少一类证据才生成，无证据的组合不产出关系候选。",
+            "",
+            _table(
+                [
+                    "relationship_key",
+                    "fact",
+                    "dimension",
+                    "evidence sources",
+                    "strength",
+                    "unresolved",
+                ],
+                [
+                    [
+                        row.get("relationship_key"),
+                        row.get("fact_key"),
+                        row.get("dimension_key"),
+                        joined_cell(row.get("evidence_sources")),
+                        row.get("evidence_strength"),
+                        unresolved_cell(row),
+                    ]
+                    for row in relationship_rows
+                ],
+                limit=MODEL_REPORT_ROW_LIMIT,
+            ),
+            "",
+            _truncated_note(len(relationship_rows), "fact-dimension-relationships.json"),
+            "",
+            "- relationship ≠ 业务关系：它只说明 fact 候选与 dimension 候选之间"
+            "存在可解释的引用 / 关联证据，确认前必须核对 source_id。",
+            "",
+            "## 5. Evidence Coverage",
+            "",
+            _table(
+                ["fact evidence", "total"],
+                [
+                    [source, fact_evidence_totals[source]]
+                    for source in FACT_EVIDENCE_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["dimension evidence", "total"],
+                [
+                    [source, dimension_evidence_totals[source]]
+                    for source in DIMENSION_EVIDENCE_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["relationship evidence", "total"],
+                [
+                    [
+                        source,
+                        int(
+                            (relationships.get("evidence_source_counts") or {}).get(
+                                source
+                            )
+                            or 0
+                        ),
+                    ]
+                    for source in MODEL_REL_EVIDENCE_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["candidate type", *EVIDENCE_STRENGTH_ORDER],
+                [
+                    [
+                        MODEL_CANDIDATE_TYPE_FACT,
+                        *[
+                            int(fact_strength.get(strength) or 0)
+                            for strength in EVIDENCE_STRENGTH_ORDER
+                        ],
+                    ],
+                    [
+                        MODEL_CANDIDATE_TYPE_DIMENSION,
+                        *[
+                            int(dimension_strength.get(strength) or 0)
+                            for strength in EVIDENCE_STRENGTH_ORDER
+                        ],
+                    ],
+                    [
+                        MODEL_CANDIDATE_TYPE_RELATIONSHIP,
+                        *[
+                            int(relationship_strength.get(strength) or 0)
+                            for strength in EVIDENCE_STRENGTH_ORDER
+                        ],
+                    ],
+                ],
+            ),
+            "",
+            "- strength = 证据源类型的数量（weak=1，moderate=2，strong≥3），"
+            "只反映证据多样性，不代表业务正确。",
+            "- 计数口径：fact / dimension 按候选统计，relationship 按证据条目统计。",
+            "",
+            "## 6. Evidence Gaps",
+            "",
+            "每个候选都按固定顺序记录未决原因（未决 ≠ 失败，必须人工回答）：",
+            "",
+            _table(
+                ["fact unresolved reason", "candidates"],
+                [
+                    [reason, int(fact_unresolved.get(reason) or 0)]
+                    for reason in MODEL_FACT_UNRESOLVED_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["dimension unresolved reason", "candidates"],
+                [
+                    [reason, int(dimension_unresolved.get(reason) or 0)]
+                    for reason in MODEL_DIMENSION_UNRESOLVED_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["relationship unresolved reason", "relationships"],
+                [
+                    [reason, int(relationship_unresolved.get(reason) or 0)]
+                    for reason in MODEL_REL_UNRESOLVED_ORDER
+                ],
+            ),
+            "",
+            f"- weak 证据：fact {weak_fact}，dimension {weak_dimension}，"
+            f"relationship {weak_relationship}",
+            "- 未决原因只在对应证据缺失时出现；补证据后重跑本阶段即可更新。",
+            "",
+            "## 7. Human Review",
+            "",
+            "回填 `analysis/business/model-review-checklist.md` 的 "
+            "human_status / human_name / note 后重跑本阶段即可保留人工输入；"
+            "机器列由 `analyze-business-model` 生成，重跑会被覆盖。",
+            "",
+            "- human_status → status 映射：pending → candidate，"
+            "confirmed → confirmed，rejected → rejected，"
+            "needs_review / needs_discussion → needs_discussion；"
+            "未识别的取值按未回填处理并输出警告。",
+            f"- 机器 status 恒为 candidate；只有回填 confirmed 才会变成 "
+            f"confirmed（{MODEL_CANDIDATE_NOTE}）。",
+            "",
+            _table(
+                ["priority", "title", "rows"],
+                [
+                    [
+                        priority,
+                        MODEL_PRIORITY_TITLE[priority],
+                        int(priority_counts.get(priority) or 0),
+                    ]
+                    for priority in MODEL_PRIORITY_ORDER
+                ],
+            ),
+            "",
+            "- 每个优先级分区最多列出 "
+            f"{MODEL_CHECKLIST_ROW_LIMIT} 行，"
+            "完整明细见 `analysis/business/model-review-checklist.md`。",
+            f"- 证据强度为 weak 的候选：fact {weak_fact}，"
+            f"dimension {weak_dimension}，relationship {weak_relationship}。",
+            "",
+            "## 8. Limitations",
+            "",
+            f"- candidate ≠ confirmed：{MODEL_CANDIDATE_NOTE}；"
+            "机器阶段不产出 confirmed 模型，确认必须回填清单后重跑。",
+            "- strength 只是证据源数量；Profiling 为 metadata-only，"
+            "没有任何行级唯一性证明，候选键 ≠ 唯一键。",
+            "- role 只用 anchor / supporting（fact 复用 M3.4 grain 的角色，"
+            "dimension = 含命中标识字段且不是 fact 表），"
+            "不是 Fact / Dimension / DWD / DWS 结论。",
+            "- layer 只作 candidate_layer 结构证据；core_candidate 只作证据覆盖与"
+            "复核优先级，不是业务价值判断。",
+            "- 多角色与 UNKNOWN / AMBIGUOUS 一律保留，不合并不拆分不删表，"
+            "不挑 winner。",
+            "- relationship 是候选关系，不是业务关系；确认前必须核对 source_id。",
+            "- 本阶段只读既有产物：不重解析原始数据，不重做 Object / Process / "
+            "Grain classifier，不读 `source/`，不调用 LLM / 外部 API。",
+            "",
+        ]
+    )
+
+
+def _truncated_note(total: int, name: str) -> str:
+    if total > MODEL_REPORT_ROW_LIMIT:
+        return (
+            f"只列出前 {MODEL_REPORT_ROW_LIMIT} 条，共 {total} 条；"
+            f"完整明细见 `analysis/business/{name}`。"
+        )
+
+    return f"完整明细见 `analysis/business/{name}`。"
+
+
+def render_model_review_checklist(
+    rows: Sequence[ModelChecklistRow],
+    *,
+    carry_over: Mapping[str, Mapping[str, str]] | None = None,
+    row_limit: int,
+) -> str:
+    """生成 analysis/business/model-review-checklist.md（人工回填清单）。
+
+    按优先级 P1 → P4 分区；每区最多 row_limit 行并注明总数。
+    机器列由 `analyze-business-model` 生成、重跑会被覆盖；
+    human_status / human_name / note 三列保留上一次的人工回填。
+    """
+
+    existing = carry_over or {}
+    lines: list[str] = [
+        "# M3.5 Model Review Checklist",
+        "",
+        "人工回填 human_status（pending / confirmed / rejected / needs_review / "
+        "needs_discussion）、human_name 与 note；"
+        "未回填的行一律保持 candidate，candidate 不会自动变成 confirmed。",
+        "",
+        "candidate_key 起到 unresolved_reasons 为止的机器列由 "
+        "`analyze-business-model` 生成，重跑会被覆盖；"
+        "human_status / human_name / note 三列会被保留。",
+        "",
+    ]
+
+    if not rows:
+        lines.extend(["_（无候选）_", ""])
+        return "\n".join(lines)
+
+    header = "| " + " | ".join(MODEL_CHECKLIST_HEADERS) + " |"
+    separator = "| " + " | ".join("---" for _ in MODEL_CHECKLIST_HEADERS) + " |"
+
+    for priority in MODEL_PRIORITY_ORDER:
+        section = [row for row in rows if row.priority == priority]
+        lines.append(f"## {priority} {MODEL_PRIORITY_TITLE[priority]}")
+        lines.append("")
+        lines.append(MODEL_PRIORITY_HINT[priority])
+        lines.append("")
+
+        if not section:
+            lines.extend(["_（本区无候选）_", ""])
+            continue
+
+        if len(section) > row_limit:
+            lines.append(
+                f"只列出前 {row_limit} 行，共 {len(section)} 行；"
+                "其余行见 `analysis/business/fact-candidates.json`、"
+                "`dimension-candidates.json` 与 `fact-dimension-relationships.json`。"
+            )
+            lines.append("")
+
+        lines.extend([header, separator])
+
+        for row in section[:row_limit]:
+            previous = existing.get(row.candidate_key, {})
+            raw_status = str(previous.get("human_status", "") or "").strip()
+            cells = [
+                row.candidate_key,
+                row.candidate_type,
+                row.priority,
+                row.current_status,
+                row.evidence_strength,
+                ", ".join(row.unresolved_reasons) or "-",
+                normalize_human_status(raw_status) or raw_status or "pending",
+                str(previous.get("human_name", "") or "").strip(),
+                str(previous.get("note", "") or "").strip(),
+            ]
+            lines.append(
+                "| "
+                + " | ".join(str(cell).replace("|", "\\|") for cell in cells)
+                + " |"
+            )
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def render_current_state_summary(
+    *,
+    current_model: Mapping[str, Any],
+    findings: Mapping[str, Any],
+    analysis_dir: Path | str,
+) -> str:
+    """生成 analysis/business/current-state-model-summary.md（6 节）。
+
+    只做纯渲染：所有数字都来自 M3.6 的构建结果。措辞停留在
+    「当前模型形态 + 评审发现 + 人工问题」，不设计 Target DWD，
+    不把 finding 写成已确认问题，不产出 DWD / DWS / Semantic Layer 结论。
+    """
+
+    scope = current_model.get("scope") or {}
+    role_counts = current_model.get("role_counts") or {}
+    shape_counts = current_model.get("shape_counts") or {}
+    quality = current_model.get("model_quality") or {}
+    gate = current_model.get("fact_gate_review") or {}
+    strength = current_model.get("evidence_strength_review") or {}
+    dimension = current_model.get("dimension_review") or {}
+    relationship = current_model.get("relationship_review") or {}
+    priority_counts = findings.get("priority_counts") or {}
+    type_counts = findings.get("finding_type_counts") or {}
+    group_counts = findings.get("review_group_counts") or {}
+    status_counts = findings.get("status_counts") or {}
+    severity_by_priority = findings.get("severity_by_priority") or {}
+    finding_rows = list(findings.get("findings") or [])
+
+    def count_text(counts: Mapping[str, Any], order: Sequence[str]) -> str:
+        return "，".join(f"{key}={int(counts.get(key) or 0)}" for key in order)
+
+    def relation_counts(mapping: Mapping[str, Any], keys: Sequence[str]) -> str:
+        return "，".join(f"{key}={int(mapping.get(key) or 0)}" for key in keys)
+
+    gate_reasons = gate.get("rejected_reason_counts") or {}
+    strength_counts = strength.get("strength_counts") or {}
+    dimension_role_status = dimension.get("role_status_counts") or {}
+    relationship_strength = relationship.get("strength_counts") or {}
+    workspace_ids = [str(item) for item in scope.get("workspace_ids") or []]
+
+    return "\n".join(
+        [
+            "# M3.6 Current-State Model Review",
+            "",
+            "## 1. Scope",
+            "",
+            f"- Workspace：{_joined(workspace_ids) or '（未知）'}",
+            f"- Inventory 表数量：{int(scope.get('inventory_table_count') or 0)}，"
+            f"已分类表数量：{int(scope.get('classified_table_count') or 0)}",
+            f"- Fact candidate：{int(scope.get('fact_count') or 0)}，"
+            f"Dimension candidate：{int(scope.get('dimension_count') or 0)}，"
+            f"Relationship：{int(scope.get('relationship_count') or 0)}",
+            f"- Fact → table 行数：{int(scope.get('fact_table_row_count') or 0)}，"
+            f"Dimension → table 行数：{int(scope.get('dimension_table_row_count') or 0)}",
+            f"- Process candidate：{int(scope.get('process_count') or 0)}，"
+            f"Grain candidate：{int(scope.get('grain_count') or 0)}，"
+            f"Object：{int(scope.get('object_count') or 0)}",
+            f"- Finding：{findings.get('count', 0)}"
+            f"（{count_text(priority_counts, REVIEW_PRIORITY_ORDER)}）",
+            f"- 输入：`{analysis_dir}`",
+            "",
+            f"- {CURRENT_STATE_NOTE}；{FINDING_CANDIDATE_NOTE}。",
+            "- 本阶段只读 M2 / M3 / M3.5 产物：不读 `source/`，不调 LLM / 外部 API，"
+            "不修改任何上游产物。",
+            "",
+            "## 2. Current Model Overview",
+            "",
+            _table(
+                ["current_role", "tables"],
+                [
+                    [role, int(role_counts.get(role) or 0)]
+                    for role in CURRENT_MODEL_ROLE_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["model_shape", "tables"],
+                [
+                    [shape, int(shape_counts.get(shape) or 0)]
+                    for shape in CURRENT_MODEL_SHAPE_ORDER
+                ],
+            ),
+            "",
+            "- `current_role` / `model_shape` 只描述当前平台已经存在的形态，"
+            "不是 Target DWD 设计；UNKNOWN / AMBIGUOUS 一律保留。",
+            "- 表级角色只由 fact anchor、dimension anchor、字段数与血缘形态推导，"
+            "不按表名断言业务事实。",
+            "",
+            "## 3. Model Quality",
+            "",
+            _table(
+                ["indicator", "count"],
+                [[key, int(value or 0)] for key, value in quality.items()],
+            ),
+            "",
+            f"- Fact Gate 复算：通过 {int(gate.get('qualified_count') or 0)}，"
+            f"未通过 {int(gate.get('rejected_count') or 0)}"
+            + (
+                "（"
+                + "，".join(
+                    f"{reason}={int(count or 0)}"
+                    for reason, count in sorted(gate_reasons.items())
+                )
+                + "）"
+                if gate_reasons
+                else ""
+            )
+            + f"；与 M3.5 一致={gate.get('matches_m35')}",
+            "",
+            _table(
+                ["grain_pattern", "rejected"],
+                [
+                    [pattern, int(count or 0)]
+                    for pattern, count in (gate.get("rejected_by_pattern") or {}).items()
+                ],
+            ),
+            "",
+            f"- Evidence Strength 分布（fact）："
+            f"{count_text(strength_counts, list(strength_counts) or [])}"
+            f"；{strength.get('interpretation', '')}",
+            f"- Dimension：{int(dimension.get('count') or 0)} 个，"
+            f"role {count_text(dimension_role_status, list(dimension_role_status) or [])}"
+            f"；{dimension.get('observation', '')}",
+            f"- Relationship：{int(relationship.get('count') or 0)} 行，"
+            f"strength {count_text(relationship_strength, list(relationship_strength) or [])}",
+            f"；单证据 {int(relationship.get('single_evidence_count') or 0)}，"
+            f"仅技术引用 {int(relationship.get('technical_only_count') or 0)}，"
+            f"仅共现 {int(relationship.get('object_co_occurrence_only_count') or 0)}，"
+            f"无共享表 {int(relationship.get('no_shared_table_count') or 0)}",
+            "",
+            _table(
+                ["relationship evidence", "rows"],
+                [
+                    [source, int(count or 0)]
+                    for source, count in (
+                        relationship.get("evidence_source_counts") or {}
+                    ).items()
+                ],
+            ),
+            "",
+            "- 上述全部是评审观测：异常只标记 Review，不判定 Wrong。",
+            "",
+            "## 4. Priority Findings",
+            "",
+            _table(
+                ["priority", "severity", "title", "findings"],
+                [
+                    [
+                        priority,
+                        severity_by_priority.get(priority, ""),
+                        REVIEW_PRIORITY_TITLE[priority],
+                        int(priority_counts.get(priority) or 0),
+                    ]
+                    for priority in REVIEW_PRIORITY_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["review group", "findings"],
+                [
+                    [group, int(group_counts.get(group) or 0)]
+                    for group in REVIEW_GROUP_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["finding_type", "priority", "findings"],
+                [
+                    [
+                        finding_type,
+                        FINDING_TYPE_PRIORITY.get(finding_type, "-"),
+                        int(type_counts.get(finding_type) or 0),
+                    ]
+                    for finding_type in FINDING_TYPE_ORDER
+                ],
+            ),
+            "",
+            _table(
+                [
+                    "finding_id",
+                    "priority",
+                    "finding_type",
+                    "scope",
+                    "scope_key",
+                    "description",
+                ],
+                [
+                    [
+                        row.get("finding_id"),
+                        row.get("priority"),
+                        row.get("finding_type"),
+                        row.get("scope"),
+                        row.get("scope_key"),
+                        str(row.get("description") or "").replace("|", "\\|"),
+                    ]
+                    for row in finding_rows
+                ],
+                limit=REVIEW_REPORT_ROW_LIMIT,
+            ),
+            "",
+            _review_truncated_note(len(finding_rows), "model-review-findings.json"),
+            "",
+            "## 5. Human Review",
+            "",
+            "回填 `analysis/business/current-state-review-checklist.md` 的 "
+            "human_status / human_name / note 后重跑本阶段即可保留人工输入；"
+            "机器列由 `analyze-current-state-model` 生成，重跑会被覆盖。",
+            "",
+            "- human_status → status 映射：pending → candidate，"
+            "confirmed → confirmed，rejected → rejected，"
+            "needs_review / needs_discussion → needs_discussion；"
+            "未识别的取值按未回填处理并输出警告。",
+            f"- 当前 finding 状态：{count_text(status_counts, list(status_counts) or [])}",
+            "",
+            "- 每个分区最多列出 "
+            "50 行，完整明细见 "
+            "`analysis/business/current-state-review-checklist.md`。",
+            "- P0 未裁决前不要进入 M4 的事实 / 维度定稿。",
+            "",
+            "## 6. M4 Input",
+            "",
+            "可以带入 M4 的输入：",
+            "",
+            "- current-state 分类（role / shape）与逐表明细"
+            "（`current-state-model-tables.json`）。",
+            "- 带证据的 review finding 与优先级"
+            "（`model-review-findings.json`）。",
+            "- 回填后的人工结论（`current-state-review-checklist.md`）。",
+            "",
+            "不能带入 M4 的内容：",
+            "",
+            "- 未经人工裁决的 fact / dimension 最终角色；"
+            "本阶段不合并、不拆分、不删表、不挑 winner。",
+            "- 只有技术引用（SQL / 血缘 / 共现）的关系，"
+            "不能直接当成业务维度关系。",
+            "- `evidence_strength=strong` 不等于该表确定是事实表。",
+            "",
+            "- 建议顺序：先回答 P0（Fact Gate 排除、粒度冲突、多形态、角色歧义），"
+            "再处理 P1（重复 / 重叠 / 关系证据），最后看 P2 / P3。",
+            f"- 进入 M4 前至少需要：{FINDING_CANDIDATE_NOTE}；"
+            "P0 finding 必须有人工结论。",
+            "",
+        ]
+    )
+
+
+def _joined(values: Sequence[Any]) -> str:
+    return "、".join(str(value) for value in values)
+
+
+def _review_truncated_note(total: int, name: str) -> str:
+    if total > REVIEW_REPORT_ROW_LIMIT:
+        return (
+            f"只列出前 {REVIEW_REPORT_ROW_LIMIT} 条，共 {total} 条；"
+            f"完整明细见 `analysis/business/{name}`。"
+        )
+
+    return f"完整明细见 `analysis/business/{name}`。"
+
+
+def render_current_state_review_checklist(
+    findings: Sequence[Mapping[str, Any]],
+    *,
+    carry_over: Mapping[str, Mapping[str, str]] | None = None,
+    row_limit: int,
+) -> str:
+    """生成 analysis/business/current-state-review-checklist.md（人工回填清单）。
+
+    按 review group（Fact / Dimension / Grain / Relationship / Model Issue）
+    分区；每区最多 row_limit 行并注明总数。机器列由
+    `analyze-current-state-model` 生成、重跑会被覆盖；
+    human_status / human_name / note 三列保留上一次的人工回填。
+    """
+
+    existing = carry_over or {}
+    lines: list[str] = [
+        "# M3.6 Current-State Review Checklist",
+        "",
+        "人工回填 human_status（pending / confirmed / rejected / needs_review / "
+        "needs_discussion）、human_name 与 note；"
+        "未回填的行一律保持 candidate，finding 不会自动变成 confirmed。",
+        "",
+        "finding_id 起到 human_question 为止的机器列由 "
+        "`analyze-current-state-model` 生成，重跑会被覆盖；"
+        "human_status / human_name / note 三列会被保留。",
+        "",
+        "scope_key 起到 human_question 的内容是机器观测，"
+        "不是已确认的模型错误；回复 human_question 才是人工结论。",
+        "",
+    ]
+
+    if not findings:
+        lines.extend(["_（无 finding）_", ""])
+        return "\n".join(lines)
+
+    header = "| " + " | ".join(REVIEW_CHECKLIST_HEADERS) + " |"
+    separator = "| " + " | ".join("---" for _ in REVIEW_CHECKLIST_HEADERS) + " |"
+
+    for group in REVIEW_GROUP_ORDER:
+        section = [row for row in findings if row.get("review_group") == group]
+        lines.append(f"## {REVIEW_GROUP_TITLE[group]}")
+        lines.append("")
+        lines.append(REVIEW_GROUP_HINT[group])
+        lines.append("")
+
+        if not section:
+            lines.extend(["_（本区无 finding）_", ""])
+            continue
+
+        if len(section) > row_limit:
+            lines.append(
+                f"只列出前 {row_limit} 行，共 {len(section)} 行；"
+                "其余行见 `analysis/business/model-review-findings.json`。"
+            )
+            lines.append("")
+
+        lines.extend([header, separator])
+
+        for row in section[:row_limit]:
+            finding_id = str(row.get("finding_id") or "")
+            previous = existing.get(finding_id, {})
+            raw_status = str(previous.get("human_status", "") or "").strip()
+            cells = [
+                finding_id,
+                row.get("finding_type"),
+                row.get("priority"),
+                row.get("scope_key"),
+                _joined(row.get("evidence_sources") or []) or "-",
+                str(row.get("description") or ""),
+                str(row.get("human_question") or ""),
+                normalize_human_status(raw_status) or raw_status or "pending",
+                str(previous.get("human_name", "") or "").strip(),
+                str(previous.get("note", "") or "").strip(),
+            ]
+            lines.append(
+                "| "
+                + " | ".join(str(cell).replace("|", "\\|") for cell in cells)
+                + " |"
+            )
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def render_current_state_problem_summary(
+    *,
+    problems: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+) -> str:
+    """生成 analysis/business/current-state-problem-summary.md（6 节）。
+
+    只做纯渲染：所有数字都来自 M3.6 v2 的聚合结果。措辞停留在
+    「问题 + 证据 + 影响 + 根因 + 重构理由 + 人工确认」，不设计 Target DWD，
+    不把 problem 写成已确认问题，不产出 DWD / DWS / Semantic Layer 结论。
+    """
+
+    problem_rows = list(problems.get("problems") or [])
+    type_counts = problems.get("problem_type_counts") or {}
+    status_counts = problems.get("status_counts") or {}
+    priority_counts = problems.get("priority_counts") or {}
+    severity_by_priority = problems.get("severity_by_priority") or {}
+    classification_counts = problems.get("classification_counts") or {}
+    impact_counts = problems.get("impact_counts") or {}
+    root_cause_counts = problems.get("root_cause_counts") or {}
+    strength_counts = problems.get("evidence_strength_counts") or {}
+    coverage = problems.get("finding_coverage") or {}
+    evidence_counts = evidence.get("evidence_type_counts") or {}
+
+    def count_text(counts: Mapping[str, Any], order: Sequence[str]) -> str:
+        return "，".join(f"{key}={int(counts.get(key) or 0)}" for key in order)
+
+    def clip(value: Any, limit: int = 80) -> str:
+        text = str(value or "").replace("|", "\\|")
+        return text if len(text) <= limit else text[:limit] + "…"
+
+    classification_order = [
+        *GRAIN_ASSESSMENT_ORDER,
+        *OVERLAP_CLASS_ORDER,
+        *AGGREGATE_ASSESSMENT_ORDER,
+        *UNKNOWN_REASON_ORDER,
+    ]
+
+    return "\n".join(
+        [
+            "# M3.6 v2 Current-State Problem Assessment",
+            "",
+            "## 1. Scope",
+            "",
+            f"- Finding：{int(problems.get('finding_count') or 0)}",
+            f"- Problem candidate：{int(problems.get('count') or 0)}"
+            f"（{count_text(priority_counts, REVIEW_PRIORITY_ORDER)}）",
+            f"- 受影响表（去重）：{int(problems.get('distinct_affected_table_count') or 0)}",
+            f"- Finding 覆盖：进入 problem 的 finding "
+            f"{int(coverage.get('covered_finding_count') or 0)} / "
+            f"{int(coverage.get('finding_count') or 0)}"
+            f"，未进入 problem {int(coverage.get('uncovered_finding_count') or 0)}",
+            f"- 证据行：{int(evidence.get('evidence_row_total') or 0)}"
+            f"（单 problem 上限见 evidence 产物）",
+            f"- {PROBLEM_CANDIDATE_NOTE}。",
+            "- 本阶段只读 M1–M3.6 产物：不读 `source/` / profiling / SQL 参考，"
+            "不调 LLM / 外部 API，不修改任何上游产物。",
+            "",
+            "## 2. Problem Distribution",
+            "",
+            _table(
+                ["problem_type", "title", "default priority", "problems"],
+                [
+                    [
+                        problem_type,
+                        PROBLEM_TYPE_TITLE.get(problem_type, ""),
+                        PROBLEM_TYPE_PRIORITY.get(problem_type, "-"),
+                        int(type_counts.get(problem_type) or 0),
+                    ]
+                    for problem_type in PROBLEM_TYPE_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["status", "problems"],
+                [
+                    [status, int(status_counts.get(status) or 0)]
+                    for status in PROBLEM_STATUS_ORDER
+                ],
+            ),
+            "",
+            f"- 当前状态分布：{count_text(status_counts, PROBLEM_STATUS_ORDER)}；"
+            "机器阶段只会写 candidate / review_required，"
+            "confirmed / rejected 只能来自清单回填。",
+            "",
+            "## 3. Impact & Root Cause",
+            "",
+            _table(
+                ["impact_type", "title", "problems"],
+                [
+                    [
+                        impact,
+                        PROBLEM_IMPACT_TITLE.get(impact, ""),
+                        int(impact_counts.get(impact) or 0),
+                    ]
+                    for impact in PROBLEM_IMPACT_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["root_cause", "title", "problems"],
+                [
+                    [
+                        root_cause,
+                        PROBLEM_ROOT_CAUSE_TITLE.get(root_cause, ""),
+                        int(root_cause_counts.get(root_cause) or 0),
+                    ]
+                    for root_cause in PROBLEM_ROOT_CAUSE_ORDER
+                ],
+            ),
+            "",
+            "- impact / root_cause 是从问题类型与证据结构推导的候选结论，"
+            "不是已确认的业务根因；裁决权在人工清单。",
+            "",
+            "## 4. Priority & Evidence",
+            "",
+            _table(
+                ["priority", "severity", "title", "problems"],
+                [
+                    [
+                        priority,
+                        severity_by_priority.get(priority, ""),
+                        REVIEW_PRIORITY_TITLE.get(priority, ""),
+                        int(priority_counts.get(priority) or 0),
+                    ]
+                    for priority in REVIEW_PRIORITY_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["evidence_strength", "problems"],
+                [
+                    [strength, int(strength_counts.get(strength) or 0)]
+                    for strength in EVIDENCE_STRENGTH_ORDER
+                ],
+            ),
+            "",
+            _table(
+                ["classification", "problems"],
+                [
+                    [
+                        classification,
+                        int(classification_counts.get(classification) or 0),
+                    ]
+                    for classification in classification_order
+                    if int(classification_counts.get(classification) or 0)
+                ],
+            ),
+            "",
+            _table(
+                ["evidence_type", "rows"],
+                [
+                    [evidence_type, int(evidence_counts.get(evidence_type) or 0)]
+                    for evidence_type in PROBLEM_EVIDENCE_ORDER
+                ],
+            ),
+            "",
+            "- SQL 证据恒为 0：本阶段不读 SQL 产物。",
+            "",
+            "## 5. Top Problems",
+            "",
+            _table(
+                [
+                    "problem_id",
+                    "priority",
+                    "problem_type",
+                    "scope_key",
+                    "tables",
+                    "evidence_strength",
+                    "root_cause",
+                    "status",
+                ],
+                [
+                    [
+                        row.get("problem_id"),
+                        row.get("priority"),
+                        row.get("problem_type"),
+                        clip(row.get("scope_key")),
+                        int(row.get("affected_table_count") or 0),
+                        row.get("evidence_strength"),
+                        row.get("root_cause"),
+                        row.get("status"),
+                    ]
+                    for row in problem_rows
+                ],
+                limit=PROBLEM_SUMMARY_ROW_LIMIT,
+            ),
+            "",
+            (
+                f"只列出前 {PROBLEM_SUMMARY_ROW_LIMIT} 行，共 {len(problem_rows)} 行；"
+                "完整明细见 `analysis/business/current-state-problems.json`。"
+                if len(problem_rows) > PROBLEM_SUMMARY_ROW_LIMIT
+                else "完整明细见 `analysis/business/current-state-problems.json`。"
+            ),
+            "",
+            "- 排序依据：priority → problem_type → scope → scope_key（稳定排序，"
+            "不含随机抽样）。每条 problem 的 current_state / problem / evidence / "
+            "impact / why_change 见该文件的 `rationale` 字段。",
+            "",
+            "## 6. Human Review & M4 Input",
+            "",
+            "回填 `analysis/business/current-state-problem-review-checklist.md` 的 "
+            "human_status / human_name / note 后重跑本阶段即可保留人工输入；"
+            "机器列由 `analyze-current-state-model` 生成，重跑会被覆盖。",
+            "",
+            "- human_status → status 映射：pending → candidate，"
+            "confirmed → confirmed，rejected → rejected，"
+            "needs_review / needs_discussion → review_required；"
+            "未识别的取值按未回填处理并输出警告。",
+            "- 每个分区最多列出 "
+            f"{PROBLEM_CHECKLIST_ROW_LIMIT} 行，完整明细见 "
+            "`analysis/business/current-state-problems.json`。",
+            "",
+            "可以带入 M4 的输入：",
+            "",
+            "- 带证据链的 problem candidate 与优先级"
+            "（`current-state-problems.json`）。"
+            "每条含 evidence / impact / root_cause / rationale。",
+            "- 逐条证据明细（`current-state-problem-evidence.json`）。",
+            "- 回填后的人工结论"
+            "（`current-state-problem-review-checklist.md`）。",
+            "",
+            "不能带入 M4 的内容：",
+            "",
+            "- 未经人工确认的 problem；finding ≠ problem ≠ confirmed，"
+            "三者计数互不等价。",
+            "- 机器推导的 root_cause 与 impact：它们是候选，"
+            "不是已确认的业务根因。",
+            "- 任何 Target DWD / DWS / Semantic Layer 结论：本阶段不设计目标模型。",
+            "",
+            f"- 建议顺序：先处理 "
+            f"{count_text(priority_counts, REVIEW_PRIORITY_ORDER)} 中的 P0"
+            "（粒度、角色、覆盖缺口），再处理 P1（重复 / 重叠 / 聚合），"
+            "最后看 P2 / P3。",
+            f"- 进入 M4 前至少需要：{PROBLEM_CANDIDATE_NOTE}；"
+            "P0 problem 必须有人工结论。",
+            "",
+        ]
+    )
+
+
+def render_current_state_problem_review_checklist(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    carry_over: Mapping[str, Mapping[str, str]] | None = None,
+) -> str:
+    """生成 analysis/business/current-state-problem-review-checklist.md（人工回填清单）。
+
+    按 problem_type（13 类）分区；每区最多 PROBLEM_CHECKLIST_ROW_LIMIT 行并注明总数。
+    机器列由 `analyze-current-state-model` 生成、重跑会被覆盖；
+    human_status / human_name / note 三列保留上一次的人工回填。
+    """
+
+    existing = carry_over or {}
+    lines: list[str] = [
+        "# M3.6 v2 Current-State Problem Review Checklist",
+        "",
+        "人工回填 human_status（pending / confirmed / rejected / needs_review / "
+        "needs_discussion）、human_name 与 note；"
+        "未回填的行一律保持机器阶段的 status，problem 不会自动变成 confirmed。",
+        "",
+        f"{PROBLEM_CANDIDATE_NOTE}；"
+        f"Finding Count ≠ Problem Count ≠ Confirmed Problem Count。",
+        "",
+        "problem_id 起到 human_question 为止的机器列由 "
+        "`analyze-current-state-model` 生成，重跑会被覆盖；"
+        "human_status / human_name / note 三列会被保留。",
+        "",
+        "scope_key 起到 human_question 的内容是机器观测，"
+        "不是已确认的模型错误；回复 human_question 才是人工结论。",
+        "",
+    ]
+
+    if not rows:
+        lines.extend(["_（无 problem）_", ""])
+        return "\n".join(lines)
+
+    header = "| " + " | ".join(PROBLEM_CHECKLIST_HEADERS) + " |"
+    separator = "| " + " | ".join("---" for _ in PROBLEM_CHECKLIST_HEADERS) + " |"
+
+    for problem_type in PROBLEM_TYPE_ORDER:
+        section = [row for row in rows if row.get("problem_type") == problem_type]
+        lines.append(f"## {PROBLEM_TYPE_TITLE.get(problem_type, problem_type)}")
+        lines.append("")
+
+        if not section:
+            lines.extend(["_（本区无 problem）_", ""])
+            continue
+
+        if len(section) > PROBLEM_CHECKLIST_ROW_LIMIT:
+            lines.append(
+                f"只列出前 {PROBLEM_CHECKLIST_ROW_LIMIT} 行，共 {len(section)} 行；"
+                "其余行见 `analysis/business/current-state-problems.json`。"
+            )
+            lines.append("")
+
+        lines.extend([header, separator])
+
+        for row in section[:PROBLEM_CHECKLIST_ROW_LIMIT]:
+            problem_id = str(row.get("problem_id") or "")
+            previous = existing.get(problem_id, {})
+            raw_status = str(previous.get("human_status", "") or "").strip()
+            scope_key = str(row.get("scope_key") or "")
+
+            if len(scope_key) > 80:
+                scope_key = scope_key[:80] + "…"
+
+            evidence = "、".join(
+                f"{evidence_type}×{int(count)}"
+                for evidence_type, count in (row.get("evidence_type_counts") or {}).items()
+                if int(count)
+            )
+            cells = [
+                problem_id,
+                row.get("problem_type"),
+                row.get("priority"),
+                scope_key,
+                evidence or "-",
+                str(row.get("description") or ""),
+                str(row.get("human_question") or ""),
+                normalize_human_status(raw_status) or raw_status or "pending",
+                str(previous.get("human_name", "") or "").strip(),
+                str(previous.get("note", "") or "").strip(),
+            ]
+            lines.append(
+                "| "
+                + " | ".join(str(cell).replace("|", "\\|") for cell in cells)
+                + " |"
+            )
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def _table(
     headers: list[object],
     rows: list[list[object]],
@@ -2351,6 +3581,10 @@ __all__ = [
     "CHECKLIST_SECTIONS",
     "LIMITATION_BULLETS",
     "SummaryContext",
+    "render_current_state_problem_review_checklist",
+    "render_current_state_problem_summary",
+    "render_current_state_review_checklist",
+    "render_current_state_summary",
     "render_analysis_summary",
     "render_business_quality_report",
     "render_business_summary",
@@ -2359,6 +3593,8 @@ __all__ = [
     "render_grain_summary",
     "render_layer_summary",
     "render_lineage_summary",
+    "render_model_review_checklist",
+    "render_model_summary",
     "render_object_graph",
     "render_process_review_checklist",
     "render_process_summary",

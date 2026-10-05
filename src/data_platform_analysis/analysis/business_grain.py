@@ -480,6 +480,43 @@ def read_grain_inputs(analysis_dir: Path) -> GrainInputs:
 # ============================================================
 
 
+def _split_markdown_row(stripped: str) -> list[str]:
+    """按未转义的 `|` 切分 Markdown 表行，返回单元格文本。
+
+    写出时单元格内的 `|` 会被转义成 `\\|`，如果直接 split("|")
+    会让后续列整体错位，导致清单回填读到错误的列。
+    """
+
+    cells: list[str] = []
+    start = 0
+    index = 0
+
+    while index < len(stripped):
+        if stripped[index] == "|":
+            backslashes = 0
+            probe = index - 1
+
+            while probe >= start and stripped[probe] == "\\":
+                backslashes += 1
+                probe -= 1
+
+            if backslashes % 2 == 0:
+                cells.append(stripped[start:index].strip())
+                start = index + 1
+
+        index += 1
+
+    cells.append(stripped[start:].strip())
+
+    if cells and not cells[0]:
+        cells.pop(0)
+
+    if cells and not cells[-1]:
+        cells.pop()
+
+    return cells
+
+
 def _parse_checklist_rows(
     text: str,
     *,
@@ -503,7 +540,7 @@ def _parse_checklist_rows(
         if not stripped.startswith("|"):
             continue
 
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        cells = _split_markdown_row(stripped)
 
         if not cells or cells[0].casefold() != required[0]:
             continue
@@ -533,7 +570,7 @@ def _parse_checklist_rows(
         if not stripped.startswith("|"):
             continue
 
-        values = [cell.strip() for cell in stripped.strip("|").split("|")]
+        values = _split_markdown_row(stripped)
         key = values[key_index] if key_index < len(values) else ""
 
         if not key or key.casefold() == required[0] or set(key) <= {"-"}:

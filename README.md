@@ -22,20 +22,20 @@ DataWorks + MaxCompute
   Semantic Layer 设计
 ```
 
-当前阶段只负责 **Collection**：
+**Collection** 阶段负责：
 
 - DataWorks 文件采集（ListFiles / GetFile）
 - MaxCompute 表元数据采集（ListTables / GetTable）
 - Raw 响应与 Content 原样保存为本地 Snapshot
 - Snapshot 索引（files-index / tables-index）与重复采集清理
 
-当前阶段明确不负责（属于后续 Analysis 阶段）：
+**Analysis** 阶段（`analyze*` 子命令，只读已有 Snapshot / 上一阶段产物，写 `analysis/`）已实现：M2 证据链（inventory → layer → sql → lineage → profiling）、M3 业务候选（Domain / Object / Quality / Process / Grain / Fact-Dimension Candidate，M3.1 ～ M3.5）与 M3.6 Current-State Model Review（当前形态分类 + 结构化 finding + 人工清单），以及 M3.6 v2 Problem Assessment（finding 聚合成 problem candidate + 证据 / 影响 / 根因 / 重构理由 + 人工清单），只产出候选、证据与评审发现，不产出结论模型、不设计 Target DWD，详见 [docs/CODE_LOGIC_ANALYSIS.md](docs/CODE_LOGIC_ANALYSIS.md)。
+
+仍明确不负责（边界约束）：
 
 - Task Dependency（任务级依赖）分析
-- Table-level / Column-level Lineage（表级 / 列级血缘）
-- ODS / DWD / ADS 自动分类、DWS Candidate
+- ODS / DWD / ADS 自动分类、DWS Candidate、Target DWD Design
 - Semantic Layer
-- SQLGlot / SQL 解析
 - LLM / AI Agent / MCP
 - QuickBI
 - 数据迁移
@@ -125,6 +125,17 @@ uv run data-platform-analysis export --limit 10
 
 # 查看当前生效的非敏感配置
 uv run data-platform-analysis config
+
+# 分析链（只读已有 Snapshot / 上一阶段产物，写 analysis/）
+uv run data-platform-analysis analyze
+uv run data-platform-analysis analyze-layer
+uv run data-platform-analysis analyze-business
+uv run data-platform-analysis analyze-business-quality
+uv run data-platform-analysis analyze-business-objects
+uv run data-platform-analysis analyze-business-processes
+uv run data-platform-analysis analyze-business-grain
+uv run data-platform-analysis analyze-business-model   # M3.5 Fact / Dimension Candidate
+uv run data-platform-analysis analyze-current-state-model  # M3.6 Current-State Model Review + v2 Problem Assessment
 ```
 
 退出码：
@@ -172,11 +183,12 @@ data-platform-analysis/
 │       └── export.py           # Snapshot 导出与 Cleanup
 │
 ├── source/                     # Snapshot 输出目录（gitignore）
-├── analysis/                   # 后续 Analysis 阶段产物
+├── analysis/                   # Analysis 产物（M2 ~ M3.6，gitignore）
 ├── output/                     # 导出产物
 │
 ├── docs/
 │   ├── COMMANDS.md             # 命令参考
+│   ├── CODE_LOGIC_ANALYSIS.md  # 代码与阶段逻辑分析（M2 ~ M3.6）
 │   └── adr/                    # 架构决策记录
 │
 └── tests/                      # CLI 黑盒测试（只在 SDK 边界 stub）

@@ -1389,6 +1389,1132 @@ class BusinessGrainResult:
 
 
 # ============================================================
+# M3.5 Fact / Dimension Candidate Analysis
+# ============================================================
+
+MODEL_CANDIDATE_NOTE = "fact / dimension candidate 不是 confirmed 模型"
+"""M3.5 产物的统一口径：只产出候选与证据，不产出目标模型结论。"""
+
+MODEL_STATUS_CANDIDATE = "candidate"
+"""机器默认状态：只表达 fact / dimension candidate。"""
+
+MODEL_STATUS_CONFIRMED = "confirmed"
+"""model-review-checklist.md 中人工显式确认的候选。"""
+
+MODEL_STATUS_REJECTED = "rejected"
+"""model-review-checklist.md 中人工显式否决的候选。"""
+
+MODEL_STATUS_NEEDS_DISCUSSION = "needs_discussion"
+"""model-review-checklist.md 中人工标记为待讨论的候选。"""
+
+MODEL_STATUS_ORDER: tuple[str, ...] = (
+    MODEL_STATUS_CANDIDATE,
+    MODEL_STATUS_CONFIRMED,
+    MODEL_STATUS_REJECTED,
+    MODEL_STATUS_NEEDS_DISCUSSION,
+)
+"""候选状态的固定展示与排序顺序；默认永远排在最前。"""
+
+MODEL_STATUS_SET: frozenset[str] = frozenset(MODEL_STATUS_ORDER)
+"""产物里被认可的 status 取值。"""
+
+MODEL_HUMAN_STATUS_PENDING = "pending"
+"""清单默认值：尚未人工回填。"""
+
+MODEL_HUMAN_STATUS_CONFIRMED = "confirmed"
+"""清单回填：人工确认该候选。"""
+
+MODEL_HUMAN_STATUS_REJECTED = "rejected"
+"""清单回填：人工否决该候选。"""
+
+MODEL_HUMAN_STATUS_NEEDS_REVIEW = "needs_review"
+"""清单回填：人工标记为待讨论（needs_discussion 同义）。"""
+
+MODEL_HUMAN_STATUS_ORDER: tuple[str, ...] = (
+    MODEL_HUMAN_STATUS_PENDING,
+    MODEL_HUMAN_STATUS_CONFIRMED,
+    MODEL_HUMAN_STATUS_REJECTED,
+    MODEL_HUMAN_STATUS_NEEDS_REVIEW,
+)
+"""human_status 的固定展示与排序顺序。"""
+
+MODEL_HUMAN_STATUS_SET: frozenset[str] = frozenset(MODEL_HUMAN_STATUS_ORDER) | {
+    MODEL_STATUS_NEEDS_DISCUSSION,
+}
+"""human_status 被认可的取值（其余一律视为未回填）。"""
+
+MODEL_STATUS_BY_HUMAN_STATUS: dict[str, str] = {
+    MODEL_HUMAN_STATUS_PENDING: MODEL_STATUS_CANDIDATE,
+    MODEL_HUMAN_STATUS_CONFIRMED: MODEL_STATUS_CONFIRMED,
+    MODEL_HUMAN_STATUS_REJECTED: MODEL_STATUS_REJECTED,
+    MODEL_HUMAN_STATUS_NEEDS_REVIEW: MODEL_STATUS_NEEDS_DISCUSSION,
+    MODEL_STATUS_NEEDS_DISCUSSION: MODEL_STATUS_NEEDS_DISCUSSION,
+}
+"""human_status → status 的确定性映射；机器阶段永远不写 confirmed。"""
+
+
+def normalize_human_status(value: str) -> str | None:
+    """把 human_status 单元格归一化成受支持的取值，其余返回 None。"""
+
+    text = (value or "").strip().casefold().replace(" ", "_").replace("-", "_")
+
+    return text if text in MODEL_HUMAN_STATUS_SET else None
+
+MODEL_ROLE_FACT = "fact_candidate"
+"""fact 候选唯一允许的建模角色。"""
+
+MODEL_ROLE_DIMENSION = "dimension_candidate"
+"""dimension 候选的基础建模角色。"""
+
+MODEL_ROLE_FACT_RELATED_OBJECT = "fact_related_object"
+"""同一 Object 也出现在 fact candidate 里时的补充角色（表示歧义）。"""
+
+MODEL_ROLE_ORDER: tuple[str, ...] = (
+    MODEL_ROLE_FACT,
+    MODEL_ROLE_DIMENSION,
+    MODEL_ROLE_FACT_RELATED_OBJECT,
+)
+"""建模角色的固定展示与排序顺序。"""
+
+MODEL_ROLE_SET: frozenset[str] = frozenset(MODEL_ROLE_ORDER)
+
+MODEL_ROLE_STATUS_CANDIDATE = "candidate"
+"""只有单一建模角色，角色未出现歧义。"""
+
+MODEL_ROLE_STATUS_AMBIGUOUS = "ambiguous"
+"""同一候选同时命中多个建模角色，必须人工裁决。"""
+
+MODEL_ROLE_STATUS_ORDER: tuple[str, ...] = (
+    MODEL_ROLE_STATUS_CANDIDATE,
+    MODEL_ROLE_STATUS_AMBIGUOUS,
+)
+MODEL_ROLE_STATUS_SET: frozenset[str] = frozenset(MODEL_ROLE_STATUS_ORDER)
+
+FACT_EVIDENCE_PROCESS = "process"
+FACT_EVIDENCE_GRAIN = "grain"
+FACT_EVIDENCE_TABLE = "table"
+FACT_EVIDENCE_COLUMN = "column"
+FACT_EVIDENCE_SQL = "sql"
+FACT_EVIDENCE_LINEAGE = "lineage"
+FACT_EVIDENCE_OBJECT = "object"
+
+FACT_EVIDENCE_ORDER: tuple[str, ...] = (
+    FACT_EVIDENCE_PROCESS,
+    FACT_EVIDENCE_GRAIN,
+    FACT_EVIDENCE_TABLE,
+    FACT_EVIDENCE_COLUMN,
+    FACT_EVIDENCE_SQL,
+    FACT_EVIDENCE_LINEAGE,
+    FACT_EVIDENCE_OBJECT,
+)
+"""fact candidate 证据词汇（固定顺序）；strength 按这里的 distinct source 计数。"""
+
+FACT_EVIDENCE_SET: frozenset[str] = frozenset(FACT_EVIDENCE_ORDER)
+
+DIMENSION_EVIDENCE_OBJECT = "object"
+DIMENSION_EVIDENCE_COLUMN = "column"
+DIMENSION_EVIDENCE_PROCESS = "process"
+DIMENSION_EVIDENCE_FACT_REFERENCE = "fact_reference"
+DIMENSION_EVIDENCE_SQL = "sql"
+DIMENSION_EVIDENCE_LINEAGE = "lineage"
+
+DIMENSION_EVIDENCE_ORDER: tuple[str, ...] = (
+    DIMENSION_EVIDENCE_OBJECT,
+    DIMENSION_EVIDENCE_COLUMN,
+    DIMENSION_EVIDENCE_PROCESS,
+    DIMENSION_EVIDENCE_FACT_REFERENCE,
+    DIMENSION_EVIDENCE_SQL,
+    DIMENSION_EVIDENCE_LINEAGE,
+)
+"""dimension candidate 证据词汇（固定顺序）。"""
+
+DIMENSION_EVIDENCE_SET: frozenset[str] = frozenset(DIMENSION_EVIDENCE_ORDER)
+
+MODEL_REL_EVIDENCE_PROCESS_OBJECT = "process_object"
+MODEL_REL_EVIDENCE_OBJECT_RELATIONSHIP = "object_relationship"
+MODEL_REL_EVIDENCE_TABLE_REFERENCE = "table_reference"
+MODEL_REL_EVIDENCE_SQL_REFERENCE = "sql_reference"
+MODEL_REL_EVIDENCE_LINEAGE = "lineage"
+
+MODEL_REL_EVIDENCE_ORDER: tuple[str, ...] = (
+    MODEL_REL_EVIDENCE_PROCESS_OBJECT,
+    MODEL_REL_EVIDENCE_OBJECT_RELATIONSHIP,
+    MODEL_REL_EVIDENCE_TABLE_REFERENCE,
+    MODEL_REL_EVIDENCE_SQL_REFERENCE,
+    MODEL_REL_EVIDENCE_LINEAGE,
+)
+"""fact ↔ dimension 关系的证据词汇（固定顺序）；至少一类证据才产出一行。"""
+
+MODEL_REL_EVIDENCE_SET: frozenset[str] = frozenset(MODEL_REL_EVIDENCE_ORDER)
+
+MODEL_FACT_UNRESOLVED_PROCESS = "insufficient_process_evidence"
+MODEL_FACT_UNRESOLVED_GRAIN = "insufficient_grain_evidence"
+MODEL_FACT_UNRESOLVED_AMBIGUOUS_GRAIN = "ambiguous_grain"
+MODEL_FACT_UNRESOLVED_MEASURE = "missing_measure_evidence"
+MODEL_FACT_UNRESOLVED_SQL = "missing_sql_evidence"
+MODEL_FACT_UNRESOLVED_LINEAGE = "missing_lineage_evidence"
+MODEL_FACT_UNRESOLVED_OBJECT = "missing_object_evidence"
+
+MODEL_FACT_UNRESOLVED_ORDER: tuple[str, ...] = (
+    MODEL_FACT_UNRESOLVED_PROCESS,
+    MODEL_FACT_UNRESOLVED_GRAIN,
+    MODEL_FACT_UNRESOLVED_AMBIGUOUS_GRAIN,
+    MODEL_FACT_UNRESOLVED_MEASURE,
+    MODEL_FACT_UNRESOLVED_SQL,
+    MODEL_FACT_UNRESOLVED_LINEAGE,
+    MODEL_FACT_UNRESOLVED_OBJECT,
+)
+"""fact candidate 未决原因的固定顺序（未决 ≠ 失败，必须人工回答）。"""
+
+MODEL_FACT_UNRESOLVED_SET: frozenset[str] = frozenset(MODEL_FACT_UNRESOLVED_ORDER)
+
+MODEL_DIMENSION_UNRESOLVED_OBJECT = "insufficient_object_evidence"
+MODEL_DIMENSION_UNRESOLVED_ATTRIBUTE = "missing_attribute_evidence"
+MODEL_DIMENSION_UNRESOLVED_PROCESS = "missing_process_reference"
+MODEL_DIMENSION_UNRESOLVED_FACT = "missing_fact_reference"
+MODEL_DIMENSION_UNRESOLVED_SQL = "missing_sql_evidence"
+MODEL_DIMENSION_UNRESOLVED_LINEAGE = "missing_lineage_evidence"
+MODEL_DIMENSION_UNRESOLVED_AMBIGUOUS = "fact_and_dimension_ambiguous"
+
+MODEL_DIMENSION_UNRESOLVED_ORDER: tuple[str, ...] = (
+    MODEL_DIMENSION_UNRESOLVED_OBJECT,
+    MODEL_DIMENSION_UNRESOLVED_ATTRIBUTE,
+    MODEL_DIMENSION_UNRESOLVED_PROCESS,
+    MODEL_DIMENSION_UNRESOLVED_FACT,
+    MODEL_DIMENSION_UNRESOLVED_SQL,
+    MODEL_DIMENSION_UNRESOLVED_LINEAGE,
+    MODEL_DIMENSION_UNRESOLVED_AMBIGUOUS,
+)
+"""dimension candidate 未决原因的固定顺序。"""
+
+MODEL_DIMENSION_UNRESOLVED_SET: frozenset[str] = frozenset(
+    MODEL_DIMENSION_UNRESOLVED_ORDER
+)
+
+MODEL_REL_UNRESOLVED_INSUFFICIENT = "insufficient_evidence"
+MODEL_REL_UNRESOLVED_OBJECT_LINK = "missing_object_link"
+MODEL_REL_UNRESOLVED_SQL = "sql_evidence_missing"
+MODEL_REL_UNRESOLVED_LINEAGE = "lineage_evidence_missing"
+
+MODEL_REL_UNRESOLVED_ORDER: tuple[str, ...] = (
+    MODEL_REL_UNRESOLVED_INSUFFICIENT,
+    MODEL_REL_UNRESOLVED_OBJECT_LINK,
+    MODEL_REL_UNRESOLVED_SQL,
+    MODEL_REL_UNRESOLVED_LINEAGE,
+)
+"""fact ↔ dimension 关系未决原因的固定顺序。"""
+
+MODEL_REL_UNRESOLVED_SET: frozenset[str] = frozenset(MODEL_REL_UNRESOLVED_ORDER)
+
+MODEL_CANDIDATE_TYPE_FACT = "fact"
+MODEL_CANDIDATE_TYPE_DIMENSION = "dimension"
+MODEL_CANDIDATE_TYPE_RELATIONSHIP = "fact_dimension_relationship"
+
+MODEL_CANDIDATE_TYPE_ORDER: tuple[str, ...] = (
+    MODEL_CANDIDATE_TYPE_FACT,
+    MODEL_CANDIDATE_TYPE_DIMENSION,
+    MODEL_CANDIDATE_TYPE_RELATIONSHIP,
+)
+"""model-evidence-matrix.json 与 checklist 的候选类型顺序。"""
+
+MODEL_PRIORITY_FACT_EVIDENCE = "P1"
+MODEL_PRIORITY_FACT_AMBIGUOUS = "P2"
+MODEL_PRIORITY_DIMENSION = "P3"
+MODEL_PRIORITY_RELATIONSHIP = "P4"
+
+MODEL_PRIORITY_ORDER: tuple[str, ...] = (
+    MODEL_PRIORITY_FACT_EVIDENCE,
+    MODEL_PRIORITY_FACT_AMBIGUOUS,
+    MODEL_PRIORITY_DIMENSION,
+    MODEL_PRIORITY_RELATIONSHIP,
+)
+"""model-review-checklist.md 的复核优先级顺序（最紧急在前）。"""
+
+MODEL_PRIORITY_TITLE: dict[str, str] = {
+    MODEL_PRIORITY_FACT_EVIDENCE: "Fact Candidate 证据不足",
+    MODEL_PRIORITY_FACT_AMBIGUOUS: "Fact Candidate 粒度 / 血缘待裁决",
+    MODEL_PRIORITY_DIMENSION: "Dimension Candidate 证据 / 角色待裁决",
+    MODEL_PRIORITY_RELATIONSHIP: "Fact-Dimension Relationship 证据不足",
+}
+"""每个优先级分区的标题。"""
+
+MODEL_PRIORITY_HINT: dict[str, str] = {
+    MODEL_PRIORITY_FACT_EVIDENCE: (
+        "证据强度为 weak，或缺 process / grain / 度量 / Object 证据；"
+        "先补证据再确认，不要直接改 status。"
+    ),
+    MODEL_PRIORITY_FACT_AMBIGUOUS: (
+        "grain 形态未定（unknown / multiple_possible_keys）或缺 SQL / 血缘证据；"
+        "需要人工给出粒度裁决或补充上游证据。"
+    ),
+    MODEL_PRIORITY_DIMENSION: (
+        "证据强度为 weak，或属性 / 过程 / 事实引用 / 角色存在歧义；"
+        "Object 同时进入 fact 关系时必须人工裁决角色。"
+    ),
+    MODEL_PRIORITY_RELATIONSHIP: (
+        "关系只有单一证据源或缺 Object 直接链接；"
+        "relationship ≠ 业务关系，确认前必须核对 source_id。"
+    ),
+}
+"""每个优先级分区的填写提示。"""
+
+MODEL_CHECKLIST_HEADERS: tuple[str, ...] = (
+    "candidate_key",
+    "candidate_type",
+    "priority",
+    "current_status",
+    "evidence_strength",
+    "unresolved_reasons",
+    "human_status",
+    "human_name",
+    "note",
+)
+"""model-review-checklist.md 的列（固定顺序）。"""
+
+MODEL_CHECKLIST_REQUIRED_COLUMNS: tuple[str, ...] = (
+    "candidate_key",
+    "human_status",
+    "human_name",
+    "note",
+)
+"""model-review-checklist.md 的回填列：缺一即报错（其余列由机器生成）。"""
+
+MODEL_REPORT_ROW_LIMIT = 50
+"""model-summary.md 中每张明细表的固定行数上限。"""
+
+MODEL_CHECKLIST_ROW_LIMIT = 50
+"""model-review-checklist.md 中每个优先级分区的固定行数上限。"""
+
+MODEL_ATTRIBUTE_LIMIT = 50
+"""dimension candidate 里 attributes 的固定条数上限（attribute_count 仍是全量）。"""
+
+MODEL_EXAMPLE_LIMIT = 5
+"""evidence reason / 报告里列出的示例条目上限。"""
+
+
+@dataclass
+class ModelChecklistRow:
+    """model-review-checklist.md 的一行（priority 已在 M3.5 侧算好）。"""
+
+    candidate_key: str
+    candidate_type: str
+    priority: str
+    current_status: str
+    evidence_strength: str
+    unresolved_reasons: list[str] = field(default_factory=list)
+
+
+@dataclass
+class BusinessModelResult:
+    """一次 M3.5 运行的结果。
+
+    六个 JSON 产物的顶层 payload（固定顺序）+ summary / checklist 两个
+    Markdown 正文；全部只表达 fact / dimension candidate 与证据。
+    """
+
+    fact_candidates: dict[str, Any] = field(default_factory=dict)
+    dimension_candidates: dict[str, Any] = field(default_factory=dict)
+    relationships: dict[str, Any] = field(default_factory=dict)
+    fact_tables: dict[str, Any] = field(default_factory=dict)
+    dimension_tables: dict[str, Any] = field(default_factory=dict)
+    evidence_matrix: dict[str, Any] = field(default_factory=dict)
+    checklist_rows: list[ModelChecklistRow] = field(default_factory=list)
+    summary: str = ""
+    checklist: str = ""
+    analysis_dir: Path = field(default_factory=Path)
+
+    @property
+    def fact_count(self) -> int:
+        return int(self.fact_candidates.get("count") or 0)
+
+    @property
+    def dimension_count(self) -> int:
+        return int(self.dimension_candidates.get("count") or 0)
+
+    @property
+    def relationship_count(self) -> int:
+        return int(self.relationships.get("count") or 0)
+
+    @property
+    def fact_table_count(self) -> int:
+        return int(self.fact_tables.get("count") or 0)
+
+    @property
+    def dimension_table_count(self) -> int:
+        return int(self.dimension_tables.get("count") or 0)
+
+    @property
+    def status_counts(self) -> dict[str, int]:
+        return dict(self.fact_candidates.get("status_counts") or {})
+
+    @property
+    def fact_strength_counts(self) -> dict[str, int]:
+        return dict(self.fact_candidates.get("strength_counts") or {})
+
+    @property
+    def dimension_strength_counts(self) -> dict[str, int]:
+        return dict(self.dimension_candidates.get("strength_counts") or {})
+
+    @property
+    def relationship_strength_counts(self) -> dict[str, int]:
+        return dict(self.relationships.get("strength_counts") or {})
+
+    @property
+    def priority_counts(self) -> dict[str, int]:
+        counts = {priority: 0 for priority in MODEL_PRIORITY_ORDER}
+
+        for row in self.checklist_rows:
+            counts[row.priority] = counts.get(row.priority, 0) + 1
+
+        return counts
+
+
+# ============================================================
+# M3.6 Current-State Model Review
+# ============================================================
+
+CURRENT_STATE_NOTE = (
+    "current-state model 只描述当前平台已经存在的模型形态与评审发现，"
+    "不是 Target DWD Design"
+)
+"""M3.6 产物的统一口径：评审既有模型，不设计目标模型。"""
+
+FINDING_CANDIDATE_NOTE = "review finding 是候选问题，finding ≠ confirmed 问题"
+"""finding 与候选一样：机器只给证据与判断，确认必须人工回填。"""
+
+REVIEW_PRIORITY_P0 = "P0"
+REVIEW_PRIORITY_P1 = "P1"
+REVIEW_PRIORITY_P2 = "P2"
+REVIEW_PRIORITY_P3 = "P3"
+
+REVIEW_PRIORITY_ORDER: tuple[str, ...] = (
+    REVIEW_PRIORITY_P0,
+    REVIEW_PRIORITY_P1,
+    REVIEW_PRIORITY_P2,
+    REVIEW_PRIORITY_P3,
+)
+"""findings 的优先级顺序（最紧急在前）。"""
+
+REVIEW_PRIORITY_SET: frozenset[str] = frozenset(REVIEW_PRIORITY_ORDER)
+
+REVIEW_PRIORITY_TITLE: dict[str, str] = {
+    REVIEW_PRIORITY_P0: "直接影响后续模型设计，必须优先确认",
+    REVIEW_PRIORITY_P1: "高价值模型问题",
+    REVIEW_PRIORITY_P2: "一般模型问题",
+    REVIEW_PRIORITY_P3: "信息性发现",
+}
+"""每个优先级分区的标题。"""
+
+REVIEW_PRIORITY_HINT: dict[str, str] = {
+    REVIEW_PRIORITY_P0: (
+        "粒度冲突、角色歧义与 Fact Gate 排除项会直接改变 M4 的事实模型；"
+        "先确认这些，再看其它问题。"
+    ),
+    REVIEW_PRIORITY_P1: (
+        "疑似重复 / 重叠模型、缺度量的事实与关系证据不足；"
+        "确认前不要合并、拆分或删除任何表。"
+    ),
+    REVIEW_PRIORITY_P2: (
+        "宽表、结果表、聚合事实与 dimension 派生方式；"
+        "属于需要说明但不一定改模型的问题。"
+    ),
+    REVIEW_PRIORITY_P3: "信息性记录，不构成问题判断。",
+}
+"""每个优先级分区的填写提示。"""
+
+REVIEW_SEVERITY_BY_PRIORITY: dict[str, str] = {
+    REVIEW_PRIORITY_P0: "critical",
+    REVIEW_PRIORITY_P1: "high",
+    REVIEW_PRIORITY_P2: "medium",
+    REVIEW_PRIORITY_P3: "info",
+}
+"""priority → severity（只作展示口径，不参与判定）。"""
+
+FINDING_TYPE_FACT_GATE_NO_MEASURE = "fact_gate_no_measure"
+FINDING_TYPE_FACT_GATE_PATTERN = "fact_gate_pattern"
+FINDING_TYPE_EVIDENCE_STRENGTH = "evidence_strength_semantics"
+FINDING_TYPE_FACT_WITHOUT_MEASURE = "fact_without_measure"
+FINDING_TYPE_AGGREGATE_FACT = "aggregate_fact"
+FINDING_TYPE_GRAIN_CONFLICT = "grain_conflict"
+FINDING_TYPE_MIXED_GRAIN = "mixed_grain"
+FINDING_TYPE_SNAPSHOT_PERIODIC = "snapshot_periodic_ambiguous"
+FINDING_TYPE_PROCESS_MULTIPLE_GRAINS = "process_multiple_grains"
+FINDING_TYPE_DIMENSION_OBJECT_DERIVED = "dimension_object_derived"
+FINDING_TYPE_ROLE_AMBIGUOUS = "role_ambiguous"
+FINDING_TYPE_RELATIONSHIP_TECHNICAL = "relationship_technical_only"
+FINDING_TYPE_RELATIONSHIP_CO_OCCURRENCE = "relationship_object_co_occurrence"
+FINDING_TYPE_DUPLICATE_FACT = "duplicate_fact"
+FINDING_TYPE_OVERLAPPING_FACT = "overlapping_fact"
+FINDING_TYPE_MULTI_PROCESS_TABLE = "multi_process_table"
+FINDING_TYPE_WIDE_ANALYTICAL_TABLE = "wide_analytical_table"
+FINDING_TYPE_RESULT_TABLE = "result_table"
+
+FINDING_TYPE_ORDER: tuple[str, ...] = (
+    FINDING_TYPE_FACT_GATE_NO_MEASURE,
+    FINDING_TYPE_FACT_GATE_PATTERN,
+    FINDING_TYPE_EVIDENCE_STRENGTH,
+    FINDING_TYPE_FACT_WITHOUT_MEASURE,
+    FINDING_TYPE_AGGREGATE_FACT,
+    FINDING_TYPE_GRAIN_CONFLICT,
+    FINDING_TYPE_MIXED_GRAIN,
+    FINDING_TYPE_SNAPSHOT_PERIODIC,
+    FINDING_TYPE_PROCESS_MULTIPLE_GRAINS,
+    FINDING_TYPE_DIMENSION_OBJECT_DERIVED,
+    FINDING_TYPE_ROLE_AMBIGUOUS,
+    FINDING_TYPE_RELATIONSHIP_TECHNICAL,
+    FINDING_TYPE_RELATIONSHIP_CO_OCCURRENCE,
+    FINDING_TYPE_DUPLICATE_FACT,
+    FINDING_TYPE_OVERLAPPING_FACT,
+    FINDING_TYPE_MULTI_PROCESS_TABLE,
+    FINDING_TYPE_WIDE_ANALYTICAL_TABLE,
+    FINDING_TYPE_RESULT_TABLE,
+)
+"""M3.6 finding 类型的固定顺序。"""
+
+FINDING_TYPE_SET: frozenset[str] = frozenset(FINDING_TYPE_ORDER)
+
+REVIEW_GROUP_FACT = "fact_review"
+REVIEW_GROUP_DIMENSION = "dimension_review"
+REVIEW_GROUP_GRAIN = "grain_review"
+REVIEW_GROUP_RELATIONSHIP = "relationship_review"
+REVIEW_GROUP_MODEL_ISSUE = "model_issue_review"
+
+REVIEW_GROUP_ORDER: tuple[str, ...] = (
+    REVIEW_GROUP_FACT,
+    REVIEW_GROUP_DIMENSION,
+    REVIEW_GROUP_GRAIN,
+    REVIEW_GROUP_RELATIONSHIP,
+    REVIEW_GROUP_MODEL_ISSUE,
+)
+"""current-state-review-checklist.md 的五个分区顺序。"""
+
+REVIEW_GROUP_SET: frozenset[str] = frozenset(REVIEW_GROUP_ORDER)
+
+REVIEW_GROUP_TITLE: dict[str, str] = {
+    REVIEW_GROUP_FACT: "Fact Review",
+    REVIEW_GROUP_DIMENSION: "Dimension Review",
+    REVIEW_GROUP_GRAIN: "Grain Review",
+    REVIEW_GROUP_RELATIONSHIP: "Relationship Review",
+    REVIEW_GROUP_MODEL_ISSUE: "Model Issue Review",
+}
+"""每个清单分区的标题。"""
+
+REVIEW_GROUP_HINT: dict[str, str] = {
+    REVIEW_GROUP_FACT: (
+        "回答：Fact Gate 是否误排除、strength 是否被误读、"
+        "缺度量与聚合事实是否仍应算事实。"
+    ),
+    REVIEW_GROUP_DIMENSION: (
+        "回答：dimension 是否只是 Object 的直接映射、"
+        "同对象多角色由谁裁决。"
+    ),
+    REVIEW_GROUP_GRAIN: (
+        "回答：同表多组候选键 / 多种 grain 形态哪一个是业务事实。"
+    ),
+    REVIEW_GROUP_RELATIONSHIP: (
+        "回答：只有技术引用或只有共现证据的关系能否算业务关系。"
+    ),
+    REVIEW_GROUP_MODEL_ISSUE: (
+        "回答：疑似重复 / 重叠 / 宽表 / 结果表是否是真实模型问题。"
+    ),
+}
+"""每个清单分区的填写提示。"""
+
+FINDING_TYPE_PRIORITY: dict[str, str] = {
+    FINDING_TYPE_FACT_GATE_NO_MEASURE: REVIEW_PRIORITY_P0,
+    FINDING_TYPE_FACT_GATE_PATTERN: REVIEW_PRIORITY_P0,
+    FINDING_TYPE_GRAIN_CONFLICT: REVIEW_PRIORITY_P0,
+    FINDING_TYPE_MIXED_GRAIN: REVIEW_PRIORITY_P0,
+    FINDING_TYPE_ROLE_AMBIGUOUS: REVIEW_PRIORITY_P0,
+    FINDING_TYPE_FACT_WITHOUT_MEASURE: REVIEW_PRIORITY_P1,
+    FINDING_TYPE_EVIDENCE_STRENGTH: REVIEW_PRIORITY_P1,
+    FINDING_TYPE_SNAPSHOT_PERIODIC: REVIEW_PRIORITY_P1,
+    FINDING_TYPE_RELATIONSHIP_TECHNICAL: REVIEW_PRIORITY_P1,
+    FINDING_TYPE_RELATIONSHIP_CO_OCCURRENCE: REVIEW_PRIORITY_P1,
+    FINDING_TYPE_DUPLICATE_FACT: REVIEW_PRIORITY_P1,
+    FINDING_TYPE_OVERLAPPING_FACT: REVIEW_PRIORITY_P1,
+    FINDING_TYPE_MULTI_PROCESS_TABLE: REVIEW_PRIORITY_P1,
+    FINDING_TYPE_DIMENSION_OBJECT_DERIVED: REVIEW_PRIORITY_P2,
+    FINDING_TYPE_AGGREGATE_FACT: REVIEW_PRIORITY_P2,
+    FINDING_TYPE_WIDE_ANALYTICAL_TABLE: REVIEW_PRIORITY_P2,
+    FINDING_TYPE_RESULT_TABLE: REVIEW_PRIORITY_P2,
+    FINDING_TYPE_PROCESS_MULTIPLE_GRAINS: REVIEW_PRIORITY_P3,
+}
+"""finding_type → priority（固定映射，不随数据变化）。"""
+
+FINDING_TYPE_GROUP: dict[str, str] = {
+    FINDING_TYPE_FACT_GATE_NO_MEASURE: REVIEW_GROUP_FACT,
+    FINDING_TYPE_FACT_GATE_PATTERN: REVIEW_GROUP_FACT,
+    FINDING_TYPE_EVIDENCE_STRENGTH: REVIEW_GROUP_FACT,
+    FINDING_TYPE_FACT_WITHOUT_MEASURE: REVIEW_GROUP_FACT,
+    FINDING_TYPE_AGGREGATE_FACT: REVIEW_GROUP_FACT,
+    FINDING_TYPE_DIMENSION_OBJECT_DERIVED: REVIEW_GROUP_DIMENSION,
+    FINDING_TYPE_ROLE_AMBIGUOUS: REVIEW_GROUP_DIMENSION,
+    FINDING_TYPE_GRAIN_CONFLICT: REVIEW_GROUP_GRAIN,
+    FINDING_TYPE_MIXED_GRAIN: REVIEW_GROUP_GRAIN,
+    FINDING_TYPE_SNAPSHOT_PERIODIC: REVIEW_GROUP_GRAIN,
+    FINDING_TYPE_PROCESS_MULTIPLE_GRAINS: REVIEW_GROUP_GRAIN,
+    FINDING_TYPE_RELATIONSHIP_TECHNICAL: REVIEW_GROUP_RELATIONSHIP,
+    FINDING_TYPE_RELATIONSHIP_CO_OCCURRENCE: REVIEW_GROUP_RELATIONSHIP,
+    FINDING_TYPE_DUPLICATE_FACT: REVIEW_GROUP_MODEL_ISSUE,
+    FINDING_TYPE_OVERLAPPING_FACT: REVIEW_GROUP_MODEL_ISSUE,
+    FINDING_TYPE_MULTI_PROCESS_TABLE: REVIEW_GROUP_MODEL_ISSUE,
+    FINDING_TYPE_WIDE_ANALYTICAL_TABLE: REVIEW_GROUP_MODEL_ISSUE,
+    FINDING_TYPE_RESULT_TABLE: REVIEW_GROUP_MODEL_ISSUE,
+}
+"""finding_type → checklist 分区。"""
+
+FINDING_SCOPE_STAGE = "stage"
+FINDING_SCOPE_TABLE = "table"
+FINDING_SCOPE_TABLE_PAIR = "table_pair"
+FINDING_SCOPE_FACT = "fact"
+FINDING_SCOPE_DIMENSION = "dimension"
+FINDING_SCOPE_PROCESS = "process"
+FINDING_SCOPE_FACT_GROUP = "fact_group"
+
+FINDING_SCOPE_ORDER: tuple[str, ...] = (
+    FINDING_SCOPE_STAGE,
+    FINDING_SCOPE_TABLE,
+    FINDING_SCOPE_TABLE_PAIR,
+    FINDING_SCOPE_FACT,
+    FINDING_SCOPE_DIMENSION,
+    FINDING_SCOPE_PROCESS,
+    FINDING_SCOPE_FACT_GROUP,
+)
+"""finding scope 的固定顺序。"""
+
+FINDING_SCOPE_SET: frozenset[str] = frozenset(FINDING_SCOPE_ORDER)
+
+CURRENT_MODEL_ROLE_FACT = "FACT"
+CURRENT_MODEL_ROLE_DIMENSION = "DIMENSION"
+CURRENT_MODEL_ROLE_AMBIGUOUS = "FACT_DIMENSION_AMBIGUOUS"
+CURRENT_MODEL_ROLE_WIDE = "WIDE_ANALYTICAL"
+CURRENT_MODEL_ROLE_RESULT = "RESULT_TABLE"
+CURRENT_MODEL_ROLE_UNKNOWN = "UNKNOWN"
+
+CURRENT_MODEL_ROLE_ORDER: tuple[str, ...] = (
+    CURRENT_MODEL_ROLE_AMBIGUOUS,
+    CURRENT_MODEL_ROLE_FACT,
+    CURRENT_MODEL_ROLE_DIMENSION,
+    CURRENT_MODEL_ROLE_WIDE,
+    CURRENT_MODEL_ROLE_RESULT,
+    CURRENT_MODEL_ROLE_UNKNOWN,
+)
+"""current_role 的固定顺序（同时是优先级：命中多个时取最靠前的）。"""
+
+CURRENT_MODEL_ROLE_SET: frozenset[str] = frozenset(CURRENT_MODEL_ROLE_ORDER)
+
+CURRENT_MODEL_SHAPE_TRANSACTION = "TRANSACTION"
+CURRENT_MODEL_SHAPE_EVENT = "EVENT"
+CURRENT_MODEL_SHAPE_PERIODIC = "PERIODIC"
+CURRENT_MODEL_SHAPE_SNAPSHOT = "SNAPSHOT"
+CURRENT_MODEL_SHAPE_AGGREGATE = "AGGREGATE"
+CURRENT_MODEL_SHAPE_MIXED = "MIXED"
+CURRENT_MODEL_SHAPE_UNKNOWN = "UNKNOWN"
+
+CURRENT_MODEL_SHAPE_ORDER: tuple[str, ...] = (
+    CURRENT_MODEL_SHAPE_TRANSACTION,
+    CURRENT_MODEL_SHAPE_EVENT,
+    CURRENT_MODEL_SHAPE_PERIODIC,
+    CURRENT_MODEL_SHAPE_SNAPSHOT,
+    CURRENT_MODEL_SHAPE_AGGREGATE,
+    CURRENT_MODEL_SHAPE_MIXED,
+    CURRENT_MODEL_SHAPE_UNKNOWN,
+)
+"""model_shape 的固定顺序（单一形态在前，混合与未知在后）。"""
+
+CURRENT_MODEL_SHAPE_SET: frozenset[str] = frozenset(CURRENT_MODEL_SHAPE_ORDER)
+
+GRAIN_PATTERN_TO_SHAPE: dict[str, str] = {
+    GRAIN_PATTERN_TRANSACTION: CURRENT_MODEL_SHAPE_TRANSACTION,
+    GRAIN_PATTERN_EVENT: CURRENT_MODEL_SHAPE_EVENT,
+    GRAIN_PATTERN_PERIODIC: CURRENT_MODEL_SHAPE_PERIODIC,
+    GRAIN_PATTERN_SNAPSHOT: CURRENT_MODEL_SHAPE_SNAPSHOT,
+    GRAIN_PATTERN_AGGREGATION: CURRENT_MODEL_SHAPE_AGGREGATE,
+    GRAIN_PATTERN_UNKNOWN: CURRENT_MODEL_SHAPE_UNKNOWN,
+}
+"""M3.4 grain_pattern → M3.6 model_shape（未登记形态按 UNKNOWN）。"""
+
+REVIEW_EVIDENCE_TABLE = "table"
+REVIEW_EVIDENCE_COLUMN = "column"
+REVIEW_EVIDENCE_PROCESS = "process"
+REVIEW_EVIDENCE_GRAIN = "grain"
+REVIEW_EVIDENCE_OBJECT = "object"
+REVIEW_EVIDENCE_SQL = "sql"
+REVIEW_EVIDENCE_LINEAGE = "lineage"
+REVIEW_EVIDENCE_PROFILING = "profiling"
+REVIEW_EVIDENCE_LAYER = "layer"
+REVIEW_EVIDENCE_FACT = "fact_candidate"
+REVIEW_EVIDENCE_DIMENSION = "dimension_candidate"
+REVIEW_EVIDENCE_RELATIONSHIP = "relationship"
+
+REVIEW_EVIDENCE_ORDER: tuple[str, ...] = (
+    REVIEW_EVIDENCE_TABLE,
+    REVIEW_EVIDENCE_COLUMN,
+    REVIEW_EVIDENCE_PROCESS,
+    REVIEW_EVIDENCE_GRAIN,
+    REVIEW_EVIDENCE_OBJECT,
+    REVIEW_EVIDENCE_SQL,
+    REVIEW_EVIDENCE_LINEAGE,
+    REVIEW_EVIDENCE_PROFILING,
+    REVIEW_EVIDENCE_LAYER,
+    REVIEW_EVIDENCE_FACT,
+    REVIEW_EVIDENCE_DIMENSION,
+    REVIEW_EVIDENCE_RELATIONSHIP,
+)
+"""finding 证据的词汇（固定顺序）；finding 必须至少一条证据。"""
+
+REVIEW_EVIDENCE_SET: frozenset[str] = frozenset(REVIEW_EVIDENCE_ORDER)
+
+REVIEW_CHECKLIST_HEADERS: tuple[str, ...] = (
+    "finding_id",
+    "finding_type",
+    "priority",
+    "scope_key",
+    "evidence",
+    "system_interpretation",
+    "human_question",
+    "human_status",
+    "human_name",
+    "note",
+)
+"""current-state-review-checklist.md 的列（固定顺序）。"""
+
+REVIEW_CHECKLIST_REQUIRED_COLUMNS: tuple[str, ...] = (
+    "finding_id",
+    "human_status",
+    "human_name",
+    "note",
+)
+"""current-state-review-checklist.md 的回填列：缺一即报错。"""
+
+REVIEW_CHECKLIST_ROW_LIMIT = 50
+"""current-state-review-checklist.md 中每个分区的固定行数上限。"""
+
+REVIEW_REPORT_ROW_LIMIT = 50
+"""current-state-model-summary.md 中每张明细表的固定行数上限。"""
+
+REVIEW_EXAMPLE_LIMIT = 5
+"""finding 证据 / 描述里列出的示例条目上限。"""
+
+FINDING_ID_FORMAT = "model_finding_{index:04d}"
+"""finding_id 的固定格式（按 canonical signature 排序后编号）。"""
+
+
+# ============================================================
+# M3.6 v2 Current-State Problem Assessment
+# ============================================================
+
+PROBLEM_CANDIDATE_NOTE = (
+    "problem candidate 是 Finding 聚合后的候选问题：Finding Count ≠ Problem Count "
+    "≠ Confirmed Problem Count；机器不自动把任何 problem 变成 confirmed"
+)
+"""Problem 的统一口径：聚合、证据、影响与根因，不替代人工确认。"""
+
+PROBLEM_ID_FORMAT = "problem_{index:04d}"
+"""problem_id 的固定格式（按 canonical signature 排序后编号）。"""
+
+PROBLEM_OUTPUT_FILES: tuple[str, ...] = (
+    "current-state-problems.json",
+    "current-state-problem-evidence.json",
+    "current-state-problem-summary.md",
+    "current-state-problem-review-checklist.md",
+)
+"""M3.6 v2 新增的四个产物（固定顺序）；不改变已有五个 M3.6 产物。"""
+
+PROBLEM_CARRYOVER_FILE = "business/current-state-problem-review-checklist.md"
+"""问题清单的人工回填文件（可选输入，重跑带回）。"""
+
+PROBLEM_TYPE_GRAIN = "GRAIN_PROBLEM"
+PROBLEM_TYPE_OVERLAP = "MODEL_OVERLAP"
+PROBLEM_TYPE_DUPLICATION = "MODEL_DUPLICATION"
+PROBLEM_TYPE_MIXED_RESPONSIBILITY = "MIXED_RESPONSIBILITY"
+PROBLEM_TYPE_ROLE_AMBIGUITY = "MODEL_ROLE_AMBIGUITY"
+PROBLEM_TYPE_PROCESS_ALIGNMENT = "PROCESS_MODEL_ALIGNMENT"
+PROBLEM_TYPE_AGGREGATION = "AGGREGATION_MODEL_PROBLEM"
+PROBLEM_TYPE_FACT_IDENTIFICATION = "FACT_IDENTIFICATION_PROBLEM"
+PROBLEM_TYPE_DIMENSION_IDENTIFICATION = "DIMENSION_IDENTIFICATION_PROBLEM"
+PROBLEM_TYPE_SELECTION_AMBIGUITY = "MODEL_SELECTION_AMBIGUITY"
+PROBLEM_TYPE_SEMANTIC_AMBIGUITY = "SEMANTIC_AMBIGUITY"
+PROBLEM_TYPE_COVERAGE_GAP = "MODEL_COVERAGE_GAP"
+PROBLEM_TYPE_UNKNOWN_MODEL = "UNKNOWN_MODEL"
+
+PROBLEM_TYPE_ORDER: tuple[str, ...] = (
+    PROBLEM_TYPE_GRAIN,
+    PROBLEM_TYPE_OVERLAP,
+    PROBLEM_TYPE_DUPLICATION,
+    PROBLEM_TYPE_MIXED_RESPONSIBILITY,
+    PROBLEM_TYPE_ROLE_AMBIGUITY,
+    PROBLEM_TYPE_PROCESS_ALIGNMENT,
+    PROBLEM_TYPE_AGGREGATION,
+    PROBLEM_TYPE_FACT_IDENTIFICATION,
+    PROBLEM_TYPE_DIMENSION_IDENTIFICATION,
+    PROBLEM_TYPE_SELECTION_AMBIGUITY,
+    PROBLEM_TYPE_SEMANTIC_AMBIGUITY,
+    PROBLEM_TYPE_COVERAGE_GAP,
+    PROBLEM_TYPE_UNKNOWN_MODEL,
+)
+"""problem taxonomy 的固定顺序（第一版 13 类；没有证据支撑的类型不产生问题）。"""
+
+PROBLEM_TYPE_SET: frozenset[str] = frozenset(PROBLEM_TYPE_ORDER)
+
+PROBLEM_TYPE_TITLE: dict[str, str] = {
+    PROBLEM_TYPE_GRAIN: "粒度问题",
+    PROBLEM_TYPE_OVERLAP: "模型重叠",
+    PROBLEM_TYPE_DUPLICATION: "模型重复",
+    PROBLEM_TYPE_MIXED_RESPONSIBILITY: "职责混杂",
+    PROBLEM_TYPE_ROLE_AMBIGUITY: "角色歧义",
+    PROBLEM_TYPE_PROCESS_ALIGNMENT: "过程与模型对齐",
+    PROBLEM_TYPE_AGGREGATION: "聚合模型问题",
+    PROBLEM_TYPE_FACT_IDENTIFICATION: "事实识别问题",
+    PROBLEM_TYPE_DIMENSION_IDENTIFICATION: "维度识别问题",
+    PROBLEM_TYPE_SELECTION_AMBIGUITY: "模型选择歧义",
+    PROBLEM_TYPE_SEMANTIC_AMBIGUITY: "语义歧义",
+    PROBLEM_TYPE_COVERAGE_GAP: "过程覆盖缺口",
+    PROBLEM_TYPE_UNKNOWN_MODEL: "未定模型",
+}
+"""problem_type → 中文标题（报告与清单分区用）。"""
+
+PROBLEM_SCOPE_TABLE = "table"
+PROBLEM_SCOPE_TABLE_SET = "table_set"
+PROBLEM_SCOPE_PROCESS = "process"
+PROBLEM_SCOPE_DIMENSION = "dimension"
+PROBLEM_SCOPE_STAGE = "stage"
+
+PROBLEM_SCOPE_ORDER: tuple[str, ...] = (
+    PROBLEM_SCOPE_STAGE,
+    PROBLEM_SCOPE_PROCESS,
+    PROBLEM_SCOPE_DIMENSION,
+    PROBLEM_SCOPE_TABLE_SET,
+    PROBLEM_SCOPE_TABLE,
+)
+"""problem scope 的固定顺序。"""
+
+PROBLEM_SCOPE_SET: frozenset[str] = frozenset(PROBLEM_SCOPE_ORDER)
+
+PROBLEM_STATUS_CANDIDATE = "candidate"
+PROBLEM_STATUS_REVIEW_REQUIRED = "review_required"
+PROBLEM_STATUS_CONFIRMED = "confirmed"
+PROBLEM_STATUS_REJECTED = "rejected"
+
+PROBLEM_STATUS_ORDER: tuple[str, ...] = (
+    PROBLEM_STATUS_CANDIDATE,
+    PROBLEM_STATUS_REVIEW_REQUIRED,
+    PROBLEM_STATUS_CONFIRMED,
+    PROBLEM_STATUS_REJECTED,
+)
+"""problem status 的固定顺序；机器阶段只会写前两个。"""
+
+PROBLEM_STATUS_SET: frozenset[str] = frozenset(PROBLEM_STATUS_ORDER)
+
+PROBLEM_STATUS_BY_HUMAN_STATUS: dict[str, str] = {
+    MODEL_HUMAN_STATUS_PENDING: PROBLEM_STATUS_CANDIDATE,
+    MODEL_HUMAN_STATUS_CONFIRMED: PROBLEM_STATUS_CONFIRMED,
+    MODEL_HUMAN_STATUS_REJECTED: PROBLEM_STATUS_REJECTED,
+    MODEL_HUMAN_STATUS_NEEDS_REVIEW: PROBLEM_STATUS_REVIEW_REQUIRED,
+    PROBLEM_STATUS_REVIEW_REQUIRED: PROBLEM_STATUS_REVIEW_REQUIRED,
+    PROBLEM_STATUS_CONFIRMED: PROBLEM_STATUS_CONFIRMED,
+    PROBLEM_STATUS_REJECTED: PROBLEM_STATUS_REJECTED,
+}
+"""问题清单 human_status → problem status（未识别取值按未回填处理）。"""
+
+GRAIN_ASSESSMENT_CONFIRMED_CONFLICT = "confirmed_conflict"
+GRAIN_ASSESSMENT_POSSIBLE_CONFLICT = "possible_conflict"
+GRAIN_ASSESSMENT_REVIEW_REQUIRED = "review_required"
+
+GRAIN_ASSESSMENT_ORDER: tuple[str, ...] = (
+    GRAIN_ASSESSMENT_CONFIRMED_CONFLICT,
+    GRAIN_ASSESSMENT_POSSIBLE_CONFLICT,
+    GRAIN_ASSESSMENT_REVIEW_REQUIRED,
+)
+"""GRAIN_PROBLEM 的证据分级：候选键互不包含 / 全部互为子集 / 证据不足。"""
+
+OVERLAP_CLASS_STRUCTURAL = "structural_overlap"
+OVERLAP_CLASS_DUPLICATION = "duplication_candidate"
+OVERLAP_CLASS_TECHNICAL_COPY = "technical_copy_candidate"
+OVERLAP_CLASS_DIVERGENT_STRUCTURE = "grain_identical_structure_divergent"
+
+OVERLAP_CLASS_ORDER: tuple[str, ...] = (
+    OVERLAP_CLASS_DUPLICATION,
+    OVERLAP_CLASS_TECHNICAL_COPY,
+    OVERLAP_CLASS_STRUCTURAL,
+    OVERLAP_CLASS_DIVERGENT_STRUCTURE,
+)
+"""MODEL_OVERLAP / MODEL_DUPLICATION 的分类（重叠 ≠ 重复）。"""
+
+AGGREGATE_ASSESSMENT_VALID = "valid_aggregate"
+AGGREGATE_ASSESSMENT_REVIEW_REQUIRED = "review_required"
+AGGREGATE_ASSESSMENT_MODEL_PROBLEM = "model_problem"
+
+AGGREGATE_ASSESSMENT_ORDER: tuple[str, ...] = (
+    AGGREGATE_ASSESSMENT_VALID,
+    AGGREGATE_ASSESSMENT_REVIEW_REQUIRED,
+    AGGREGATE_ASSESSMENT_MODEL_PROBLEM,
+)
+"""聚合表评估：有原子事实来源且无重复 / 证据不足 / 无原子来源且重复或粒度冲突。"""
+
+UNKNOWN_REASON_NO_EVIDENCE = "NO_EVIDENCE"
+UNKNOWN_REASON_NO_ANCHOR = "NO_ANCHOR"
+UNKNOWN_REASON_TECHNICAL_TABLE = "TECHNICAL_TABLE"
+UNKNOWN_REASON_NON_BUSINESS = "NON_BUSINESS"
+UNKNOWN_REASON_INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+
+UNKNOWN_REASON_ORDER: tuple[str, ...] = (
+    UNKNOWN_REASON_NO_EVIDENCE,
+    UNKNOWN_REASON_NO_ANCHOR,
+    UNKNOWN_REASON_TECHNICAL_TABLE,
+    UNKNOWN_REASON_NON_BUSINESS,
+    UNKNOWN_REASON_INSUFFICIENT_EVIDENCE,
+)
+"""UNKNOWN 表的解释分类；证据不足时 UNKNOWN 就是合法结果，不自动转 FACT / DIMENSION。"""
+
+PROBLEM_IMPACT_GRAIN_INCONSISTENCY = "GRAIN_INCONSISTENCY"
+PROBLEM_IMPACT_DUPLICATED_MODEL = "DUPLICATED_MODEL"
+PROBLEM_IMPACT_QUERY_COMPLEXITY = "QUERY_COMPLEXITY"
+PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY = "MODEL_SELECTION_DIFFICULTY"
+PROBLEM_IMPACT_METRIC_AMBIGUITY = "METRIC_AMBIGUITY"
+PROBLEM_IMPACT_MAINTENANCE_COST = "MAINTENANCE_COST"
+PROBLEM_IMPACT_REUSE_DIFFICULTY = "REUSE_DIFFICULTY"
+PROBLEM_IMPACT_GOVERNANCE_DIFFICULTY = "GOVERNANCE_DIFFICULTY"
+PROBLEM_IMPACT_ANALYTICAL_RISK = "ANALYTICAL_RISK"
+PROBLEM_IMPACT_DATA_CONSUMER_CONFUSION = "DATA_CONSUMER_CONFUSION"
+PROBLEM_IMPACT_AI_SEMANTIC_RISK = "AI_SEMANTIC_RISK"
+
+PROBLEM_IMPACT_ORDER: tuple[str, ...] = (
+    PROBLEM_IMPACT_GRAIN_INCONSISTENCY,
+    PROBLEM_IMPACT_DUPLICATED_MODEL,
+    PROBLEM_IMPACT_QUERY_COMPLEXITY,
+    PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
+    PROBLEM_IMPACT_METRIC_AMBIGUITY,
+    PROBLEM_IMPACT_MAINTENANCE_COST,
+    PROBLEM_IMPACT_REUSE_DIFFICULTY,
+    PROBLEM_IMPACT_GOVERNANCE_DIFFICULTY,
+    PROBLEM_IMPACT_ANALYTICAL_RISK,
+    PROBLEM_IMPACT_DATA_CONSUMER_CONFUSION,
+    PROBLEM_IMPACT_AI_SEMANTIC_RISK,
+)
+"""impact 词汇（固定顺序）；只有证据支持时才允许出现。"""
+
+PROBLEM_IMPACT_TITLE: dict[str, str] = {
+    PROBLEM_IMPACT_GRAIN_INCONSISTENCY: "同一语义存在多种粒度口径",
+    PROBLEM_IMPACT_DUPLICATED_MODEL: "同一业务语义存在多个模型",
+    PROBLEM_IMPACT_QUERY_COMPLEXITY: "取数需要在多个相似模型间判断",
+    PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY: "消费者难以选择正确模型",
+    PROBLEM_IMPACT_METRIC_AMBIGUITY: "指标口径可能不一致",
+    PROBLEM_IMPACT_MAINTENANCE_COST: "同一语义需多处维护",
+    PROBLEM_IMPACT_REUSE_DIFFICULTY: "模型难以复用",
+    PROBLEM_IMPACT_GOVERNANCE_DIFFICULTY: "治理与口径追踪困难",
+    PROBLEM_IMPACT_ANALYTICAL_RISK: "分析结果可能基于错误模型",
+    PROBLEM_IMPACT_DATA_CONSUMER_CONFUSION: "数据使用者认知负担高",
+    PROBLEM_IMPACT_AI_SEMANTIC_RISK: "AI / 语义层消费时易误选模型",
+}
+"""impact → 中文说明（报告用）。"""
+
+PROBLEM_ROOT_CAUSE_MULTIPLE_GRAINS = "MULTIPLE_GRAINS_IN_ONE_MODEL"
+PROBLEM_ROOT_CAUSE_DUPLICATED_PIPELINES = "DUPLICATED_MODEL_PIPELINES"
+PROBLEM_ROOT_CAUSE_LAYER_OVERLAP = "LAYER_RESPONSIBILITY_OVERLAP"
+PROBLEM_ROOT_CAUSE_RESPONSIBILITY_MIX = "BUSINESS_AND_ANALYTICAL_RESPONSIBILITY_MIX"
+PROBLEM_ROOT_CAUSE_SOURCE_REPLICATION = "MULTIPLE_SOURCE_SYSTEM_REPLICATION"
+PROBLEM_ROOT_CAUSE_NO_STANDARDIZATION = "INSUFFICIENT_BUSINESS_MODEL_STANDARDIZATION"
+PROBLEM_ROOT_CAUSE_AGGREGATION_ATOMIC_MIX = "AGGREGATION_AND_ATOMIC_DATA_MIX"
+PROBLEM_ROOT_CAUSE_UNRESOLVED_ROLE = "UNRESOLVED_MODEL_ROLE"
+PROBLEM_ROOT_CAUSE_GATE_MEASURE_DEPENDENCY = "FACT_GATE_MEASURE_DEPENDENCY"
+PROBLEM_ROOT_CAUSE_UNKNOWN = "UNKNOWN"
+
+PROBLEM_ROOT_CAUSE_ORDER: tuple[str, ...] = (
+    PROBLEM_ROOT_CAUSE_MULTIPLE_GRAINS,
+    PROBLEM_ROOT_CAUSE_DUPLICATED_PIPELINES,
+    PROBLEM_ROOT_CAUSE_LAYER_OVERLAP,
+    PROBLEM_ROOT_CAUSE_RESPONSIBILITY_MIX,
+    PROBLEM_ROOT_CAUSE_SOURCE_REPLICATION,
+    PROBLEM_ROOT_CAUSE_NO_STANDARDIZATION,
+    PROBLEM_ROOT_CAUSE_AGGREGATION_ATOMIC_MIX,
+    PROBLEM_ROOT_CAUSE_UNRESOLVED_ROLE,
+    PROBLEM_ROOT_CAUSE_GATE_MEASURE_DEPENDENCY,
+    PROBLEM_ROOT_CAUSE_UNKNOWN,
+)
+"""root cause 词汇（固定顺序）；证据不足时必须写 UNKNOWN，不写设计偏好。"""
+
+PROBLEM_ROOT_CAUSE_TITLE: dict[str, str] = {
+    PROBLEM_ROOT_CAUSE_MULTIPLE_GRAINS: "同一模型内存在多种粒度",
+    PROBLEM_ROOT_CAUSE_DUPLICATED_PIPELINES: "同一业务口径存在重复加工链路",
+    PROBLEM_ROOT_CAUSE_LAYER_OVERLAP: "分层职责重叠",
+    PROBLEM_ROOT_CAUSE_RESPONSIBILITY_MIX: "业务与分析职责混杂",
+    PROBLEM_ROOT_CAUSE_SOURCE_REPLICATION: "多来源系统复制",
+    PROBLEM_ROOT_CAUSE_NO_STANDARDIZATION: "业务模型标准化不足",
+    PROBLEM_ROOT_CAUSE_AGGREGATION_ATOMIC_MIX: "聚合与原子数据混放",
+    PROBLEM_ROOT_CAUSE_UNRESOLVED_ROLE: "模型角色未裁决",
+    PROBLEM_ROOT_CAUSE_GATE_MEASURE_DEPENDENCY: "事实闸门依赖度量字段",
+    PROBLEM_ROOT_CAUSE_UNKNOWN: "现有证据不足以判断",
+}
+"""root cause → 中文说明（报告用）。"""
+
+PROBLEM_EVIDENCE_FINDING = "FINDING"
+PROBLEM_EVIDENCE_TABLE = "TABLE"
+PROBLEM_EVIDENCE_COLUMN = "COLUMN"
+PROBLEM_EVIDENCE_PROCESS = "PROCESS"
+PROBLEM_EVIDENCE_GRAIN = "GRAIN"
+PROBLEM_EVIDENCE_OBJECT = "OBJECT"
+PROBLEM_EVIDENCE_SQL = "SQL"
+PROBLEM_EVIDENCE_LINEAGE = "LINEAGE"
+PROBLEM_EVIDENCE_RELATIONSHIP = "RELATIONSHIP"
+
+PROBLEM_EVIDENCE_ORDER: tuple[str, ...] = (
+    PROBLEM_EVIDENCE_FINDING,
+    PROBLEM_EVIDENCE_TABLE,
+    PROBLEM_EVIDENCE_COLUMN,
+    PROBLEM_EVIDENCE_PROCESS,
+    PROBLEM_EVIDENCE_GRAIN,
+    PROBLEM_EVIDENCE_OBJECT,
+    PROBLEM_EVIDENCE_SQL,
+    PROBLEM_EVIDENCE_LINEAGE,
+    PROBLEM_EVIDENCE_RELATIONSHIP,
+)
+"""问题证据类型（固定顺序）；SQL 证据本阶段不读 SQL 产物，因此恒为 0。"""
+
+PROBLEM_EVIDENCE_SET: frozenset[str] = frozenset(PROBLEM_EVIDENCE_ORDER)
+
+PROBLEM_EVIDENCE_ROW_LIMIT = 50
+"""单个 problem 的证据行上限（超出截断并记录 evidence_total）。"""
+
+PROBLEM_SUMMARY_ROW_LIMIT = 20
+"""current-state-problem-summary.md 里 Top Problems 的行数上限。"""
+
+PROBLEM_REPORT_ROW_LIMIT = 50
+"""current-state-problem-summary.md 里其它明细表的行数上限。"""
+
+PROBLEM_CHECKLIST_ROW_LIMIT = 50
+"""current-state-problem-review-checklist.md 每个分区的行数上限。"""
+
+PROBLEM_CHECKLIST_HEADERS: tuple[str, ...] = (
+    "problem_id",
+    "problem_type",
+    "priority",
+    "scope_key",
+    "evidence",
+    "system_interpretation",
+    "human_question",
+    "human_status",
+    "human_name",
+    "note",
+)
+"""current-state-problem-review-checklist.md 的列（固定顺序）。"""
+
+PROBLEM_CHECKLIST_REQUIRED_COLUMNS: tuple[str, ...] = (
+    "problem_id",
+    "human_status",
+    "human_name",
+    "note",
+)
+"""问题清单的回填列：缺一即报错。"""
+
+PROBLEM_TYPE_PRIORITY: dict[str, str] = {
+    PROBLEM_TYPE_GRAIN: REVIEW_PRIORITY_P0,
+    PROBLEM_TYPE_ROLE_AMBIGUITY: REVIEW_PRIORITY_P0,
+    PROBLEM_TYPE_COVERAGE_GAP: REVIEW_PRIORITY_P0,
+    PROBLEM_TYPE_DUPLICATION: REVIEW_PRIORITY_P1,
+    PROBLEM_TYPE_OVERLAP: REVIEW_PRIORITY_P1,
+    PROBLEM_TYPE_MIXED_RESPONSIBILITY: REVIEW_PRIORITY_P1,
+    PROBLEM_TYPE_AGGREGATION: REVIEW_PRIORITY_P1,
+    PROBLEM_TYPE_FACT_IDENTIFICATION: REVIEW_PRIORITY_P1,
+    PROBLEM_TYPE_SELECTION_AMBIGUITY: REVIEW_PRIORITY_P1,
+    PROBLEM_TYPE_SEMANTIC_AMBIGUITY: REVIEW_PRIORITY_P1,
+    PROBLEM_TYPE_DIMENSION_IDENTIFICATION: REVIEW_PRIORITY_P2,
+    PROBLEM_TYPE_UNKNOWN_MODEL: REVIEW_PRIORITY_P2,
+    PROBLEM_TYPE_PROCESS_ALIGNMENT: REVIEW_PRIORITY_P2,
+}
+"""没有 finding 支撑时 problem 的默认 priority；有 finding 时取最靠前的 priority。"""
+
+SELECTION_AMBIGUITY_MIN_DUPLICATION = 10
+"""一个 process 要形成 MODEL_SELECTION_AMBIGUITY 所需的最小重复问题数。"""
+
+AGGREGATE_MIN_UPSTREAM_FOR_VALID = 1
+"""判断聚合表是否存在原子事实来源所需的最小上游血缘边数。"""
+
+
+@dataclass
+class CurrentStateProblemResult:
+    """一次 M3.6 v2 Problem Assessment 的结果。
+
+    两个 JSON payload + summary / checklist 两个 Markdown 正文；
+    只表达 Finding 聚合后的候选问题、证据链、影响、根因与重构理由。
+    """
+
+    problems: dict[str, Any] = field(default_factory=dict)
+    evidence: dict[str, Any] = field(default_factory=dict)
+    summary: str = ""
+    checklist: str = ""
+    analysis_dir: Path = field(default_factory=Path)
+
+    @property
+    def problem_count(self) -> int:
+        return int(self.problems.get("count") or 0)
+
+    @property
+    def type_counts(self) -> dict[str, int]:
+        return dict(self.problems.get("problem_type_counts") or {})
+
+    @property
+    def status_counts(self) -> dict[str, int]:
+        return dict(self.problems.get("status_counts") or {})
+
+    @property
+    def priority_counts(self) -> dict[str, int]:
+        return dict(self.problems.get("priority_counts") or {})
+
+    @property
+    def impact_counts(self) -> dict[str, int]:
+        return dict(self.problems.get("impact_counts") or {})
+
+
+@dataclass
+class CurrentStateModelResult:
+    """一次 M3.6 运行的结果。
+
+    三个 JSON 产物的顶层 payload（固定顺序）+ summary / checklist 两个
+    Markdown 正文；只表达当前模型形态、评审发现与人工问题。
+    problem 挂载本次运行的 M3.6 v2 Problem Assessment 结果（可为 None）。
+    """
+
+    problem: CurrentStateProblemResult | None = None
+
+    model: dict[str, Any] = field(default_factory=dict)
+    tables: dict[str, Any] = field(default_factory=dict)
+    findings: dict[str, Any] = field(default_factory=dict)
+    summary: str = ""
+    checklist: str = ""
+    analysis_dir: Path = field(default_factory=Path)
+
+    @property
+    def table_count(self) -> int:
+        return int(self.tables.get("count") or 0)
+
+    @property
+    def finding_count(self) -> int:
+        return int(self.findings.get("count") or 0)
+
+    @property
+    def priority_counts(self) -> dict[str, int]:
+        return dict(self.findings.get("priority_counts") or {})
+
+    @property
+    def finding_type_counts(self) -> dict[str, int]:
+        return dict(self.findings.get("finding_type_counts") or {})
+
+    @property
+    def review_group_counts(self) -> dict[str, int]:
+        return dict(self.findings.get("review_group_counts") or {})
+
+    @property
+    def status_counts(self) -> dict[str, int]:
+        return dict(self.findings.get("status_counts") or {})
+
+    @property
+    def role_counts(self) -> dict[str, int]:
+        return dict(self.tables.get("role_counts") or {})
+
+
+# ============================================================
 # 排序工具
 # ============================================================
 

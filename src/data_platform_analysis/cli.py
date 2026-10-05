@@ -14,6 +14,10 @@ from .analysis.business_grain import (
     BusinessGrainError,
     run_business_grain_analysis,
 )
+from .analysis.business_model import (
+    BusinessModelError,
+    run_business_model_analysis,
+)
 from .analysis.business_objects import (
     BusinessObjectsError,
     run_business_object_analysis,
@@ -32,6 +36,10 @@ from .analysis.business_understanding import (
 )
 from .analysis.errors import AnalysisFatalError
 from .analysis.layer_assessment import LayerAssessmentError, run_layer_assessment
+from .analysis.model_review import (
+    CurrentStateModelError,
+    run_current_state_model_analysis,
+)
 from .config import settings
 from .export import SnapshotExporter
 from .logging_utils import setup_logging
@@ -249,6 +257,34 @@ def build_parser() -> argparse.ArgumentParser:
             "基于已有 M2 / M3 / M3.1 / M3.2 / M3.3 产物执行 M3.4 Grain "
             "Candidate Analysis（只产出 grain candidate 与信号，"
             "不产出 confirmed grain，不命名事实表 / 维度表）。"
+        ),
+    )
+
+    # ========================================================
+    # Analyze Business Model
+    # ========================================================
+
+    # 基于已有 M2 / M3 / M3.1 / M3.2 / M3.3 / M3.4 产物执行 M3.5 候选分析。
+    subparsers.add_parser(
+        "analyze-business-model",
+        help=(
+            "基于已有 M2 / M3 / M3.1 / M3.2 / M3.3 / M3.4 产物执行 M3.5 Fact / "
+            "Dimension Candidate Analysis（只产出 fact / dimension / relationship "
+            "candidate 与证据，不产出 DWD / DWS / Semantic Layer）。"
+        ),
+    )
+
+    # ========================================================
+    # Analyze Current-State Model
+    # ========================================================
+
+    # 基于已有 M2 / M3 / M3.5 产物执行 M3.6 评审（只读，不改上游）。
+    subparsers.add_parser(
+        "analyze-current-state-model",
+        help=(
+            "基于已有 M2 / M3 / M3.5 产物执行 M3.6 Current-State Model Review"
+            "（只评审候选、产出形态分类 / finding / 人工清单，"
+            "不设计 Target DWD、不产出 DWD / DWS / Semantic Layer）。"
         ),
     )
 
@@ -563,6 +599,72 @@ def run_analyze_business_grain() -> None:
     console.print(f"[green]产物：[/green]{settings.analysis_dir / 'business'}")
 
 
+def run_analyze_business_model() -> None:
+    """基于已有 M2 / M3 / M3.1 / M3.2 / M3.3 / M3.4 产物执行 M3.5 候选分析。"""
+
+    try:
+        result = run_business_model_analysis(
+            analysis_dir=settings.analysis_dir,
+            output_dir=settings.analysis_dir / "business",
+        )
+
+    except BusinessModelError as exc:
+        logger.error("Fact / Dimension Candidate Analysis 无法继续：%s", exc)
+
+        sys.exit(1)
+
+    fact_text = "，".join(
+        f"{key}={value}" for key, value in result.fact_strength_counts.items()
+    )
+
+    console.print(
+        "[green]Fact / Dimension Candidate Analysis 完成：[/green]"
+        f"fact={result.fact_count}（{fact_text}），"
+        f"dimension={result.dimension_count}，"
+        f"relationship={result.relationship_count}，"
+        f"fact table={result.fact_table_count}，"
+        f"dimension table={result.dimension_table_count}"
+    )
+    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'business'}")
+
+
+def run_analyze_current_state_model() -> None:
+    """基于已有 M2 / M3 / M3.5 产物执行 M3.6 Current-State Model Review。"""
+
+    try:
+        result = run_current_state_model_analysis(
+            analysis_dir=settings.analysis_dir,
+            output_dir=settings.analysis_dir / "business",
+        )
+
+    except CurrentStateModelError as exc:
+        logger.error("Current-State Model Review 无法继续：%s", exc)
+
+        sys.exit(1)
+
+    priority_text = "，".join(
+        f"{key}={value}" for key, value in result.priority_counts.items()
+    )
+
+    console.print(
+        "[green]Current-State Model Review 完成：[/green]"
+        f"table={result.table_count}，finding={result.finding_count}"
+        f"（{priority_text}）"
+    )
+
+    if result.problem is not None:
+        problem_status_text = "，".join(
+            f"{key}={value}" for key, value in result.problem.status_counts.items()
+        )
+        console.print(
+            "[green]Current-State Problem Assessment 完成：[/green]"
+            f"problem={result.problem.problem_count}"
+            f"（{problem_status_text}）"
+        )
+
+    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'business'}")
+
+
 def main() -> None:
     """CLI 程序入口。"""
 
@@ -632,6 +734,14 @@ def main() -> None:
             run_analyze_business_grain()
             return
 
+        if args.command == "analyze-business-model":
+            run_analyze_business_model()
+            return
+
+        if args.command == "analyze-current-state-model":
+            run_analyze_current_state_model()
+            return
+
         parser.error(f"未知命令：{args.command}")
 
     except KeyboardInterrupt:
@@ -643,3 +753,7 @@ def main() -> None:
         logger.exception("命令执行失败。")
 
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
