@@ -40,7 +40,7 @@ uv run data-platform-analysis [--log-level LEVEL] <command> [options]
 | `analyze-business-processes` | 基于已有 M2 ~ M3.1 产物执行 M3.3 Process Candidate Analysis |
 | `analyze-business-grain` | 基于已有 M2 ~ M3.2 产物执行 M3.4 Grain Candidate Analysis |
 | `analyze-business-model` | 基于已有 M2 ~ M3.4 产物执行 M3.5 Fact / Dimension Candidate Analysis（candidate + 证据，不产出 DWD / DWS / Semantic Layer） |
-| `analyze-current-state-model` | 基于已有 M2 ~ M3.5 产物执行 M3.6 Current-State Model Review（只评审：当前形态分类 + 18 类 finding + 人工清单），并附带 M3.6 v2 Problem Assessment（finding → problem candidate + 13 类 taxonomy + 证据 / 影响 / 根因 + 人工清单），一次写出 9 个产物，不设计 Target DWD、不改上游产物 |
+| `analyze-current-state-model` | 基于已有 M2 ~ M3.5 产物执行 M3.6 Current-State Model Review（只评审：当前形态分类 + 18 类 finding + 人工清单），并附带 M3.6 v2 Problem Assessment（finding → problem candidate + 13 类 taxonomy + 证据 / 影响 / 根因 + 人工清单），一次写出 9 个产物，不设计 Target DWD、不改上游产物；方法论与人工裁决流程见 [M36_PROBLEM_ASSESSMENT.md](M36_PROBLEM_ASSESSMENT.md) |
 
 分析命令共性：无参数、无专用配置，只读上游产物并写 `analysis/`；上游缺失或跨文件引用未知即退出码 1（不回退执行前置阶段）。等价入口：`uv run python -m data_platform_analysis.cli <子命令>`。
 

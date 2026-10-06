@@ -27,3 +27,31 @@ _Avoid_: 数据血缘（泛称，不区分层级）
 **Task-level Dependency（任务级依赖）**:
 DataWorks 节点之间的调度依赖关系；当前分析边界按单 Workspace 内理解，不主动建模跨 Workspace 任务依赖。
 _Avoid_: 血缘（不区分任务级与表级时禁用）
+
+**Candidate（候选）**:
+机器基于只读证据产出、尚未经过人工回填的判定；M3 ～ M3.6 v2 的 Domain、Process、Grain、Fact、Dimension、Finding、Problem 一律停留在候选口径。
+_Avoid_: 结论、结论模型（机器阶段禁止使用）
+
+**Finding（评审发现）**:
+M3.6 对当前模型的一次结构观测（18 类，逐条记录现象并提出人工问题），不包含对错判断。
+_Avoid_: 问题、错误、缺陷
+
+**Problem（问题候选）**:
+M3.6 v2 把同一根因下的若干 finding 聚合成的候选问题（13 类），携带证据、影响、根因与重构理由，仍待人工确认。
+_Avoid_: 已确认问题、缺陷清单
+
+**Confirmed Problem（已确认问题）**:
+唯一由 `current-state-problem-review-checklist.md` 人工回填 `confirmed` 产生的状态；机器永远不会写入。
+_Avoid_: 机器确认、自动确认
+
+**Human Adjudication（人工裁决）**:
+对 finding 与 problem 清单回填 `human_status` 的过程，是 candidate 变成 confirmed / rejected 的唯一通道；两个清单各自独立、互不替代。
+_Avoid_: 自动裁决、审核通过
+
+**UNKNOWN（模型角色未定）**:
+表的 `current_role` 无法判定的合法结果，分 `NO_ANCHOR`（无锚点无血缘）与 `NO_EVIDENCE`（血缘证据不足）两种解释；证据不足时 UNKNOWN 即正确答案。
+_Avoid_: 坏模型、无效模型、待修复
+
+**Overlap / Duplication（重叠 / 重复）**:
+Overlap 只表示字段与结构重合；Duplication 还要求共享 process 与共享 grain 签名。二者是两类问题，重合度不是删除依据。
+_Avoid_: 把 overlap 说成重复表、可删除表

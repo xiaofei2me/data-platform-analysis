@@ -31,6 +31,8 @@ DataWorks + MaxCompute
 
 **Analysis** 阶段（`analyze*` 子命令，只读已有 Snapshot / 上一阶段产物，写 `analysis/`）已实现：M2 证据链（inventory → layer → sql → lineage → profiling）、M3 业务候选（Domain / Object / Quality / Process / Grain / Fact-Dimension Candidate，M3.1 ～ M3.5）与 M3.6 Current-State Model Review（当前形态分类 + 结构化 finding + 人工清单），以及 M3.6 v2 Problem Assessment（finding 聚合成 problem candidate + 证据 / 影响 / 根因 / 重构理由 + 人工清单），只产出候选、证据与评审发现，不产出结论模型、不设计 Target DWD，详见 [docs/CODE_LOGIC_ANALYSIS.md](docs/CODE_LOGIC_ANALYSIS.md)。
 
+要理解 `M3.6 → M3.6 v2 → 人工裁决 → 重构证据 → M4` 的方法论（Finding ≠ Problem、13 类 Problem Taxonomy、四条原则、裁决优先级、重构证据模板），见 [docs/M36_PROBLEM_ASSESSMENT.md](docs/M36_PROBLEM_ASSESSMENT.md)——人工裁决从那份文档开始。
+
 仍明确不负责（边界约束）：
 
 - Task Dependency（任务级依赖）分析
@@ -189,6 +191,7 @@ data-platform-analysis/
 ├── docs/
 │   ├── COMMANDS.md             # 命令参考
 │   ├── CODE_LOGIC_ANALYSIS.md  # 代码与阶段逻辑分析（M2 ~ M3.6）
+│   ├── M36_PROBLEM_ASSESSMENT.md  # M3.6 v2 方法论（Finding/Problem、taxonomy、人工裁决）
 │   └── adr/                    # 架构决策记录
 │
 └── tests/                      # CLI 黑盒测试（只在 SDK 边界 stub）

@@ -380,6 +380,8 @@ content（只取 NodeId 有效 File）
 
 ### 3.14 M3.6 v2 Current-State Problem Assessment（`problem_assessment.py`，同命令附带）
 
+**方法论长文**：[docs/M36_PROBLEM_ASSESSMENT.md](M36_PROBLEM_ASSESSMENT.md) 覆盖阶段链路、Finding ≠ Problem、13 类 taxonomy 每类 7 项说明、四条原则（Overlap ≠ Duplication、UNKNOWN ≠ BAD MODEL、Aggregate Fact ≠ Problem、Fact Gate Failure ≠ Fact Invalid）、M3.6 → M4 决策边界、人工裁决生命周期与优先级、重构证据模板与矩阵、真实数据摘要、完成标准与禁用表达清单；本节只记录代码事实，两者冲突以代码与实测数据为准。
+
 **入口**：仍是 `cli.analyze-current-state-model` → `run_current_state_model_analysis()`，**不新增子命令**：写完 5 个 M3.6 产物后在同一次运行里把 finding 聚合成 problem candidate，结果挂到 `CurrentStateModelResult.problem`。循环依赖处理：`problem_assessment.py` 顶层 import `model_review`，`model_review` 在函数体内 lazy import `problem_assessment`。**不新增配置**，阈值全部是常量。
 
 **输入（只读）**：本次运行的 M3.6 finding 与表级行 + 同一批 13 个上游产物 + 可选 `business/current-state-problem-review-checklist.md`（v2 清单回填，重跑带回）。
