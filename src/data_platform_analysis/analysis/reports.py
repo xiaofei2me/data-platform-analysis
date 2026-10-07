@@ -2392,7 +2392,7 @@ def render_model_summary(
     profiling: Mapping[str, Any],
     analysis_dir: Path | str,
 ) -> str:
-    """生成 analysis/business/model-summary.md（8 节）。
+    """生成 analysis/model/model-summary.md（8 节）。
 
     只做纯渲染：所有数字都来自 M3.5 构建结果。措辞停留在
     「fact / dimension / relationship candidate + 证据 + 未决问题」，
@@ -2736,7 +2736,7 @@ def render_model_summary(
             "",
             "## 7. Human Review",
             "",
-            "回填 `analysis/business/model-review-checklist.md` 的 "
+            "回填 `analysis/model/model-review-checklist.md` 的 "
             "human_status / human_name / note 后重跑本阶段即可保留人工输入；"
             "机器列由 `analyze-business-model` 生成，重跑会被覆盖。",
             "",
@@ -2761,7 +2761,7 @@ def render_model_summary(
             "",
             "- 每个优先级分区最多列出 "
             f"{MODEL_CHECKLIST_ROW_LIMIT} 行，"
-            "完整明细见 `analysis/business/model-review-checklist.md`。",
+            "完整明细见 `analysis/model/model-review-checklist.md`。",
             f"- 证据强度为 weak 的候选：fact {weak_fact}，"
             f"dimension {weak_dimension}，relationship {weak_relationship}。",
             "",
@@ -2790,10 +2790,10 @@ def _truncated_note(total: int, name: str) -> str:
     if total > MODEL_REPORT_ROW_LIMIT:
         return (
             f"只列出前 {MODEL_REPORT_ROW_LIMIT} 条，共 {total} 条；"
-            f"完整明细见 `analysis/business/{name}`。"
+            f"完整明细见 `analysis/model/{name}`。"
         )
 
-    return f"完整明细见 `analysis/business/{name}`。"
+    return f"完整明细见 `analysis/model/{name}`。"
 
 
 def render_model_review_checklist(
@@ -2802,7 +2802,7 @@ def render_model_review_checklist(
     carry_over: Mapping[str, Mapping[str, str]] | None = None,
     row_limit: int,
 ) -> str:
-    """生成 analysis/business/model-review-checklist.md（人工回填清单）。
+    """生成 analysis/model/model-review-checklist.md（人工回填清单）。
 
     按优先级 P1 → P4 分区；每区最多 row_limit 行并注明总数。
     机器列由 `analyze-business-model` 生成、重跑会被覆盖；
@@ -2844,7 +2844,7 @@ def render_model_review_checklist(
         if len(section) > row_limit:
             lines.append(
                 f"只列出前 {row_limit} 行，共 {len(section)} 行；"
-                "其余行见 `analysis/business/fact-candidates.json`、"
+                "其余行见 `analysis/model/fact-candidates.json`、"
                 "`dimension-candidates.json` 与 `fact-dimension-relationships.json`。"
             )
             lines.append("")
@@ -2882,7 +2882,7 @@ def render_current_state_summary(
     findings: Mapping[str, Any],
     analysis_dir: Path | str,
 ) -> str:
-    """生成 analysis/business/current-state-model-summary.md（6 节）。
+    """生成 analysis/review/current-state-model-summary.md（6 节）。
 
     只做纯渲染：所有数字都来自 M3.6 的构建结果。措辞停留在
     「当前模型形态 + 评审发现 + 人工问题」，不设计 Target DWD，
@@ -3076,11 +3076,11 @@ def render_current_state_summary(
                 limit=REVIEW_REPORT_ROW_LIMIT,
             ),
             "",
-            _review_truncated_note(len(finding_rows), "model-review-findings.json"),
+            _review_truncated_note(len(finding_rows), "current-state-findings.json"),
             "",
             "## 5. Human Review",
             "",
-            "回填 `analysis/business/current-state-review-checklist.md` 的 "
+            "回填 `analysis/review/current-state-review-checklist.md` 的 "
             "human_status / human_name / note 后重跑本阶段即可保留人工输入；"
             "机器列由 `analyze-current-state-model` 生成，重跑会被覆盖。",
             "",
@@ -3092,7 +3092,7 @@ def render_current_state_summary(
             "",
             "- 每个分区最多列出 "
             "50 行，完整明细见 "
-            "`analysis/business/current-state-review-checklist.md`。",
+            "`analysis/review/current-state-review-checklist.md`。",
             "- P0 未裁决前不要进入 M4 的事实 / 维度定稿。",
             "",
             "## 6. M4 Input",
@@ -3102,7 +3102,7 @@ def render_current_state_summary(
             "- current-state 分类（role / shape）与逐表明细"
             "（`current-state-model-tables.json`）。",
             "- 带证据的 review finding 与优先级"
-            "（`model-review-findings.json`）。",
+            "（`current-state-findings.json`）。",
             "- 回填后的人工结论（`current-state-review-checklist.md`）。",
             "",
             "不能带入 M4 的内容：",
@@ -3130,10 +3130,10 @@ def _review_truncated_note(total: int, name: str) -> str:
     if total > REVIEW_REPORT_ROW_LIMIT:
         return (
             f"只列出前 {REVIEW_REPORT_ROW_LIMIT} 条，共 {total} 条；"
-            f"完整明细见 `analysis/business/{name}`。"
+            f"完整明细见 `analysis/review/{name}`。"
         )
 
-    return f"完整明细见 `analysis/business/{name}`。"
+    return f"完整明细见 `analysis/review/{name}`。"
 
 
 def render_current_state_review_checklist(
@@ -3142,7 +3142,7 @@ def render_current_state_review_checklist(
     carry_over: Mapping[str, Mapping[str, str]] | None = None,
     row_limit: int,
 ) -> str:
-    """生成 analysis/business/current-state-review-checklist.md（人工回填清单）。
+    """生成 analysis/review/current-state-review-checklist.md（人工回填清单）。
 
     按 review group（Fact / Dimension / Grain / Relationship / Model Issue）
     分区；每区最多 row_limit 行并注明总数。机器列由
@@ -3188,7 +3188,7 @@ def render_current_state_review_checklist(
         if len(section) > row_limit:
             lines.append(
                 f"只列出前 {row_limit} 行，共 {len(section)} 行；"
-                "其余行见 `analysis/business/model-review-findings.json`。"
+                "其余行见 `analysis/review/current-state-findings.json`。"
             )
             lines.append("")
 
@@ -3226,7 +3226,7 @@ def render_current_state_problem_summary(
     problems: Mapping[str, Any],
     evidence: Mapping[str, Any],
 ) -> str:
-    """生成 analysis/business/current-state-problem-summary.md（6 节）。
+    """生成 analysis/review/current-state-problem-summary.md（6 节）。
 
     只做纯渲染：所有数字都来自 M3.6 v2 的聚合结果。措辞停留在
     「问题 + 证据 + 影响 + 根因 + 重构理由 + 人工确认」，不设计 Target DWD，
@@ -3411,9 +3411,9 @@ def render_current_state_problem_summary(
             "",
             (
                 f"只列出前 {PROBLEM_SUMMARY_ROW_LIMIT} 行，共 {len(problem_rows)} 行；"
-                "完整明细见 `analysis/business/current-state-problems.json`。"
+                "完整明细见 `analysis/review/current-state-problems.json`。"
                 if len(problem_rows) > PROBLEM_SUMMARY_ROW_LIMIT
-                else "完整明细见 `analysis/business/current-state-problems.json`。"
+                else "完整明细见 `analysis/review/current-state-problems.json`。"
             ),
             "",
             "- 排序依据：priority → problem_type → scope → scope_key（稳定排序，"
@@ -3422,7 +3422,7 @@ def render_current_state_problem_summary(
             "",
             "## 6. Human Review & M4 Input",
             "",
-            "回填 `analysis/business/current-state-problem-review-checklist.md` 的 "
+            "回填 `analysis/review/current-state-problem-review-checklist.md` 的 "
             "human_status / human_name / note 后重跑本阶段即可保留人工输入；"
             "机器列由 `analyze-current-state-model` 生成，重跑会被覆盖。",
             "",
@@ -3432,7 +3432,7 @@ def render_current_state_problem_summary(
             "未识别的取值按未回填处理并输出警告。",
             "- 每个分区最多列出 "
             f"{PROBLEM_CHECKLIST_ROW_LIMIT} 行，完整明细见 "
-            "`analysis/business/current-state-problems.json`。",
+            "`analysis/review/current-state-problems.json`。",
             "",
             "可以带入 M4 的输入：",
             "",
@@ -3467,7 +3467,7 @@ def render_current_state_problem_review_checklist(
     *,
     carry_over: Mapping[str, Mapping[str, str]] | None = None,
 ) -> str:
-    """生成 analysis/business/current-state-problem-review-checklist.md（人工回填清单）。
+    """生成 analysis/review/current-state-problem-review-checklist.md（人工回填清单）。
 
     按 problem_type（13 类）分区；每区最多 PROBLEM_CHECKLIST_ROW_LIMIT 行并注明总数。
     机器列由 `analyze-current-state-model` 生成、重跑会被覆盖；
@@ -3513,7 +3513,7 @@ def render_current_state_problem_review_checklist(
         if len(section) > PROBLEM_CHECKLIST_ROW_LIMIT:
             lines.append(
                 f"只列出前 {PROBLEM_CHECKLIST_ROW_LIMIT} 行，共 {len(section)} 行；"
-                "其余行见 `analysis/business/current-state-problems.json`。"
+                "其余行见 `analysis/review/current-state-problems.json`。"
             )
             lines.append("")
 

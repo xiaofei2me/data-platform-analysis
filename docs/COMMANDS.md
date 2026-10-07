@@ -1,5 +1,7 @@
 # 命令参考
 
+> 阶段总账（Stage 00 ～ 20 ↔ Milestone ↔ 命令 ↔ 代码 ↔ 产物 ↔ 文档、读序、产物分类与命名规范）见 [STAGE_INDEX.md](STAGE_INDEX.md)。
+
 ```bash
 uv run data-platform-analysis [--log-level LEVEL] <command> [options]
 ```
@@ -44,7 +46,7 @@ uv run data-platform-analysis [--log-level LEVEL] <command> [options]
 
 ### 人工裁决回填（M3.6 Human Adjudication）
 
-1. 编辑 `analysis/business/current-state-problem-review-checklist.md`（Problem 侧，13 分区）与 / 或 `analysis/business/current-state-review-checklist.md`（Finding 侧，5 分区），**只填 `human_status` / `human_name` / `note` 三列**，取值 `pending` / `confirmed` / `rejected` / `needs_review` / `needs_discussion`；
+1. 编辑 `analysis/review/current-state-problem-review-checklist.md`（Problem 侧，13 分区）与 / 或 `analysis/review/current-state-review-checklist.md`（Finding 侧，5 分区），**只填 `human_status` / `human_name` / `note` 三列**，取值 `pending` / `confirmed` / `rejected` / `needs_review` / `needs_discussion`；
 2. 重跑 `uv run data-platform-analysis analyze-current-state-model`，人工三列原样保留，`current-state-problems.json` 的 `status` 与 `confirmed` 计数随之更新；机器列会被重新生成，勿手改列名或删列（必需列缺失 → 退出码 1）；
 3. 清单每分区最多渲染 50 行（Problem 侧合计 260 行 / 1190 条），全量见 `current-state-problems.json`，实操见 [M36_HUMAN_ADJUDICATION_GUIDE.md](M36_HUMAN_ADJUDICATION_GUIDE.md)。
 
@@ -139,26 +141,30 @@ limit is not None → 部分集合 → 禁止 Cleanup（日志输出 Cleanup=SKI
 
 ## 阶段命令矩阵
 
-| # | 阶段 | 命令 | 写出的产物（相对 `analysis/`） | 数量 |
-| --- | --- | --- | --- | --- |
-| 1 | M1 DataWorks 采集 | `dataworks`（或 `export`） | `source/dataworks/workspaces/<id>/**`、`source/dataworks/workspaces/<id>/files-index.json`、`source/dataworks/workspaces-index.json` | — |
-| 2 | M1 MaxCompute 采集 | `maxcompute`（或 `export`） | `source/maxcompute/workspaces/<id>/**`、`source/maxcompute/workspaces/<id>/tables-index.json`；全量 `export` 另写 `source/manifest.json` | — |
-| 3 | M1 Snapshot Summary | `summary` | `source/Summary.md` | 1 |
-| 4 | M2.1–M2.5 Evidence Chain | `analyze` | `inventory/{workspaces,files,tables,columns}.json`、`inventory/summary.md`、`layer/{assessments.json,summary.md}`、`sql/{statements,table-references,parse-errors}.json`、`lineage/{table-lineage,core-table-candidates}.json`、`lineage/summary.md`、`profiling/{tables,columns}.json`、`profiling/summary.md`、`errors.json`、`Summary.md` | **18** |
-| 5 | M2.2 Layer Assessment 单独重跑 | `analyze-layer` | `layer/{assessments.json,summary.md}`（仅覆盖这 2 个） | 2 |
-| 6 | M3 Business Understanding | `analyze-business` | `business/{terms,tables,domains,objects}.json`、`business/summary.md` | **5** |
-| 7 | M3.1 Quality Assessment | `analyze-business-quality` | `business/{quality-assessment.json,quality-assessment.md,review-checklist.md}` | **3** |
-| 8 | M3.2 Object & Relationship | `analyze-business-objects` | `business/{objects-registry,object-tables,object-relationships,object-evidence-matrix}.json`、`business/object-graph.md` | **5** |
-| 9 | M3.3 Process Candidate | `analyze-business-processes` | `business/{process-signals,processes,process-tables,process-objects}.json`、`business/process-summary.md`、`business/process-review-checklist.md` | **6** |
-| 10 | M3.4 Grain Candidate | `analyze-business-grain` | `business/{grain-signals,grain-candidates,grain-tables}.json`、`business/grain-summary.md`、`business/grain-review-checklist.md` | **5** |
-| 11 | M3.5 Fact / Dimension Candidate | `analyze-business-model` | `business/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables,model-evidence-matrix}.json`、`business/model-summary.md`、`business/model-review-checklist.md` | **8** |
-| 12 | M3.6 Current-State Model Review + Problem Assessment | `analyze-current-state-model` | **Finding 侧 5 个**：`business/{current-state-model,current-state-model-tables,model-review-findings}.json`、`business/current-state-model-summary.md`、`business/current-state-review-checklist.md`；**Problem 侧 4 个**：`business/{current-state-problems,current-state-problem-evidence}.json`、`business/current-state-problem-summary.md`、`business/current-state-problem-review-checklist.md` | **9** |
-| 13 | M3.6 Human Adjudication | 无命令（人工） | 编辑上述两个 checklist → 重跑第 12 行命令（人工三列原样带回） | — |
-| 14 | M3.6 Workbench | 无 Python 命令 | `python3 -m http.server 8787`（或 `cd workbench && npm run serve`） | — |
+Stage 号与 Milestone 的完整映射（含每阶段的代码模块、产物目录与阅读顺序）见 [STAGE_INDEX.md](STAGE_INDEX.md)；Stage 只追加不回改，Milestone（M1 / M2.x / M3.x）保持只读。
+
+| # | Stage | 阶段 | 命令 | 写出的产物（相对 `analysis/`） | 数量 | 产物分类 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 00 | M1 DataWorks 采集 | `dataworks`（或 `export`） | `source/dataworks/workspaces/<id>/**`、`source/dataworks/workspaces/<id>/files-index.json`、`source/dataworks/workspaces-index.json` | — | 机器事实（Snapshot） |
+| 2 | 00 | M1 MaxCompute 采集 | `maxcompute`（或 `export`） | `source/maxcompute/workspaces/<id>/**`、`source/maxcompute/workspaces/<id>/tables-index.json`；全量 `export` 另写 `source/manifest.json` | — | 机器事实（Snapshot）+ 辅助（`manifest.json`） |
+| 3 | 00 | M1 Snapshot Summary | `summary` | `source/Summary.md` | 1 | 辅助（生成报告，含时间戳） |
+| 4 | 01–05 | M2.1–M2.5 Evidence Chain | `analyze` | `inventory/{workspaces,files,tables,columns}.json`、`inventory/summary.md`、`layer/{assessments.json,summary.md}`、`sql/{statements,table-references,parse-errors}.json`、`lineage/{table-lineage,core-table-candidates}.json`、`lineage/summary.md`、`profiling/{tables,columns}.json`、`profiling/summary.md`、`errors.json`、`Summary.md` | **18** | 机器事实（inventory / sql / profiling）+ 规则推导（layer / lineage）+ 辅助（summary / errors） |
+| 5 | 02 | M2.2 Layer Assessment 单独重跑 | `analyze-layer` | `layer/{assessments.json,summary.md}`（仅覆盖这 2 个） | 2 | 规则推导 + 辅助 |
+| 6 | 06 | M3 Business Understanding | `analyze-business` | `business/{terms,tables,domains,objects}.json`、`business/summary.md` | **5** | 机器候选 + 辅助 |
+| 7 | 07 | M3.1 Quality Assessment | `analyze-business-quality` | `business/{quality-assessment.json,quality-assessment.md,review-checklist.md}` | **3** | 机器候选 + **回填工件**（`review-checklist.md`） |
+| 8 | 08 | M3.2 Object & Relationship | `analyze-business-objects` | `business/{objects-registry,object-tables,object-relationships,object-evidence-matrix}.json`、`business/object-graph.md` | **5** | 机器候选 + 辅助 |
+| 9 | 09 | M3.3 Process Candidate | `analyze-business-processes` | `business/{process-signals,processes,process-tables,process-objects}.json`、`business/process-summary.md`、`business/process-review-checklist.md` | **6** | 机器候选 + **回填工件** |
+| 10 | 10 | M3.4 Grain Candidate | `analyze-business-grain` | `business/{grain-signals,grain-candidates,grain-tables}.json`、`business/grain-summary.md`、`business/grain-review-checklist.md` | **5** | 机器候选 + **回填工件** |
+| 11 | 11 | M3.5 Fact / Dimension Candidate | `analyze-business-model` | `model/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables,model-evidence-matrix}.json`、`model/model-summary.md`、`model/model-review-checklist.md` | **8** | 机器候选 + **回填工件** |
+| 12 | 12–14 | M3.6 Current-State Model Review + Problem Assessment | `analyze-current-state-model` | **Finding 侧 5 个**：`review/{current-state-model,current-state-model-tables,current-state-findings}.json`、`review/current-state-model-summary.md`、`review/current-state-review-checklist.md`；**Problem 侧 4 个**：`review/{current-state-problems,current-state-problem-evidence}.json`、`review/current-state-problem-summary.md`、`review/current-state-problem-review-checklist.md` | **9** | 机器候选（Finding / Problem）+ **证据**（`current-state-problem-evidence.json`）+ **回填工件** ×2 |
+| 13 | 15 | M3.6 Human Adjudication | 无命令（人工） | 编辑上述两个 checklist → 重跑第 12 行命令（人工三列原样带回） | — | **人工裁决**（清单 `human_*` 三列；浏览器侧存 `localStorage`） |
+| 14 | — | M3.6 Workbench | 无 Python 命令 | `python3 -m http.server 8787`（或 `cd workbench && npm run serve`） | — | 只读查看器（不写产物） |
+
+Stage 16（Confirmed Evidence）、17（Refactoring Evidence）、18–20（Target DWD / DWS / Semantic Layer）为**规划中**，当前无命令、无产物、不建目录——见 [STAGE_INDEX.md](STAGE_INDEX.md) §2。
 
 `18 + 5 + 3 + 5 + 6 + 5 + 8 + 9 = 59`，即 `analysis/` 当前的 59 个产物文件。
 
-**Evidence 与 Finding / Problem 的关系**：Evidence 不是独立命令或独立阶段。第 12 行一次运行内先产出 Finding（`model-review-findings.json`），再把 finding 聚合成 problem candidate 并写出 `current-state-problems.json` + `current-state-problem-evidence.json`；Problem Assessment 是同一次运行的附带步骤，无独立入口。
+**Evidence 与 Finding / Problem 的关系**：Evidence 不是独立命令、也不是独立产物目录——[STAGE_INDEX.md](STAGE_INDEX.md) 把它单列为 Stage 14，正是因为它与 Problem 的产物、消费者（Workbench 两者都必需）与人工动作相互独立，但**同一次运行原子写出**。第 12 行一次运行内先产出 Finding（`current-state-findings.json`），再把 finding 聚合成 problem candidate 并写出 `current-state-problems.json` + `current-state-problem-evidence.json`；Problem Assessment 是同一次运行的附带步骤，无独立入口。
 
 ## 输入依赖（必需 / 可选）
 
@@ -173,8 +179,8 @@ limit is not None → 部分集合 → 禁止 Cleanup（日志输出 Cleanup=SKI
 | `analyze-business-objects` | `business/{objects,tables,domains}.json`、`business/{quality-assessment.json,review-checklist.md}`（M3.1 产物，必需）、`inventory/{tables,columns}.json`、`sql/{statements,table-references}.json`、`lineage/{table-lineage,core-table-candidates}.json`、`layer/assessments.json` | — |
 | `analyze-business-processes` | `business/{objects-registry,object-tables,object-relationships,tables,terms}.json`、`inventory/{tables,columns}.json`、`sql/{statements,table-references}.json`、`lineage/{table-lineage,core-table-candidates}.json`、`business/review-checklist.md` | `business/process-review-checklist.md` |
 | `analyze-business-grain` | `business/{process-signals,processes,process-tables,process-objects,objects-registry,object-tables,object-relationships}.json`、`inventory/{tables,columns}.json`、`sql/{statements,table-references}.json`、`lineage/{table-lineage,core-table-candidates}.json`、`profiling/{tables,columns}.json` | `business/{process-review-checklist.md,grain-review-checklist.md}` |
-| `analyze-business-model` | `business/{grain-candidates,grain-tables,processes,process-objects,objects-registry,object-tables,object-relationships}.json`、`inventory/{tables,columns}.json`、`sql/table-references.json`、`lineage/{table-lineage,core-table-candidates}.json`、`profiling/{tables,columns}.json`、`layer/assessments.json` | `business/{process-review-checklist.md,grain-review-checklist.md,model-review-checklist.md}` |
-| `analyze-current-state-model` | `business/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables,grain-candidates,processes,objects-registry}.json`、`inventory/{tables,columns}.json`、`lineage/{table-lineage,core-table-candidates}.json`、`layer/assessments.json` | `business/{current-state-review-checklist.md,current-state-problem-review-checklist.md}` |
+| `analyze-business-model` | `business/{grain-candidates,grain-tables,processes,process-objects,objects-registry,object-tables,object-relationships}.json`、`inventory/{tables,columns}.json`、`sql/table-references.json`、`lineage/{table-lineage,core-table-candidates}.json`、`profiling/{tables,columns}.json`、`layer/assessments.json` | `business/{process-review-checklist.md,grain-review-checklist.md}`、`model/model-review-checklist.md` |
+| `analyze-current-state-model` | `model/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables,grain-candidates,processes,objects-registry}.json`、`inventory/{tables,columns}.json`、`lineage/{table-lineage,core-table-candidates}.json`、`layer/assessments.json` | `review/{current-state-review-checklist.md,current-state-problem-review-checklist.md}` |
 
 ## Recommended Execution Order
 
@@ -223,20 +229,20 @@ open http://localhost:8787/workbench/
 | `business/review-checklist.md` | `analyze-business-objects` → `analyze-business-processes`（二者均必需它；若 `processes.json` 变化，再依次重跑 grain / model / current-state） |
 | `business/process-review-checklist.md` | `analyze-business-grain` → `analyze-business-model` → `analyze-current-state-model` |
 | `business/grain-review-checklist.md` | `analyze-business-model` → `analyze-current-state-model` |
-| `business/model-review-checklist.md` | `analyze-current-state-model` |
-| `business/current-state-review-checklist.md`、`business/current-state-problem-review-checklist.md` | `analyze-current-state-model` |
+| `model/model-review-checklist.md` | `analyze-current-state-model` |
+| `review/current-state-review-checklist.md`、`review/current-state-problem-review-checklist.md` | `analyze-current-state-model` |
 
 ## M3.6 Human Decision → Workbench
 
-1. **人工填清单**：`analysis/business/current-state-problem-review-checklist.md`（Problem 侧）与 / 或 `analysis/business/current-state-review-checklist.md`（Finding 侧），只填 `human_status` / `human_name` / `note` 三列。
+1. **人工填清单**：`analysis/review/current-state-problem-review-checklist.md`（Problem 侧）与 / 或 `analysis/review/current-state-review-checklist.md`（Finding 侧），只填 `human_status` / `human_name` / `note` 三列。
 2. **重跑** `uv run data-platform-analysis analyze-current-state-model`，人工三列带回、`current-state-problems.json` 的 `status` 与 `confirmed` 计数更新；必需列缺失 → 退出码 1。
 3. **Workbench 载入同一批产物**（只读，不写回任何文件）：
 
    | 文件 | 用途 | 必需 |
    | --- | --- | --- |
-   | `analysis/business/current-state-problems.json` | Problem 列表 / Detail / 汇总数字 | 是 |
-   | `analysis/business/current-state-problem-evidence.json` | Evidence Explorer 全量证据行 | 是 |
-   | `analysis/business/current-state-model-tables.json` | Affected Tables 的 role / shape / process / grain | 否（缺失降级） |
+   | `analysis/review/current-state-problems.json` | Problem 列表 / Detail / 汇总数字 | 是 |
+   | `analysis/review/current-state-problem-evidence.json` | Evidence Explorer 全量证据行 | 是 |
+   | `analysis/review/current-state-model-tables.json` | Affected Tables 的 role / shape / process / grain | 否（缺失降级） |
    | `analysis/layer/assessments.json` | Affected Tables 的 Layer | 否（缺失降级） |
 
    启动：`python3 -m http.server 8787`（仓库根）→ `http://localhost:8787/workbench/`；浏览器冒烟 `http://localhost:8787/workbench/smoke.html` 期望末行 `PASS=true`；Node 测试 `cd workbench && npm test`。

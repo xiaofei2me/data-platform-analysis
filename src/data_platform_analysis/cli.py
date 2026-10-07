@@ -605,7 +605,7 @@ def run_analyze_business_model() -> None:
     try:
         result = run_business_model_analysis(
             analysis_dir=settings.analysis_dir,
-            output_dir=settings.analysis_dir / "business",
+            output_dir=settings.analysis_dir / "model",
         )
 
     except BusinessModelError as exc:
@@ -625,7 +625,7 @@ def run_analyze_business_model() -> None:
         f"fact table={result.fact_table_count}，"
         f"dimension table={result.dimension_table_count}"
     )
-    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'business'}")
+    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'model'}")
 
 
 def run_analyze_current_state_model() -> None:
@@ -634,7 +634,7 @@ def run_analyze_current_state_model() -> None:
     try:
         result = run_current_state_model_analysis(
             analysis_dir=settings.analysis_dir,
-            output_dir=settings.analysis_dir / "business",
+            output_dir=settings.analysis_dir / "review",
         )
 
     except CurrentStateModelError as exc:
@@ -662,7 +662,7 @@ def run_analyze_current_state_model() -> None:
             f"（{problem_status_text}）"
         )
 
-    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'business'}")
+    console.print(f"[green]产物：[/green]{settings.analysis_dir / 'review'}")
 
 
 def main() -> None:

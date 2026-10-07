@@ -40,8 +40,7 @@ __pycache__/
 /source/*
 !/source/.gitkeep
 
-/analysis/*
-!/analysis/.gitkeep
+# analysis/ 产物自 Phase 2 起纳入版本管理（不再忽略）
 
 /output/*
 !/output/.gitkeep

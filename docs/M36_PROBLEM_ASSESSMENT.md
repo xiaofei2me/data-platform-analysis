@@ -45,7 +45,7 @@
 | M3.3 | **M3.3** | Process | `processes.json`、`process-summary.md`、`process-review-checklist.md` |
 | M3.4 | **M3.4** | Grain | `grain-candidates.json`、`grain-summary.md`、`grain-review-checklist.md` |
 | M3.5 | **M3.5** | Business Model（Fact / Dimension Candidate） | `fact-candidates.json`、`dimension-candidates.json`、`model-review-checklist.md` |
-| M3.6 | **M3.6** | Current-State Model Review | `current-state-model*.json`、`model-review-findings.json`、`current-state-review-checklist.md` |
+| M3.6 | **M3.6** | Current-State Model Review | `current-state-model*.json`、`current-state-findings.json`、`current-state-review-checklist.md` |
 | M3.6 v2 | **M3.6 v2** | Problem Assessment | `current-state-problems.json`、`current-state-problem-evidence.json`、`current-state-problem-summary.md`、`current-state-problem-review-checklist.md` |
 
 除 M3.1 Quality 外，两套编号在 Object 及之后完全一致。本文以下一律使用仓库编号。
@@ -60,13 +60,13 @@
 | 粒度 | 一条 finding 观察一个现象 | 一个问题聚合若干条 finding |
 | 类型 | 18 类 finding | 13 类 problem |
 | 实测数量 | 4439 | 1190 |
-| 载体 | `model-review-findings.json` + `current-state-review-checklist.md`（5 个分区） | `current-state-problems.json` + `current-state-problem-review-checklist.md`（13 个分区） |
+| 载体 | `current-state-findings.json` + `current-state-review-checklist.md`（5 个分区） | `current-state-problems.json` + `current-state-problem-review-checklist.md`（13 个分区） |
 | 回答的问题 | 现在的模型长什么样、有哪些结构现象 | 这些现象里**哪些值得改、证据够不够、先改什么** |
 | 边界 | 只评审不改模 | 只评审不改模，不设计 Target DWD |
 
 两者共用一条命令 `analyze-current-state-model`：同一次运行先写 5 个 M3.6 产物，再把 finding 聚合成 problem，追加 4 个 v2 产物，合计 9 个。v2 只读本次 M3.6 的 finding 与表级行 + 同一批 13 个上游产物，不读 `source/`、profiling、SQL 参考，不调 LLM / 外部 API，不改写任何已有产物。
 
-13 个上游输入（只读）：`business/fact-candidates.json`、`dimension-candidates.json`、`fact-dimension-relationships.json`、`fact-tables.json`、`dimension-tables.json`、`grain-candidates.json`、`processes.json`、`objects-registry.json`、`inventory/tables.json`、`inventory/columns.json`、`lineage/table-lineage.json`、`lineage/core-table-candidates.json`、`layer/assessments.json`；另有可选回填文件 `business/current-state-problem-review-checklist.md`。
+13 个上游输入（只读）：`model/fact-candidates.json`、`dimension-candidates.json`、`fact-dimension-relationships.json`、`fact-tables.json`、`dimension-tables.json`、`grain-candidates.json`、`processes.json`、`objects-registry.json`、`inventory/tables.json`、`inventory/columns.json`、`lineage/table-lineage.json`、`lineage/core-table-candidates.json`、`layer/assessments.json`；另有可选回填文件 `review/current-state-problem-review-checklist.md`。
 
 ---
 
@@ -356,7 +356,7 @@ candidate ────────────────────→  confi
 
 ### 7.2 唯一回填入口
 
-清单文件：`analysis/business/current-state-problem-review-checklist.md`，按 13 类分区，每区 ≤50 行并注明总数（全量见 `current-state-problems.json`）。
+清单文件：`analysis/review/current-state-problem-review-checklist.md`，按 13 类分区，每区 ≤50 行并注明总数（全量见 `current-state-problems.json`）。
 
 固定 10 列（`PROBLEM_CHECKLIST_HEADERS`）：`problem_id`、`problem_type`、`priority`、`scope_key`、`evidence`、`system_interpretation`、`human_question`、`human_status`、`human_name`、`note`。
 
@@ -572,9 +572,9 @@ Human Decision  人工裁决：确认 / 否决 + 理由 + 决定的范围与顺�
 | Finding 生成、Fact Gate 复算 | `src/data_platform_analysis/analysis/review/findings.py` |
 | 报告 6 节与清单 13 分区渲染 | `src/data_platform_analysis/analysis/reports.py` |
 | 23 条行为测试 | `tests/test_problem_assessment.py` |
-| 全量 problem 数据 | `analysis/business/current-state-problems.json` |
-| 全量证据行 | `analysis/business/current-state-problem-evidence.json` |
-| 人工入口报告 | `analysis/business/current-state-problem-summary.md` |
-| 人工回填台账 | `analysis/business/current-state-problem-review-checklist.md` |
+| 全量 problem 数据 | `analysis/review/current-state-problems.json` |
+| 全量证据行 | `analysis/review/current-state-problem-evidence.json` |
+| 人工入口报告 | `analysis/review/current-state-problem-summary.md` |
+| 人工回填台账 | `analysis/review/current-state-problem-review-checklist.md` |
 | 阶段逻辑与产物地图 | [docs/CODE_LOGIC_ANALYSIS.md](CODE_LOGIC_ANALYSIS.md) |
 | 命令与退出码 | [docs/COMMANDS.md](COMMANDS.md) |

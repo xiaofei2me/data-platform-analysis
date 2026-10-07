@@ -57,9 +57,9 @@ cd workbench && npm test          # node --test tests/*.test.mjs，零依赖
 
 | 文件 | 用途 | 必需 |
 | --- | --- | --- |
-| `analysis/business/current-state-problems.json` | Problem 列表 / Detail / 汇总数字 | 是 |
-| `analysis/business/current-state-problem-evidence.json` | Evidence Explorer 全量证据行 | 是 |
-| `analysis/business/current-state-model-tables.json` | Affected Tables 的 role / shape / process / grain | 否（缺失则降级） |
+| `analysis/review/current-state-problems.json` | Problem 列表 / Detail / 汇总数字 | 是 |
+| `analysis/review/current-state-problem-evidence.json` | Evidence Explorer 全量证据行 | 是 |
+| `analysis/review/current-state-model-tables.json` | Affected Tables 的 role / shape / process / grain | 否（缺失则降级） |
 | `analysis/layer/assessments.json` | Affected Tables 的 Layer | 否（缺失则降级） |
 
 加载失败会显示明确错误（列出必需文件 + `Data load failure ≠ 0 Problems`），绝不显示「0 Problems」。

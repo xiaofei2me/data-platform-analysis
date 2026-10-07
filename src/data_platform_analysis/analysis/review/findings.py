@@ -25,11 +25,11 @@
 
 输入（只读 M2 / M3 / M3.5 产物，不读 source/，不调 API，不改写上游）：
 
-    analysis/business/fact-candidates.json
-    analysis/business/dimension-candidates.json
-    analysis/business/fact-dimension-relationships.json
-    analysis/business/fact-tables.json
-    analysis/business/dimension-tables.json
+    analysis/model/fact-candidates.json
+    analysis/model/dimension-candidates.json
+    analysis/model/fact-dimension-relationships.json
+    analysis/model/fact-tables.json
+    analysis/model/dimension-tables.json
     analysis/business/grain-candidates.json       （重新走 Fact Gate，不改闸门）
     analysis/business/processes.json
     analysis/business/objects-registry.json
@@ -38,15 +38,15 @@
     analysis/lineage/table-lineage.json
     analysis/lineage/core-table-candidates.json
     analysis/layer/assessments.json
-    analysis/business/current-state-review-checklist.md   （可选：本阶段清单回填）
+    analysis/review/current-state-review-checklist.md   （可选：本阶段清单回填）
 
-输出：
+输出（Stage 12 ～ 14，M3.6 产物统一写在 analysis/review/）：
 
-    analysis/business/current-state-model.json
-    analysis/business/current-state-model-tables.json
-    analysis/business/model-review-findings.json
-    analysis/business/current-state-model-summary.md
-    analysis/business/current-state-review-checklist.md
+    analysis/review/current-state-model.json
+    analysis/review/current-state-model-tables.json
+    analysis/review/current-state-findings.json
+    analysis/review/current-state-model-summary.md
+    analysis/review/current-state-review-checklist.md
 
 原则：
 
@@ -71,7 +71,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ...io_utils import ensure_dir, write_json, write_text
+from ...io_utils import (
+    ensure_dir,
+    relocate_legacy_artifacts,
+    write_json,
+    write_text,
+)
 from ..business.grain import (
     BusinessGrainError,
     _dict_values,
@@ -149,6 +154,8 @@ from ..models import (
     MODEL_ATTRIBUTE_LIMIT,
     MODEL_STATUS_CANDIDATE,
     MODEL_STATUS_ORDER,
+    PROBLEM_CARRYOVER_FILE,
+    PROBLEM_OUTPUT_FILES,
     REVIEW_CHECKLIST_REQUIRED_COLUMNS,
     REVIEW_CHECKLIST_ROW_LIMIT,
     REVIEW_EVIDENCE_COLUMN,
@@ -179,11 +186,11 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 ARRAY_INPUT_FILES: tuple[tuple[str, str, str], ...] = (
-    ("business/fact-candidates.json", "candidates", "fact_candidates"),
-    ("business/dimension-candidates.json", "candidates", "dimension_candidates"),
-    ("business/fact-dimension-relationships.json", "relationships", "relationships"),
-    ("business/fact-tables.json", "tables", "fact_tables"),
-    ("business/dimension-tables.json", "tables", "dimension_tables"),
+    ("model/fact-candidates.json", "candidates", "fact_candidates"),
+    ("model/dimension-candidates.json", "candidates", "dimension_candidates"),
+    ("model/fact-dimension-relationships.json", "relationships", "relationships"),
+    ("model/fact-tables.json", "tables", "fact_tables"),
+    ("model/dimension-tables.json", "tables", "dimension_tables"),
     ("business/grain-candidates.json", "candidates", "grain_candidates"),
     ("business/processes.json", "processes", "processes"),
     ("business/objects-registry.json", "objects", "registry_objects"),
@@ -195,7 +202,7 @@ ARRAY_INPUT_FILES: tuple[tuple[str, str, str], ...] = (
 )
 """M3.6 依赖的数组型产物（相对 analysis/ 路径 → JSON 数组字段名 → 属性名）。"""
 
-CARRYOVER_CHECKLIST_INPUT_FILE = "business/current-state-review-checklist.md"
+CARRYOVER_CHECKLIST_INPUT_FILE = "review/current-state-review-checklist.md"
 """本阶段清单（可选输入）：回填过的人工状态在重跑时被带回去。"""
 
 INPUT_FILES: tuple[str, ...] = tuple(relative for relative, _key, _attr in ARRAY_INPUT_FILES)
@@ -204,11 +211,19 @@ INPUT_FILES: tuple[str, ...] = tuple(relative for relative, _key, _attr in ARRAY
 OUTPUT_FILES: tuple[str, ...] = (
     "current-state-model.json",
     "current-state-model-tables.json",
-    "model-review-findings.json",
+    "current-state-findings.json",
     "current-state-model-summary.md",
     "current-state-review-checklist.md",
 )
-"""M3.6 产物文件名（固定顺序）；只覆盖这五个文件，不动已有 M2 / M3 / M3.5 产物。"""
+"""M3.6 产物文件名（固定顺序，写出到 analysis/review/）；
+只覆盖这五个文件，不动已有 M2 / M3 / M3.5 产物。"""
+
+LEGACY_OUTPUT_FILES: tuple[str, ...] = (
+    *OUTPUT_FILES,
+    "model-review-findings.json",
+)
+"""旧布局残留的 M3.6 产物 basename（含改名前的 model-review-findings.json），
+用于清理 business/ 遗留。"""
 
 WIDE_COLUMN_THRESHOLD = 100
 """WIDE_ANALYTICAL_TABLE 的字段数阈值（inventory/columns.json 实际字段数）。"""
@@ -2524,7 +2539,7 @@ def write_current_state_model(
 
     write_json(paths["current-state-model.json"], result.model)
     write_json(paths["current-state-model-tables.json"], result.tables)
-    write_json(paths["model-review-findings.json"], result.findings)
+    write_json(paths["current-state-findings.json"], result.findings)
     write_text(paths["current-state-model-summary.md"], result.summary)
     write_text(paths["current-state-review-checklist.md"], result.checklist)
 
@@ -2546,6 +2561,19 @@ def run_current_state_model_analysis(
     只读 M2 / M3 / M3.5 产物；输入缺失时直接报错，
     不自动回退去跑前置阶段。
     """
+
+    # 旧布局把 M3.6 产物写在 business/：先清理遗留文件（两份清单搬迁保留人工列），
+    # 保证同一阶段的产物只存在于 output_dir。
+    relocate_legacy_artifacts(
+        analysis_dir,
+        output_dir,
+        legacy_dir="business",
+        output_files=(*LEGACY_OUTPUT_FILES, *PROBLEM_OUTPUT_FILES),
+        carryover_files=(
+            Path(CARRYOVER_CHECKLIST_INPUT_FILE).name,
+            Path(PROBLEM_CARRYOVER_FILE).name,
+        ),
+    )
 
     inputs = read_review_inputs(analysis_dir)
     result = build_current_state_model(inputs)

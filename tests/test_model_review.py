@@ -88,11 +88,11 @@ def _pipeline(tmp_path: Path) -> Path:
     analysis_dir = _model_pipeline(tmp_path)
     run_business_model_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "model",
     )
     run_current_state_model_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "review",
     )
 
     return analysis_dir
@@ -104,7 +104,7 @@ def _pre_model_pipeline(tmp_path: Path) -> Path:
     analysis_dir = _model_pipeline(tmp_path)
     run_business_model_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "model",
     )
 
     return analysis_dir
@@ -113,7 +113,7 @@ def _pre_model_pipeline(tmp_path: Path) -> Path:
 def _run(analysis_dir: Path) -> Any:
     return run_current_state_model_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "review",
     )
 
 
@@ -122,11 +122,11 @@ def _read(analysis_dir: Path, name: str) -> Any:
 
     _run(analysis_dir)
 
-    return json.loads((analysis_dir / "business" / name).read_text(encoding="utf-8"))
+    return json.loads((analysis_dir / "review" / name).read_text(encoding="utf-8"))
 
 
 def _findings(analysis_dir: Path) -> list[dict[str, Any]]:
-    return _read(analysis_dir, "model-review-findings.json")["findings"]
+    return _read(analysis_dir, "current-state-findings.json")["findings"]
 
 
 def _count(findings: list[dict[str, Any]], finding_type: str) -> int:
@@ -541,7 +541,9 @@ def _write_inputs(
 
 def _write_carryover(analysis_dir: Path, *rows: str) -> None:
     text = CARRYOVER_TEMPLATE.format(rows="\n".join(rows))
-    (analysis_dir / CARRYOVER_CHECKLIST_INPUT_FILE).write_text(text, encoding="utf-8")
+    path = analysis_dir / CARRYOVER_CHECKLIST_INPUT_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 
 
 def _patch_checklist_status(
@@ -554,7 +556,7 @@ def _patch_checklist_status(
 ) -> Path:
     """把清单里某一行的人工三列回填（用于回填与确定性测试）。"""
 
-    path = analysis_dir / "business" / "current-state-review-checklist.md"
+    path = analysis_dir / "review" / "current-state-review-checklist.md"
     lines = path.read_text(encoding="utf-8").splitlines()
 
     for index, line in enumerate(lines):
@@ -593,7 +595,7 @@ def test_invalid_json_raises(tmp_path: Path) -> None:
     """输入不是合法 JSON → 报错并带上文件路径。"""
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
-    path = analysis_dir / "business" / "fact-candidates.json"
+    path = analysis_dir / "model" / "fact-candidates.json"
     path.write_text("{not json", encoding="utf-8")
 
     with pytest.raises(CurrentStateModelError, match="fact-candidates.json"):
@@ -673,7 +675,9 @@ def test_carryover_without_required_columns_raises(tmp_path: Path) -> None:
     """清单缺回填列 → 报错。"""
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
-    (analysis_dir / CARRYOVER_CHECKLIST_INPUT_FILE).write_text(
+    path = analysis_dir / CARRYOVER_CHECKLIST_INPUT_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         "| finding_id |\n| --- |\n| model_finding_0001 |\n",
         encoding="utf-8",
     )
@@ -699,7 +703,7 @@ def test_declared_files_and_output_names() -> None:
     assert OUTPUT_FILES == (
         "current-state-model.json",
         "current-state-model-tables.json",
-        "model-review-findings.json",
+        "current-state-findings.json",
         "current-state-model-summary.md",
         "current-state-review-checklist.md",
     )
@@ -715,7 +719,7 @@ def test_inputs_are_read_only(tmp_path: Path) -> None:
 
     run_current_state_model_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "review",
     )
 
     for relative, content in before.items():
@@ -1038,10 +1042,10 @@ def test_output_structure_and_payload_counts(tmp_path: Path) -> None:
     result = _run(analysis_dir)
 
     for name in OUTPUT_FILES:
-        assert (analysis_dir / "business" / name).exists(), name
+        assert (analysis_dir / "review" / name).exists(), name
 
     model = _read(analysis_dir, "current-state-model.json")
-    findings = _read(analysis_dir, "model-review-findings.json")
+    findings = _read(analysis_dir, "current-state-findings.json")
 
     assert model["count"] == 7
     assert findings["count"] == result.finding_count == len(findings["findings"])
@@ -1064,7 +1068,7 @@ def test_summary_has_six_sections(tmp_path: Path) -> None:
     analysis_dir = _write_inputs(tmp_path / "analysis")
     _run(analysis_dir)
     summary = (
-        analysis_dir / "business" / "current-state-model-summary.md"
+        analysis_dir / "review" / "current-state-model-summary.md"
     ).read_text(encoding="utf-8")
 
     for heading in (
@@ -1116,9 +1120,9 @@ def test_summary_truncates_findings_table(tmp_path: Path) -> None:
     )
     _run(analysis_dir)
     summary = (
-        analysis_dir / "business" / "current-state-model-summary.md"
+        analysis_dir / "review" / "current-state-model-summary.md"
     ).read_text(encoding="utf-8")
-    total = _read(analysis_dir, "model-review-findings.json")["count"]
+    total = _read(analysis_dir, "current-state-findings.json")["count"]
 
     assert total > REVIEW_REPORT_ROW_LIMIT
     assert f"只列出前 {REVIEW_REPORT_ROW_LIMIT} 条" in summary
@@ -1131,7 +1135,7 @@ def test_checklist_sections_follow_review_groups(tmp_path: Path) -> None:
     analysis_dir = _write_inputs(tmp_path / "analysis")
     _run(analysis_dir)
     checklist = (
-        analysis_dir / "business" / "current-state-review-checklist.md"
+        analysis_dir / "review" / "current-state-review-checklist.md"
     ).read_text(encoding="utf-8")
 
     for group in REVIEW_GROUP_ORDER:
@@ -1182,11 +1186,11 @@ def test_checklist_row_limit_and_note(tmp_path: Path) -> None:
     )
     _run(analysis_dir)
     checklist = (
-        analysis_dir / "business" / "current-state-review-checklist.md"
+        analysis_dir / "review" / "current-state-review-checklist.md"
     ).read_text(encoding="utf-8")
 
     assert f"只列出前 {REVIEW_CHECKLIST_ROW_LIMIT} 行" in checklist
-    assert "model-review-findings.json" in checklist
+    assert "current-state-findings.json" in checklist
 
 
 # ============================================================
@@ -1238,7 +1242,7 @@ def test_carryover_survives_escaped_pipe_in_scope_key(tmp_path: Path) -> None:
         for item in _findings(analysis_dir)
         if item["finding_id"] == duplicate["finding_id"]
     )
-    path = analysis_dir / "business" / "current-state-review-checklist.md"
+    path = analysis_dir / "review" / "current-state-review-checklist.md"
     kept = [
         _split_markdown_row(line)
         for line in path.read_text(encoding="utf-8").splitlines()
@@ -1262,14 +1266,14 @@ def test_deterministic_across_runs(tmp_path: Path) -> None:
     """两次运行字节一致（第二次带清单回填输入，验证幂等）。"""
 
     analysis_dir = _pre_model_pipeline(tmp_path)
-    business_dir = analysis_dir / "business"
+    review_dir = analysis_dir / "review"
     names = sorted(OUTPUT_FILES)
 
     _run(analysis_dir)
-    first = {name: (business_dir / name).read_bytes() for name in names}
+    first = {name: (review_dir / name).read_bytes() for name in names}
 
     _run(analysis_dir)
-    second = {name: (business_dir / name).read_bytes() for name in names}
+    second = {name: (review_dir / name).read_bytes() for name in names}
 
     assert first == second
 
@@ -1282,13 +1286,13 @@ def test_pipeline_run_keeps_m35_outputs(tmp_path: Path) -> None:
     )
 
     analysis_dir = _pre_model_pipeline(tmp_path)
-    business_dir = analysis_dir / "business"
-    before = {name: (business_dir / name).read_bytes() for name in MODEL_OUTPUT_FILES}
+    model_dir = analysis_dir / "model"
+    before = {name: (model_dir / name).read_bytes() for name in MODEL_OUTPUT_FILES}
 
     _run(analysis_dir)
 
     for name, content in before.items():
-        assert (business_dir / name).read_bytes() == content, name
+        assert (model_dir / name).read_bytes() == content, name
 
 
 def test_analyze_current_state_model_command(
@@ -1320,20 +1324,22 @@ def test_analyze_current_state_model_command(
     assert run_cli("analyze-business-model") == 0
 
     business_dir = Path("analysis/business")
+    review_dir = Path("analysis/review")
     before = {path.name: path.read_bytes() for path in sorted(business_dir.iterdir())}
 
     assert run_cli("analyze-current-state-model") == 0
 
     for name in OUTPUT_FILES:
-        assert (business_dir / name).exists(), name
+        assert (review_dir / name).exists(), name
+        assert not (business_dir / name).exists(), name
 
     for name, content in before.items():
         assert (business_dir / name).read_bytes() == content, name
 
-    first = {name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)}
+    first = {name: (review_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)}
 
     assert run_cli("analyze-current-state-model") == 0
-    assert {name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)} == first
+    assert {name: (review_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)} == first
 
 
 def test_analyze_current_state_model_command_fails_without_inputs(
@@ -1345,7 +1351,7 @@ def test_analyze_current_state_model_command_fails_without_inputs(
     assert run_cli("analyze-current-state-model") == 1
 
     for name in OUTPUT_FILES:
-        assert not Path("analysis/business").joinpath(name).exists(), name
+        assert not Path("analysis/review").joinpath(name).exists(), name
 
 
 def test_module_entry_point_exists() -> None:
@@ -1358,3 +1364,27 @@ def test_module_entry_point_exists() -> None:
     assert 'if __name__ == "__main__":' in source
     assert "analyze-current-state-model" in source
     assert "run_analyze_current_state_model" in source
+
+
+def test_legacy_artifacts_in_business_are_relocated(tmp_path: Path) -> None:
+    """旧布局残留在 business/ 的 M3.6 产物在重跑时清理：机器产物删除、清单搬迁。"""
+
+    analysis_dir = _pipeline(tmp_path)
+
+    review_dir = analysis_dir / "review"
+    business_dir = analysis_dir / "business"
+    checklist = (review_dir / "current-state-review-checklist.md").read_bytes()
+
+    # 模拟旧布局：清单与机器产物（含改名前的 basename）都残留在 business/。
+    (business_dir / "current-state-review-checklist.md").write_bytes(checklist)
+    (business_dir / "current-state-problems.json").write_text("{stale}", encoding="utf-8")
+    (business_dir / "model-review-findings.json").write_text("{stale}", encoding="utf-8")
+    (review_dir / "current-state-review-checklist.md").unlink()
+
+    _run(analysis_dir)
+
+    assert not (business_dir / "current-state-review-checklist.md").exists()
+    assert not (business_dir / "current-state-problems.json").exists()
+    assert not (business_dir / "model-review-findings.json").exists()
+    assert (review_dir / "current-state-review-checklist.md").exists()
+    assert (review_dir / "current-state-findings.json").exists()

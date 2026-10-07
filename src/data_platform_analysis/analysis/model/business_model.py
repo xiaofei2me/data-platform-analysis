@@ -41,23 +41,23 @@
     analysis/layer/assessments.json
     analysis/business/process-review-checklist.md   （可选：Process 人工确认）
     analysis/business/grain-review-checklist.md     （可选：Grain 人工确认）
-    analysis/business/model-review-checklist.md     （可选：本阶段清单回填）
+    analysis/model/model-review-checklist.md        （可选：本阶段清单回填）
 
     不读 grain-signals / process-signals / process-tables：M3.5 不重算信号，
     grain candidate 已经携带全部粒度结论；不读 sql/statements.json：表级引用
     足以支撑证据，语句正文不属于本阶段；不读 business/{tables,terms,domains}
     与 quality-assessment.json：它们是 M3 / M3.1 的分类结论，重读等于重新分类。
 
-输出：
+输出（Stage 11，M3.5 产物统一写在 analysis/model/）：
 
-    analysis/business/fact-candidates.json
-    analysis/business/dimension-candidates.json
-    analysis/business/fact-dimension-relationships.json
-    analysis/business/fact-tables.json
-    analysis/business/dimension-tables.json
-    analysis/business/model-evidence-matrix.json
-    analysis/business/model-summary.md
-    analysis/business/model-review-checklist.md
+    analysis/model/fact-candidates.json
+    analysis/model/dimension-candidates.json
+    analysis/model/fact-dimension-relationships.json
+    analysis/model/fact-tables.json
+    analysis/model/dimension-tables.json
+    analysis/model/model-evidence-matrix.json
+    analysis/model/model-summary.md
+    analysis/model/model-review-checklist.md
 
 原则：
 
@@ -86,7 +86,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ...io_utils import ensure_dir, write_json, write_text
+from ...io_utils import (
+    ensure_dir,
+    relocate_legacy_artifacts,
+    write_json,
+    write_text,
+)
 from ..business.grain import (
     IDENTIFIER_NAMES,
     IDENTIFIER_TOKENS,
@@ -229,7 +234,7 @@ PROCESS_CHECKLIST_INPUT_FILE = "business/process-review-checklist.md"
 GRAIN_CHECKLIST_INPUT_FILE = "business/grain-review-checklist.md"
 """M3.4 人工确认清单（可选输入）：只用于记录 Grain 的人工确认状态。"""
 
-CARRYOVER_CHECKLIST_INPUT_FILE = "business/model-review-checklist.md"
+CARRYOVER_CHECKLIST_INPUT_FILE = "model/model-review-checklist.md"
 """本阶段清单（可选输入）：回填过的人工状态在重跑时被带回去。"""
 
 INPUT_FILES: tuple[str, ...] = tuple(relative for relative, _key, _attr in ARRAY_INPUT_FILES)
@@ -245,7 +250,7 @@ OUTPUT_FILES: tuple[str, ...] = (
     "model-summary.md",
     "model-review-checklist.md",
 )
-"""M3.5 产物文件名（固定顺序）；只覆盖这八个文件，不动已有 M2 / M3 产物。"""
+"""M3.5 产物文件名（固定顺序，写出到 analysis/model/）；只覆盖这八个文件，不动已有 M2 / M3 产物。"""
 
 PROCESS_CHECKLIST_REQUIRED_COLUMNS: tuple[str, ...] = ("process_key", "confirmed")
 """process-review-checklist.md 必须包含的列，缺一即报错。"""
@@ -2429,6 +2434,16 @@ def run_business_model_analysis(
     只读 M2 / M3 / M3.2 / M3.3 / M3.4 产物；输入缺失时直接报错，
     不自动回退去跑前置阶段。
     """
+
+    # 旧布局把 M3.5 产物写在 business/：先清理遗留文件（本阶段清单搬迁保留人工列），
+    # 保证同一阶段的产物只存在于 output_dir。
+    relocate_legacy_artifacts(
+        analysis_dir,
+        output_dir,
+        legacy_dir="business",
+        output_files=OUTPUT_FILES,
+        carryover_files=(Path(CARRYOVER_CHECKLIST_INPUT_FILE).name,),
+    )
 
     inputs = read_model_inputs(analysis_dir)
     result = build_business_model(inputs)

@@ -23,7 +23,7 @@ test("special audits are defined with ids and hints", () => {
 });
 
 test("special audit counts over real artifacts", async () => {
-  const artifact = await readArtifact("analysis/business/current-state-problems.json");
+  const artifact = await readArtifact("analysis/review/current-state-problems.json");
   const counts = Object.fromEntries(
     SPECIAL_AUDITS.map((audit) => [audit.id, artifact.problems.filter(audit.predicate).length]),
   );

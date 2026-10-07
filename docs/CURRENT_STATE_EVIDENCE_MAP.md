@@ -462,7 +462,7 @@ Does Not Prove:
 | **Fact（观测事实）** | `source/`、M2.1、M2.3 原文 | 平台上客观存在、可回指原始位置的内容：表 / 列 / 注释 / SQL 原文 | 表 3719、列 102603、语句 1963 | 不等于「正确」，只等于「存在」 |
 | **Signal（信号）** | M3.3 `process-signals.json`、M3.4 `grain-signals.json`、M2.5 元数据特征 | 某条**规则**在字段 / 表上被命中（有 event_time 列、有 amount 列、命名含 dwd_ 等） | process signal 12712、grain signal 22436 | 不等于对象、不等于过程、不等于 grain |
 | **Candidate（候选）** | M2.2 `candidate_layer`、M3 / M3.2–M3.5 各 candidate 文件 | 机器按规则 / 证据推断出的**待确认结论**，`status = candidate` | 层级 3719、domain 表 3285、object 5、process 17、grain 5679、fact 3364、dimension 5、关系 15979 | 不等于 confirmed，不等于架构事实 |
-| **Finding（评审发现）** | M3.6 `model-review-findings.json` | 机器对**已存在形态**的一次异常观测，每条都带 evidence、`status = candidate` | 4439（P0 696） | 不等于问题，不等于「错了」 |
+| **Finding（评审发现）** | M3.6 `current-state-findings.json` | 机器对**已存在形态**的一次异常观测，每条都带 evidence、`status = candidate` | 4439（P0 696） | 不等于问题，不等于「错了」 |
 | **Problem（候选问题）** | M3.6 `current-state-problems.json` | 同一根因下 finding 的**聚合**（一个根因 + 一组证据 + 一个 human_question） | 1190（candidate 1148 / review_required 42 / confirmed 0） | 不等于 Finding Count，不等于 Confirmed Problem |
 | **Evidence（证据行）** | M3.6 `current-state-problem-evidence.json` | 每条 problem 的**可回溯证据行**（指向 finding / table / column / process / grain / lineage …） | 1190 条 problem、30201 行、单条上限 50 行 | 不等于结论，只是「为什么会被提出」 |
 | **Human Decision（人工裁决）** | 清单 `human_status / human_name / note` 回填 → 重跑 | 人对某条 candidate 给出的受支持取值，经确定性映射写回 `status` | 当前 **0 条**（所有清单全 pending / false） | 不是自动生成，不是 Workbench 里的按钮状态 |
@@ -902,14 +902,14 @@ Does Not Prove:
 
 | 文件 | 内容 | 数量 |
 | --- | --- | --- |
-| `business/fact-candidates.json` | fact candidate + `gate` 复算结果 | **3364** |
-| `business/dimension-candidates.json` | dimension candidate | **5** |
-| `business/fact-dimension-relationships.json` | 关系候选 | **15979** |
-| `business/fact-tables.json` | fact ↔ table 覆盖 | **15697** |
-| `business/dimension-tables.json` | dimension ↔ table 覆盖 | **7195** |
-| `business/model-evidence-matrix.json` | 每个候选的证据源覆盖统计 | **3369 行** |
-| `business/model-summary.md` | 报告 | — |
-| `business/model-review-checklist.md` | 4 个分区的人工裁决清单 | **4 区 / 155 行全 pending** |
+| `model/fact-candidates.json` | fact candidate + `gate` 复算结果 | **3364** |
+| `model/dimension-candidates.json` | dimension candidate | **5** |
+| `model/fact-dimension-relationships.json` | 关系候选 | **15979** |
+| `model/fact-tables.json` | fact ↔ table 覆盖 | **15697** |
+| `model/dimension-tables.json` | dimension ↔ table 覆盖 | **7195** |
+| `model/model-evidence-matrix.json` | 每个候选的证据源覆盖统计 | **3369 行** |
+| `model/model-summary.md` | 报告 | — |
+| `model/model-review-checklist.md` | 4 个分区的人工裁决清单 | **4 区 / 155 行全 pending** |
 
 - **Fact Gate**：`qualified 3364` / `rejected 2315`，`rejected_reason_counts = {no_measure_evidence: 2315}`；通过按形态 aggregation 1730、periodic 934、transaction 476、snapshot 43、unknown 181；被拒按形态 **periodic 1044、aggregation 804、unknown 467**。
 - fact：3364 全部 `status = candidate`、`role_status = candidate`、**`evidence_strength` 全为 strong**（因为 `process` 与 `grain` 两个**构造性来源**必然存在：`evidence_source_presence` process 3364、grain 3364、column 3364、table 1244、sql 1507、lineage 1507、object 2839）。
@@ -944,7 +944,7 @@ Input:
 15 个必需 JSON + 可选 process / grain / model 三份清单回填（不读 config）
 
 Produces:
-analysis/business/{fact-candidates,dimension-candidates,fact-dimension-relationships,
+analysis/model/{fact-candidates,dimension-candidates,fact-dimension-relationships,
 fact-tables,dimension-tables,model-evidence-matrix}.json + model-summary.md
 + model-review-checklist.md（Gate 3364 过 / 2315 拒；维度 5；关系 15979）
 
@@ -970,9 +970,9 @@ fact 已成立、被拒者不是事实表、strong = 可信、关系是业务关
 
 ### 12.1 M3.6a — Finding（评审发现）
 
-**Input（必需）**：`business/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables,grain-candidates,processes,objects-registry}.json` + `inventory/{tables,columns}.json` + `lineage/{table-lineage,core-table-candidates}.json` + `layer/assessments.json`。
+**Input（必需）**：`model/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables,grain-candidates,processes,objects-registry}.json` + `inventory/{tables,columns}.json` + `lineage/{table-lineage,core-table-candidates}.json` + `layer/assessments.json`。
 
-**Input（可选 carryover）**：`business/model-review-checklist.md`（M3.5 回填）、`business/current-state-review-checklist.md`（本阶段自己的回填）。
+**Input（可选 carryover）**：`model/model-review-checklist.md`（M3.5 回填）、`review/current-state-review-checklist.md`（本阶段自己的回填）。
 
 **Processing**：11 类检查器各产出一批 finding——`_fact_gate_review`、`_strength_review`、`_grain_findings`、`_fact_findings`、`_dimension_review`、`_relationship_review`、`_duplicate_fact_findings`、`_overlapping_fact_findings`、`_table_issue_findings`、`_process_findings`、gate 复算；随后 `_finalize_findings` 做稳定编号并套用 carryover（`_apply_carryover`：`human_status → status`，`human_validated = (status == confirmed)`）。同时重算表级形态（`current_role` / `model_shape`）写入 `current-state-model.json`，并复算 Fact Gate（`matches_m35: true`，`gate_rule` 原文写在产物里，**只复算不改闸门**）。
 
@@ -980,11 +980,11 @@ fact 已成立、被拒者不是事实表、strong = 可信、关系是业务关
 
 | 文件 | 内容 | 数量 |
 | --- | --- | --- |
-| `business/current-state-model.json` | 现状形态总览 + gate / strength / dimension / relationship 复算 | `count 3719` |
-| `business/current-state-model-tables.json` | 每表 `current_role` / `model_shape` / `fact_keys` / `finding_ids` | **3719** |
-| `business/model-review-findings.json` | finding 全字段 + 各类计数 | **4439** |
-| `business/current-state-model-summary.md` | 6 节报告（Scope → Overview → Model Quality → Priority Findings → Human Review → M4 Input） | — |
-| `business/current-state-review-checklist.md` | 5 个 review group 分区回填清单 | **5 区 / 157 行全 pending** |
+| `review/current-state-model.json` | 现状形态总览 + gate / strength / dimension / relationship 复算 | `count 3719` |
+| `review/current-state-model-tables.json` | 每表 `current_role` / `model_shape` / `fact_keys` / `finding_ids` | **3719** |
+| `review/current-state-findings.json` | finding 全字段 + 各类计数 | **4439** |
+| `review/current-state-model-summary.md` | 6 节报告（Scope → Overview → Model Quality → Priority Findings → Human Review → M4 Input） | — |
+| `review/current-state-review-checklist.md` | 5 个 review group 分区回填清单 | **5 区 / 157 行全 pending** |
 
 - `priority_counts`：**P0 696 / P1 3147 / P2 581 / P3 15**（`severity_by_priority`：P0=critical、P1=high、P2=medium、P3=info）。
 - `review_group_counts`：`model_issue_review 3170`、`grain_review 704`、`fact_review 558`、`dimension_review 5`、`relationship_review 2`。
@@ -1009,7 +1009,7 @@ fact 已成立、被拒者不是事实表、strong = 可信、关系是业务关
 
 ### 12.2 M3.6b — Problem（候选问题）
 
-**Input**：**同一次运行**的 finding 列表 + M3.6a 的 `current-state-model-tables.json` + 前述全部 M2 / M3 输入；可选 carryover = `business/current-state-problem-review-checklist.md`（`read_problem_carry_over`）。
+**Input**：**同一次运行**的 finding 列表 + M3.6a 的 `current-state-model-tables.json` + 前述全部 M2 / M3 输入；可选 carryover = `review/current-state-problem-review-checklist.md`（`read_problem_carry_over`）。
 
 **Processing**：13 个根因聚合器把 finding 按 `canonical_signature` 归组，产出 problem 的 `problem_type / classification / priority / severity / scope / impact_types / root_cause / human_question / rationale{current_state, problem, evidence, impact, why_change}`；按 `PROBLEM_STATUS_BY_HUMAN_STATUS` 应用人工回填（`needs_discussion → review_required`，只有 `confirmed → confirmed` 且 `human_validated = true`）；按 13 类分区写出 ≤50 行/区的清单。
 
@@ -1017,10 +1017,10 @@ fact 已成立、被拒者不是事实表、strong = 可信、关系是业务关
 
 | 文件 | 内容 | 数量 |
 | --- | --- | --- |
-| `business/current-state-problems.json` | problem 全字段 + 9 组顶层计数 | **1190** |
-| `business/current-state-problem-evidence.json` | 每条 problem 的证据行 | **1190 条 / 30201 行** |
-| `business/current-state-problem-summary.md` | 6 节报告 | — |
-| `business/current-state-problem-review-checklist.md` | 13 类分区回填清单 | **13 区 / 260 行全 pending** |
+| `review/current-state-problems.json` | problem 全字段 + 9 组顶层计数 | **1190** |
+| `review/current-state-problem-evidence.json` | 每条 problem 的证据行 | **1190 条 / 30201 行** |
+| `review/current-state-problem-summary.md` | 6 节报告 | — |
+| `review/current-state-problem-review-checklist.md` | 13 类分区回填清单 | **13 区 / 260 行全 pending** |
 
 - `problem_type_counts`（13 类）：`GRAIN_PROBLEM 559`、`MODEL_DUPLICATION 317`、`MIXED_RESPONSIBILITY 204`、`MODEL_OVERLAP 27`、`FACT_IDENTIFICATION_PROBLEM 26`、`AGGREGATION_MODEL_PROBLEM 22`、`PROCESS_MODEL_ALIGNMENT 15`、`MODEL_SELECTION_AMBIGUITY 8`、`MODEL_ROLE_AMBIGUITY 4`、`SEMANTIC_AMBIGUITY 3`、`MODEL_COVERAGE_GAP 2`、`UNKNOWN_MODEL 2`、`DIMENSION_IDENTIFICATION_PROBLEM 1`。
 - `status_counts`：**candidate 1148 / review_required 42 / confirmed 0 / rejected 0**；`priority_counts`：**P0 698 / P1 378 / P2 99 / P3 15**。
@@ -1113,7 +1113,7 @@ M2 / M3 / M3.5 的 14 个必需 JSON + 可选 model / current-state 两份清单
 （Finding 与 Problem 同一次运行，Problem 额外读回填清单）
 
 Produces:
-Finding 侧 5 个产物（current-state-model{,-tables}.json、model-review-findings.json、
+Finding 侧 5 个产物（current-state-model{,-tables}.json、current-state-findings.json、
 current-state-model-summary.md、current-state-review-checklist.md）
 + Problem 侧 4 个产物（current-state-problems.json、current-state-problem-evidence.json、
 current-state-problem-summary.md、current-state-problem-review-checklist.md）
@@ -1140,7 +1140,7 @@ Does Not Prove:
 ### 13.1 通道一：清单回填（机器唯一认可的通道）
 
 ```text
-1. 编辑 analysis/business/*-review-checklist.md
+1. 编辑 analysis/{business,review}/*-review-checklist.md（M3.1 / M3.3 / M3.4 在 business/，M3.6 在 review/）
    → 只填 human_status / human_name / note（grain / process 清单是 human_* + confirmed）
 2. 重跑对应阶段（回填列在重跑时被 carryover 保留，机器列被重算）
 3. _apply_carryover 按固定映射写 status；human_validated = (status == confirmed)

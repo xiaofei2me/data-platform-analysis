@@ -2122,7 +2122,7 @@ PROBLEM_OUTPUT_FILES: tuple[str, ...] = (
 )
 """M3.6 v2 新增的四个产物（固定顺序）；不改变已有五个 M3.6 产物。"""
 
-PROBLEM_CARRYOVER_FILE = "business/current-state-problem-review-checklist.md"
+PROBLEM_CARRYOVER_FILE = "review/current-state-problem-review-checklist.md"
 """问题清单的人工回填文件（可选输入，重跑带回）。"""
 
 PROBLEM_TYPE_GRAIN = "GRAIN_PROBLEM"

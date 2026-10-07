@@ -29,11 +29,13 @@ DataWorks + MaxCompute
 - Raw 响应与 Content 原样保存为本地 Snapshot
 - Snapshot 索引（files-index / tables-index）与重复采集清理
 
-**Analysis** 阶段（`analyze*` 子命令，只读已有 Snapshot / 上一阶段产物，写 `analysis/`）已实现：M2 证据链（inventory → layer → sql → lineage → profiling）、M3 业务候选（Domain / Object / Quality / Process / Grain / Fact-Dimension Candidate，M3.1 ～ M3.5）与 M3.6 Current-State Model Review（当前形态分类 + 结构化 finding + 人工清单），以及 M3.6 v2 Problem Assessment（finding 聚合成 problem candidate + 证据 / 影响 / 根因 / 重构理由 + 人工清单），只产出候选、证据与评审发现，不产出结论模型、不设计 Target DWD，详见 [docs/CODE_LOGIC_ANALYSIS.md](docs/CODE_LOGIC_ANALYSIS.md)。
+**Analysis** 阶段（`analyze*` 子命令，只读已有 Snapshot / 上一阶段产物，写 `analysis/`）已实现：M2 证据链（inventory → layer → sql → lineage → profiling）、M3 业务候选（Domain / Object / Quality / Process / Grain / Fact-Dimension Candidate，M3 ～ M3.5）与 M3.6 Current-State Model Review（当前形态分类 + 结构化 finding + 人工清单），以及 M3.6 v2 Problem Assessment（finding 聚合成 problem candidate + 证据 / 影响 / 根因 / 重构理由 + 人工清单），只产出候选、证据与评审发现，不产出结论模型、不设计 Target DWD，详见 [docs/CODE_LOGIC_ANALYSIS.md](docs/CODE_LOGIC_ANALYSIS.md)。
 
 要理解 `M3.6 → M3.6 v2 → 人工裁决 → 重构证据 → M4` 的方法论（Finding ≠ Problem、13 类 Problem Taxonomy、四条原则、裁决优先级、重构证据模板），见 [docs/M36_PROBLEM_ASSESSMENT.md](docs/M36_PROBLEM_ASSESSMENT.md)——人工裁决从那份文档开始。
 
 要实际组织人工裁决（数据团队 / 业务专家视角：看哪些文件、按什么顺序、每类 Problem 怎么问、什么时候 confirmed / rejected、一周怎么排），见 [docs/M36_HUMAN_ADJUDICATION_GUIDE.md](docs/M36_HUMAN_ADJUDICATION_GUIDE.md)——干活从那份文档开始。
+
+**不知道从哪读起**：先看 [docs/STAGE_INDEX.md](docs/STAGE_INDEX.md)——Stage 00 ～ 20 与 Milestone（M1 / M2.x / M3.x）的映射、每阶段的命令 / 代码 / 产物 / 文档、产物四分类（事实 / 规则推导 / 候选 / 回填）与推荐阅读顺序。
 
 仍明确不负责（边界约束）：
 
@@ -210,15 +212,21 @@ data-platform-analysis/
 │           └── naming.py       # 表名 / 引用工具
 │
 ├── source/                     # Snapshot 输出目录（gitignore）
-├── analysis/                   # Analysis 产物（M2 ~ M3.6，gitignore）
+├── analysis/                   # Analysis 产物（M2 ~ M3.6，入库）
 ├── output/                     # 导出产物
 │
 ├── docs/
-│   ├── COMMANDS.md             # 命令参考
+│   ├── STAGE_INDEX.md          # 阶段索引（Stage 00 ～ 20 ↔ Milestone ↔ 命令 ↔ 产物 ↔ 文档，读序入口）
+│   ├── COMMANDS.md             # 命令参考（含 Current-State Evidence Execution Chain 执行链）
+│   ├── CURRENT_STATE_EVIDENCE_MAP.md  # 逐阶段证据链地图（输入 / 产物 / 人工动作）
 │   ├── CODE_LOGIC_ANALYSIS.md  # 代码与阶段逻辑分析（M2 ~ M3.6）
 │   ├── M36_PROBLEM_ASSESSMENT.md  # M3.6 v2 方法论（Finding/Problem、taxonomy、人工裁决）
 │   ├── M36_HUMAN_ADJUDICATION_GUIDE.md  # M3.6 人工裁决工作指南（面向数据团队 / 业务专家）
-│   └── adr/                    # 架构决策记录
+│   ├── EVIDENCE_LAYER_AUDIT_CHECKLIST.md  # M2 证据层收尾审计清单
+│   ├── EVIDENCE_LAYER_FREEZE_REPORT.md    # M2 证据层冻结报告
+│   ├── SQL_ANALYSIS_LIMITATION.md  # M2.3 SQL 解析能力边界
+│   ├── adr/                    # 架构决策记录
+│   └── agents/                 # Agent 工作流说明
 │
 ├── workbench/                  # M3.6 Current-State Model Review Workbench（静态 Web UI，零依赖）
 │
@@ -265,7 +273,7 @@ python3 -m http.server 8787        # 在仓库根目录启动静态服务
 open http://localhost:8787/workbench/
 ```
 
-- 读取 `analysis/business/current-state-problems.json`、`current-state-problem-evidence.json`（必需）与 `current-state-model-tables.json`、`analysis/layer/assessments.json`（可降级），**不写回任何产物**。
+- 读取 `analysis/review/current-state-problems.json`、`current-state-problem-evidence.json`（必需）与 `current-state-model-tables.json`、`analysis/layer/assessments.json`（可降级），**不写回任何产物**。
 - 人工裁决写入浏览器 `localStorage`（key `m36-human-adjudication`），通过「导出裁决」导出 `m36-human-adjudication.json`，再按 [人工裁决指南](docs/M36_HUMAN_ADJUDICATION_GUIDE.md) 回填。
 - 无构建、无运行时依赖，界面为中文（保留 `problem_id` / 类型枚举 / `P0`–`P3` 等技术标识）；测试：`cd workbench && npm test`（Node 内置 `node --test`）。
 

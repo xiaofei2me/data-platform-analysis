@@ -6,9 +6,9 @@
  */
 
 export const ARTIFACT_PATHS = Object.freeze({
-  problems: "../analysis/business/current-state-problems.json",
-  evidence: "../analysis/business/current-state-problem-evidence.json",
-  tableMeta: "../analysis/business/current-state-model-tables.json",
+  problems: "../analysis/review/current-state-problems.json",
+  evidence: "../analysis/review/current-state-problem-evidence.json",
+  tableMeta: "../analysis/review/current-state-model-tables.json",
   layer: "../analysis/layer/assessments.json",
 });
 

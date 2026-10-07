@@ -2,7 +2,7 @@
 
 > **这份文档给谁看**：数据团队、业务专家、数据仓库负责人。不需要读代码，不需要装环境，只需要能打开 Markdown 文件和问业务问题。
 >
-> **这份文档要达成什么**：读完之后，你可以拿着 `analysis/business/current-state-problem-review-checklist.md` 直接组织第一轮人工裁决，把机器产出的 **Problem Candidate** 变成有业务含义的 **Confirmed Problem / Rejected Problem**。
+> **这份文档要达成什么**：读完之后，你可以拿着 `analysis/review/current-state-problem-review-checklist.md` 直接组织第一轮人工裁决，把机器产出的 **Problem Candidate** 变成有业务含义的 **Confirmed Problem / Rejected Problem**。
 >
 > **关联文档**：方法论（为什么这样设计）见 [docs/M36_PROBLEM_ASSESSMENT.md](M36_PROBLEM_ASSESSMENT.md)；本指南只讲**怎么干活**。
 >
@@ -201,16 +201,16 @@ rejected             人工确认：当前模型设计是合理的，机器判�
 
 ### 4.1 文件清单
 
-以下路径均以仓库根目录为起点，实际路径**以仓库实现为准**（M3.6 v2 产物都在 `analysis/business/` 下）。
+以下路径均以仓库根目录为起点，实际路径**以仓库实现为准**（M3.6 v2 产物都在 `analysis/review/` 下）。
 
 | 文件 | 用途 | 人工是否需要看 |
 | --- | --- | --- |
-| `analysis/business/current-state-problem-review-checklist.md` | **人工裁决唯一入口**，13 类分区、可回填 | **是（主战场）** |
-| `analysis/business/current-state-problems.json` | 完整 Problem 数据（1190 条，含 priority / root_cause / rationale） | **是（查全量时）** |
-| `analysis/business/current-state-problem-evidence.json` | 完整证据链（30201 行，可追溯到表 / 字段 / 粒度 / 血缘） | **是（深挖时）** |
-| `analysis/business/current-state-problem-summary.md` | 总体统计（分布、影响、根因、Top 20） | **是（看全局）** |
-| `analysis/business/current-state-review-checklist.md` | Finding 侧人工清单（5 个分区、157 行） | 是（与 Problem 清单**独立**，要单独回填） |
-| `analysis/business/model-review-findings.json` | 全量 4439 条 Finding | 需要追某条 finding 时 |
+| `analysis/review/current-state-problem-review-checklist.md` | **人工裁决唯一入口**，13 类分区、可回填 | **是（主战场）** |
+| `analysis/review/current-state-problems.json` | 完整 Problem 数据（1190 条，含 priority / root_cause / rationale） | **是（查全量时）** |
+| `analysis/review/current-state-problem-evidence.json` | 完整证据链（30201 行，可追溯到表 / 字段 / 粒度 / 血缘） | **是（深挖时）** |
+| `analysis/review/current-state-problem-summary.md` | 总体统计（分布、影响、根因、Top 20） | **是（看全局）** |
+| `analysis/review/current-state-review-checklist.md` | Finding 侧人工清单（5 个分区、157 行） | 是（与 Problem 清单**独立**，要单独回填） |
+| `analysis/review/current-state-findings.json` | 全量 4439 条 Finding | 需要追某条 finding 时 |
 | `docs/M36_PROBLEM_ASSESSMENT.md` | 方法论：Finding ≠ Problem、13 类 taxonomy、四条原则 | **第一次阅读** |
 | `source/` | 原始平台快照（DataWorks 文件内容、表元数据） | 必要时 |
 | `analysis/sql/statements.json`、`analysis/lineage/table-lineage.json` | SQL 原文与表级血缘 | 深入验证时 |
@@ -254,7 +254,7 @@ current-state-problems.json                →  全量 1190 条
 
 ### 4.4 回填操作步骤（照做即可）
 
-1. 打开 `analysis/business/current-state-problem-review-checklist.md`；
+1. 打开 `analysis/review/current-state-problem-review-checklist.md`；
 2. **只改后三列**：`human_status` / `human_name` / `note`（前面的机器列由系统生成）；
 3. **不要改列名、不要删列、不要改表结构**——清单必需列是 `problem_id` / `human_status` / `human_name` / `note`，缺一列系统会直接报错（退出码 1）；
 4. 保存后重跑一次：
@@ -1178,12 +1178,12 @@ Reviewer: <姓名>      Review Date: <日期>
 
 | 需要做什么 | 用什么 |
 | --- | --- |
-| 回填人工结论（唯一入口） | `analysis/business/current-state-problem-review-checklist.md` |
-| 查全量 Problem（1190 条） | `analysis/business/current-state-problems.json` |
-| 查全量证据（30201 行） | `analysis/business/current-state-problem-evidence.json` |
-| 看总体统计 | `analysis/business/current-state-problem-summary.md` |
-| 回填 Finding 侧（157 行） | `analysis/business/current-state-review-checklist.md` |
-| 查 Finding 全量（4439 条） | `analysis/business/model-review-findings.json` |
+| 回填人工结论（唯一入口） | `analysis/review/current-state-problem-review-checklist.md` |
+| 查全量 Problem（1190 条） | `analysis/review/current-state-problems.json` |
+| 查全量证据（30201 行） | `analysis/review/current-state-problem-evidence.json` |
+| 看总体统计 | `analysis/review/current-state-problem-summary.md` |
+| 回填 Finding 侧（157 行） | `analysis/review/current-state-review-checklist.md` |
+| 查 Finding 全量（4439 条） | `analysis/review/current-state-findings.json` |
 | 看方法论（13 类 taxonomy、四条原则） | `docs/M36_PROBLEM_ASSESSMENT.md` |
 | 看阶段逻辑与产物地图 | `docs/CODE_LOGIC_ANALYSIS.md` |
 | 查看原始平台数据 | `source/` |

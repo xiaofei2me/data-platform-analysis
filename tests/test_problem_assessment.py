@@ -91,7 +91,7 @@ def _result(analysis_dir: Path) -> Any:
 
 
 def _payload(analysis_dir: Path, name: str) -> Any:
-    return json.loads((analysis_dir / "business" / name).read_text(encoding="utf-8"))
+    return json.loads((analysis_dir / "review" / name).read_text(encoding="utf-8"))
 
 
 def _problems(analysis_dir: Path) -> list[dict[str, Any]]:
@@ -124,7 +124,7 @@ def _rerun_problem_only(analysis_dir: Path) -> None:
             model.tables["tables"],
             carry_over=read_problem_carry_over(analysis_dir),
         ),
-        analysis_dir / "business",
+        analysis_dir / "review",
     )
 
 
@@ -140,7 +140,7 @@ def _patch_problem_status(
 
     from data_platform_analysis.analysis.business.grain import _split_markdown_row
 
-    path = analysis_dir / "business" / CHECKLIST_FILE
+    path = analysis_dir / "review" / CHECKLIST_FILE
     lines = path.read_text(encoding="utf-8").splitlines()
 
     for index, line in enumerate(lines):
@@ -373,11 +373,14 @@ def test_problem_outputs_written_and_no_stage_beyond_m36_v2(tmp_path: Path) -> N
     """写出 4 个新产物；除 M3.6 声明产物外不产生任何文件。"""
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
-    before = {path.name for path in (analysis_dir / "business").iterdir()}
+    review_dir = analysis_dir / "review"
+    before = (
+        {path.name for path in review_dir.iterdir()} if review_dir.exists() else set()
+    )
 
     result = _result(analysis_dir)
 
-    after = {path.name for path in (analysis_dir / "business").iterdir()}
+    after = {path.name for path in review_dir.iterdir()}
 
     assert set(REVIEW_OUTPUT_FILES) | set(PROBLEM_OUTPUT_FILES) <= after
     assert after - before == set(REVIEW_OUTPUT_FILES) | set(PROBLEM_OUTPUT_FILES)
@@ -391,13 +394,13 @@ def test_existing_m36_outputs_and_inputs_untouched(tmp_path: Path) -> None:
     analysis_dir = _write_inputs(tmp_path / "analysis")
     inputs_hash = _hash_inputs(analysis_dir)
     _run(analysis_dir)
-    business = analysis_dir / "business"
-    before = {name: (business / name).read_bytes() for name in REVIEW_OUTPUT_FILES}
+    review = analysis_dir / "review"
+    before = {name: (review / name).read_bytes() for name in REVIEW_OUTPUT_FILES}
 
     _rerun_problem_only(analysis_dir)
 
     assert _hash_inputs(analysis_dir) == inputs_hash
-    assert {name: (business / name).read_bytes() for name in REVIEW_OUTPUT_FILES} == before
+    assert {name: (review / name).read_bytes() for name in REVIEW_OUTPUT_FILES} == before
 
 
 def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
@@ -405,13 +408,13 @@ def test_two_runs_are_byte_identical(tmp_path: Path) -> None:
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
     _run(analysis_dir)
-    business = analysis_dir / "business"
+    review = analysis_dir / "review"
     names = (*REVIEW_OUTPUT_FILES, *PROBLEM_OUTPUT_FILES)
-    first = {name: (business / name).read_bytes() for name in names}
+    first = {name: (review / name).read_bytes() for name in names}
 
     _run(analysis_dir)
 
-    assert {name: (business / name).read_bytes() for name in names} == first
+    assert {name: (review / name).read_bytes() for name in names} == first
 
 
 # ============================================================
@@ -783,7 +786,7 @@ def test_checklist_written_with_all_problem_types(tmp_path: Path) -> None:
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
     result = _result(analysis_dir)
-    checklist = (analysis_dir / "business" / CHECKLIST_FILE).read_text(encoding="utf-8")
+    checklist = (analysis_dir / "review" / CHECKLIST_FILE).read_text(encoding="utf-8")
 
     for problem_type in PROBLEM_TYPE_ORDER:
         assert f"## {PROBLEM_TYPE_TITLE.get(problem_type, problem_type)}" in checklist
@@ -852,4 +855,4 @@ def test_cli_prints_problem_counts(
     assert "Current-State Problem Assessment" in out
     assert "problem=" in out
     assert "candidate=" in out
-    assert Path("analysis/business/current-state-problems.json").exists()
+    assert Path("analysis/review/current-state-problems.json").exists()

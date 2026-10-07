@@ -26,14 +26,14 @@
 输入（全部复用 M3.6 已读的 13 个产物，不读 profiling / SQL 参考 /
 source/，不调用 LLM / 外部 API）：
 
-    analysis/business/current-state-problem-review-checklist.md  （可选回填）
+    analysis/review/current-state-problem-review-checklist.md  （可选回填）
 
-输出（由 model_review.run_current_state_model_analysis 一并写出）：
+输出（由 model_review.run_current_state_model_analysis 一并写出，Stage 13 ～ 14）：
 
-    analysis/business/current-state-problems.json
-    analysis/business/current-state-problem-evidence.json
-    analysis/business/current-state-problem-summary.md
-    analysis/business/current-state-problem-review-checklist.md
+    analysis/review/current-state-problems.json
+    analysis/review/current-state-problem-evidence.json
+    analysis/review/current-state-problem-summary.md
+    analysis/review/current-state-problem-review-checklist.md
 """
 
 from __future__ import annotations

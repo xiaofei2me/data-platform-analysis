@@ -97,7 +97,7 @@ function rowsHtml(rows, type, evidence) {
           （上限 ${evidence.rowLimit} 行，已加载 ${evidence.rows.length} 行），本类型一行都未被加载。</strong><br/>
           这是产物截断，不是没有证据——也不代表模型有问题。
         </div>
-        <div class="evidence-note">来源：${esc(source)} · 全量证据见 analysis/business/current-state-problem-evidence.json。</div>`;
+        <div class="evidence-note">来源：${esc(source)} · 全量证据见 analysis/review/current-state-problem-evidence.json。</div>`;
     }
     return `<div class="empty-note"><strong>当前 M3.6 产物没有可用证据。</strong><br/>这并不代表模型有问题。</div>`;
   }

@@ -24,9 +24,9 @@ let tableArtifact;
 let layerArtifact;
 
 test.before(async () => {
-  problemsArtifact = await readArtifact("analysis/business/current-state-problems.json");
-  evidenceArtifact = await readArtifact("analysis/business/current-state-problem-evidence.json");
-  tableArtifact = await readArtifact("analysis/business/current-state-model-tables.json");
+  problemsArtifact = await readArtifact("analysis/review/current-state-problems.json");
+  evidenceArtifact = await readArtifact("analysis/review/current-state-problem-evidence.json");
+  tableArtifact = await readArtifact("analysis/review/current-state-model-tables.json");
   layerArtifact = await readArtifact("analysis/layer/assessments.json");
 });
 
