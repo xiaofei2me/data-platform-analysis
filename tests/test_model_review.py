@@ -15,19 +15,9 @@ from typing import Any
 import pytest
 from test_business_model import _pipeline as _model_pipeline
 
-from data_platform_analysis.analysis.business_grain import _split_markdown_row
-from data_platform_analysis.analysis.business_model import (
+from data_platform_analysis.analysis.business.grain import _split_markdown_row
+from data_platform_analysis.analysis.model.business_model import (
     run_business_model_analysis,
-)
-from data_platform_analysis.analysis.model_review import (
-    ARRAY_INPUT_FILES,
-    CARRYOVER_CHECKLIST_INPUT_FILE,
-    INPUT_FILES,
-    OUTPUT_FILES,
-    WIDE_COLUMN_THRESHOLD,
-    CurrentStateModelError,
-    read_review_inputs,
-    run_current_state_model_analysis,
 )
 from data_platform_analysis.analysis.models import (
     CURRENT_MODEL_ROLE_AMBIGUOUS,
@@ -64,6 +54,16 @@ from data_platform_analysis.analysis.models import (
     REVIEW_GROUP_ORDER,
     REVIEW_GROUP_TITLE,
     REVIEW_REPORT_ROW_LIMIT,
+)
+from data_platform_analysis.analysis.review.findings import (
+    ARRAY_INPUT_FILES,
+    CARRYOVER_CHECKLIST_INPUT_FILE,
+    INPUT_FILES,
+    OUTPUT_FILES,
+    WIDE_COLUMN_THRESHOLD,
+    CurrentStateModelError,
+    read_review_inputs,
+    run_current_state_model_analysis,
 )
 
 # ============================================================
@@ -1277,7 +1277,7 @@ def test_deterministic_across_runs(tmp_path: Path) -> None:
 def test_pipeline_run_keeps_m35_outputs(tmp_path: Path) -> None:
     """M3.6 不改写 M3.5 的 8 个产物。"""
 
-    from data_platform_analysis.analysis.business_model import (  # noqa: PLC0415
+    from data_platform_analysis.analysis.model.business_model import (  # noqa: PLC0415
         OUTPUT_FILES as MODEL_OUTPUT_FILES,
     )
 

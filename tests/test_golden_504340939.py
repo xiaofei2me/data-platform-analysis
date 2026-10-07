@@ -34,7 +34,7 @@ from typing import Any
 
 from helpers import source_tree_hash
 
-from data_platform_analysis.analysis.sql_analysis import split_statements
+from data_platform_analysis.analysis.sql.sql_analysis import split_statements
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SNAPSHOT_FIXTURE = FIXTURES / "snapshot_466339"

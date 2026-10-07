@@ -76,16 +76,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..config import PROJECT_ROOT
-from ..io_utils import ensure_dir, write_json, write_text
-from .business_objects import (
-    _string_list,
-    _table_sort_key,
-    _text,
-    _workspace_projects,
-)
-from .business_understanding import tokenize_identifier
-from .models import (
+from ...config import PROJECT_ROOT
+from ...io_utils import ensure_dir, write_json, write_text
+from ..models import (
     EVIDENCE_STRENGTH_ORDER,
     EVIDENCE_STRENGTH_WEAK,
     GRAIN_CANDIDATE_NOTE,
@@ -135,8 +128,15 @@ from .models import (
     BusinessGrainResult,
     evidence_strength,
 )
-from .naming import qualify_table_ref
-from .reports import render_grain_review_checklist, render_grain_summary
+from ..naming import qualify_table_ref
+from ..reports import render_grain_review_checklist, render_grain_summary
+from .objects import (
+    _string_list,
+    _table_sort_key,
+    _text,
+    _workspace_projects,
+)
+from .understanding import tokenize_identifier
 
 logger = logging.getLogger(__name__)
 

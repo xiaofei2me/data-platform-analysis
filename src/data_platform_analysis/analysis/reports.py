@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .inventory import Inventory
-from .lineage import LineageResult
+from .inventory.inventory import Inventory
+from .lineage.lineage import LineageResult
 from .models import (
     AGGREGATE_ASSESSMENT_ORDER,
     BUSINESS_CONFIDENCE_ORDER,
@@ -118,7 +118,7 @@ from .models import (
     is_analysis_eligible,
     normalize_human_status,
 )
-from .sql_analysis import ParseErrorRecord
+from .sql.sql_analysis import ParseErrorRecord
 
 
 def render_inventory_summary(inventory: Inventory) -> str:

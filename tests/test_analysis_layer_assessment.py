@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from helpers import write_snapshot
 
-from data_platform_analysis.analysis.layer_assessment import (
+from data_platform_analysis.analysis.layer.layer_assessment import (
     LayerAssessmentError,
     _display_path,
     assess_tables,

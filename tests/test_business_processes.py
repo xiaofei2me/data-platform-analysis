@@ -15,10 +15,10 @@ from typing import Any
 import pytest
 from test_business_objects import _column, _prepare, _table, _write_checklist
 
-from data_platform_analysis.analysis.business_objects import (
+from data_platform_analysis.analysis.business.objects import (
     run_business_object_analysis,
 )
-from data_platform_analysis.analysis.business_processes import (
+from data_platform_analysis.analysis.business.processes import (
     INPUT_FILES,
     OUTPUT_FILES,
     PROCESS_CHECKLIST_INPUT_FILE,

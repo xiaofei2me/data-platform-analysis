@@ -68,10 +68,9 @@ from itertools import combinations
 from pathlib import Path
 from typing import Any
 
-from ..config import PROJECT_ROOT
-from ..io_utils import ensure_dir, write_json, write_text
-from .business_quality import LAYER_UNDETERMINED
-from .models import (
+from ...config import PROJECT_ROOT
+from ...io_utils import ensure_dir, write_json, write_text
+from ..models import (
     BUSINESS_EVIDENCE_LINEAGE,
     BUSINESS_EVIDENCE_ORDER,
     BUSINESS_EVIDENCE_SQL,
@@ -92,8 +91,9 @@ from .models import (
     evidence_type_sort_key,
     numeric_id_sort_key,
 )
-from .naming import qualify_table_ref
-from .reports import render_object_graph
+from ..naming import qualify_table_ref
+from ..reports import render_object_graph
+from .quality import LAYER_UNDETERMINED
 
 logger = logging.getLogger(__name__)
 

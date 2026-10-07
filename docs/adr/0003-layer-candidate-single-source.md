@@ -30,7 +30,7 @@
 
 ## 后果
 
-- 原 `docs/EVIDENCE_LAYER_FREEZE_REPORT.md` 的冻结范围包含 `inventory.py` / `lineage.py` / `pipeline.py` 与 `tables.json` / `table-lineage.json` / `Summary.md` 产物，本次决策使这部分**解冻并重新审计**（本 ADR 即记录）。
+- 原 `docs/EVIDENCE_LAYER_FREEZE_REPORT.md` 的冻结范围包含 `inventory/inventory.py` / `lineage/lineage.py` / `pipeline.py` 与 `tables.json` / `table-lineage.json` / `Summary.md` 产物，本次决策使这部分**解冻并重新审计**（本 ADR 即记录）。
 - 产物格式变化：`inventory/tables.json` 不再含 `layer_candidate` 字段；`Summary.md` 删除原「层级候选（Layer Candidate）」一节，其余章节重编号；`inventory/summary.md` 不再输出层级节；`layer/summary.md` 新增「跨层命名提示」。
 - 规则来源从两处收敛为一处：`naming.py` 不再持有任何层级规则，改规则只改 `config/layer-rules.yaml`。
 - 层级语义变更的下游：血缘边两端的层级标注在 ODS / ADS 表上从「前缀猜测」变为「Workspace 事实」，覆盖率从约 40% 提升到 100%（除 UNKNOWN 与不在 Inventory 的表）。

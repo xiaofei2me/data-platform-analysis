@@ -14,11 +14,11 @@ from typing import Any
 import pytest
 from test_business_grain import _pipeline as _grain_pipeline
 
-from data_platform_analysis.analysis.business_grain import (
+from data_platform_analysis.analysis.business.grain import (
     CARRYOVER_CHECKLIST_INPUT_FILE,
     run_business_grain_analysis,
 )
-from data_platform_analysis.analysis.business_model import (
+from data_platform_analysis.analysis.model.business_model import (
     ARRAY_INPUT_FILES,
     FACT_GATE_REASON_MEASURE,
     FACT_GATE_REASON_PATTERN,
@@ -31,7 +31,7 @@ from data_platform_analysis.analysis.business_model import (
     read_model_inputs,
     run_business_model_analysis,
 )
-from data_platform_analysis.analysis.business_model import (
+from data_platform_analysis.analysis.model.business_model import (
     CARRYOVER_CHECKLIST_INPUT_FILE as MODEL_CARRYOVER_FILE,
 )
 from data_platform_analysis.analysis.models import (

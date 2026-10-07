@@ -184,7 +184,22 @@ data-platform-analysis/
 │       ├── dataworks.py        # DataWorks OpenAPI 客户端与字段提取
 │       ├── dataworks_types.py  # DataWorks FileType 注册表
 │       ├── maxcompute.py       # MaxCompute 只读元数据客户端
-│       └── export.py           # Snapshot 导出与 Cleanup
+│       ├── export.py           # Snapshot 导出与 Cleanup
+│       └── analysis/           # 分析链源码（与根目录 analysis/ 产物目录同名不同物）
+│           ├── pipeline.py     # M2 编排（M2.1 → M2.5 执行顺序）
+│           ├── inventory/      # M2.1 资产清单
+│           ├── layer/          # M2.2 层级判定（唯一口径）
+│           ├── sql/            # M2.3 SQL 解析 / 归一化 / 方言 / CTAS 兜底
+│           ├── lineage/        # M2.4 表引用与血缘
+│           ├── profiling/      # M2.5 元数据画像
+│           ├── business/       # M3 ～ M3.4 业务理解候选（Understand → Object → Process → Grain）
+│           ├── model/          # M3.5 Fact / Dimension 候选
+│           ├── review/         # M3.6 Finding / Current-State Problem 评审
+│           ├── models.py       # 数据结构（analysis = 如何分析，models = 数据结构是什么）
+│           ├── reports.py      # JSON / Markdown 报告渲染
+│           ├── snapshot.py     # Snapshot 只读访问
+│           ├── errors.py       # 错误账本
+│           └── naming.py       # 表名 / 引用工具
 │
 ├── source/                     # Snapshot 输出目录（gitignore）
 ├── analysis/                   # Analysis 产物（M2 ~ M3.6，gitignore）

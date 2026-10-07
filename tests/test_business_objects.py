@@ -20,7 +20,7 @@ from test_business_understanding import (
     _write_rules,
 )
 
-from data_platform_analysis.analysis.business_objects import (
+from data_platform_analysis.analysis.business.objects import (
     OUTPUT_FILES,
     BusinessObjectsError,
     HumanReview,
@@ -28,10 +28,10 @@ from data_platform_analysis.analysis.business_objects import (
     read_object_inputs,
     run_business_object_analysis,
 )
-from data_platform_analysis.analysis.business_quality import (
+from data_platform_analysis.analysis.business.quality import (
     run_business_quality_assessment,
 )
-from data_platform_analysis.analysis.business_understanding import (
+from data_platform_analysis.analysis.business.understanding import (
     run_business_understanding,
 )
 from data_platform_analysis.analysis.models import (

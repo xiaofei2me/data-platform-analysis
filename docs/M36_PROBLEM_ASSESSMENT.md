@@ -2,7 +2,7 @@
 
 面向未参与开发的读者：本文档说明 `M3.6 → M3.6 v2 → Human Adjudication → Refactoring Evidence → M4` 的完整链路、Finding 与 Problem 的方法论、13 类 Problem Taxonomy、四条不可违反的原则、人工裁决流程与重构证据要求。读完本文即可开始人工裁决 `current-state-problem-review-checklist.md`，而不必先读代码。
 
-- 代码实现：`src/data_platform_analysis/analysis/problem_assessment.py`（v2）、`analysis/model_review.py`（M3.6）、常量与契约在 `analysis/models.py`
+- 代码实现：`src/data_platform_analysis/analysis/review/problems.py`（v2）、`analysis/review/findings.py`（M3.6）、常量与契约在 `analysis/models.py`
 - 阶段逻辑分析：[docs/CODE_LOGIC_ANALYSIS.md](CODE_LOGIC_ANALYSIS.md) §3.14、§4 产物地图、§8 局限（第 13、14 条）
 - 命令：`uv run data-platform-analysis analyze-current-state-model`（M3.6 与 v2 同一次运行，写出 9 个产物）
 - 数据基准：本仓库 `analysis/` 的当前快照（3719 张表、4439 条 finding、1190 条 problem）
@@ -568,8 +568,8 @@ Human Decision  人工裁决：确认 / 否决 + 理由 + 决定的范围与顺�
 | 需要查什么 | 去哪里 |
 | --- | --- |
 | 13 类常量、状态机、词汇表 | `src/data_platform_analysis/analysis/models.py`（`PROBLEM_*`、`GRAIN_ASSESSMENT_*`、`OVERLAP_CLASS_*`） |
-| 各类 problem 的构造与证据 | `src/data_platform_analysis/analysis/problem_assessment.py` |
-| Finding 生成、Fact Gate 复算 | `src/data_platform_analysis/analysis/model_review.py` |
+| 各类 problem 的构造与证据 | `src/data_platform_analysis/analysis/review/problems.py` |
+| Finding 生成、Fact Gate 复算 | `src/data_platform_analysis/analysis/review/findings.py` |
 | 报告 6 节与清单 13 分区渲染 | `src/data_platform_analysis/analysis/reports.py` |
 | 23 条行为测试 | `tests/test_problem_assessment.py` |
 | 全量 problem 数据 | `analysis/business/current-state-problems.json` |

@@ -28,15 +28,15 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..dataworks_types import get_file_type
-from .models import (
+from ...dataworks_types import get_file_type
+from ..models import (
     ColumnInventory,
     FileInventory,
     TableInventory,
     WorkspaceInventory,
     numeric_id_sort_key,
 )
-from .snapshot import SnapshotReader, WorkspaceIdentity, to_int
+from ..snapshot import SnapshotReader, WorkspaceIdentity, to_int
 
 logger = logging.getLogger(__name__)
 

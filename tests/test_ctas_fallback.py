@@ -21,8 +21,8 @@ from typing import Any
 import pytest
 from helpers import write_snapshot
 
-from data_platform_analysis.analysis.fallback import extract_ctas_references, is_ctas_statement
-from data_platform_analysis.analysis.sql_analysis import split_statements
+from data_platform_analysis.analysis.sql.fallback import extract_ctas_references, is_ctas_statement
+from data_platform_analysis.analysis.sql.sql_analysis import split_statements
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -86,8 +86,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..io_utils import ensure_dir, write_json, write_text
-from .business_grain import (
+from ...io_utils import ensure_dir, write_json, write_text
+from ..business.grain import (
     IDENTIFIER_NAMES,
     IDENTIFIER_TOKENS,
     BusinessGrainError,
@@ -100,9 +100,9 @@ from .business_grain import (
     _status_counts,
     _table_column_sort_key,
 )
-from .business_objects import _string_list, _table_sort_key, _text, _workspace_projects
-from .business_understanding import tokenize_identifier
-from .models import (
+from ..business.objects import _string_list, _table_sort_key, _text, _workspace_projects
+from ..business.understanding import tokenize_identifier
+from ..models import (
     DIMENSION_EVIDENCE_COLUMN,
     DIMENSION_EVIDENCE_FACT_REFERENCE,
     DIMENSION_EVIDENCE_LINEAGE,
@@ -195,8 +195,8 @@ from .models import (
     evidence_strength,
     normalize_human_status,
 )
-from .naming import qualify_table_ref
-from .reports import render_model_review_checklist, render_model_summary
+from ..naming import qualify_table_ref
+from ..reports import render_model_review_checklist, render_model_summary
 
 logger = logging.getLogger(__name__)
 

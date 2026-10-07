@@ -10,33 +10,33 @@ from rich.console import Console
 from rich.table import Table
 
 from .analysis import AnalysisPipeline
-from .analysis.business_grain import (
+from .analysis.business.grain import (
     BusinessGrainError,
     run_business_grain_analysis,
 )
-from .analysis.business_model import (
-    BusinessModelError,
-    run_business_model_analysis,
-)
-from .analysis.business_objects import (
+from .analysis.business.objects import (
     BusinessObjectsError,
     run_business_object_analysis,
 )
-from .analysis.business_processes import (
+from .analysis.business.processes import (
     BusinessProcessesError,
     run_business_process_analysis,
 )
-from .analysis.business_quality import (
+from .analysis.business.quality import (
     BusinessQualityError,
     run_business_quality_assessment,
 )
-from .analysis.business_understanding import (
+from .analysis.business.understanding import (
     BusinessUnderstandingError,
     run_business_understanding,
 )
 from .analysis.errors import AnalysisFatalError
-from .analysis.layer_assessment import LayerAssessmentError, run_layer_assessment
-from .analysis.model_review import (
+from .analysis.layer.layer_assessment import LayerAssessmentError, run_layer_assessment
+from .analysis.model.business_model import (
+    BusinessModelError,
+    run_business_model_analysis,
+)
+from .analysis.review.findings import (
     CurrentStateModelError,
     run_current_state_model_analysis,
 )

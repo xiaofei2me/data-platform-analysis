@@ -40,10 +40,9 @@ from sqlglot import Dialect, exp
 from sqlglot.errors import ParseError, TokenError
 from sqlglot.tokens import TokenType
 
-from .dialect import DIALECT, register_dialect
-from .errors import ErrorLedger
-from .fallback import extract_ctas_references, is_ctas_statement
-from .models import (
+from ..errors import ErrorLedger
+from ..lineage.references import extract_table_references
+from ..models import (
     EXTRACTION_METHOD_AST,
     EXTRACTION_METHOD_FALLBACK,
     EXTRACTION_METHOD_NONE,
@@ -55,9 +54,10 @@ from .models import (
     TableReference,
     is_analysis_eligible,
 )
+from ..snapshot import SnapshotReader
+from .dialect import DIALECT, register_dialect
+from .fallback import extract_ctas_references, is_ctas_statement
 from .normalization import normalize_for_parser
-from .references import extract_table_references
-from .snapshot import SnapshotReader
 
 register_dialect()
 

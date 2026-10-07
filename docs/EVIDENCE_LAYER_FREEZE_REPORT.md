@@ -2,7 +2,7 @@
 
 > **解冻说明（2026-10-02）**：依据 [ADR-0003](adr/0003-layer-candidate-single-source.md)，
 > M2.1 的 `layer_candidate` 已删除、层级判定收敛到 M2.2，本次变更涉及冻结范围内的
-> `inventory.py` / `lineage.py` / `pipeline.py` 及产物 `tables.json` / `table-lineage.json` /
+> `inventory/inventory.py` / `lineage/lineage.py` / `pipeline.py` 及产物 `tables.json` / `table-lineage.json` /
 > `Summary.md`。上述范围**自该 ADR 起部分解冻并重新审计**，其余冻结项维持有效。
 >
 > **阶段重编号与收尾范围（2026-10-02）**：阶段按执行顺序重编号——
@@ -133,14 +133,14 @@ Evidence Layer（M2.1～M2.4）当前已达到：
 - ✅ 可重复：不依赖外部 API
 
 **冻结范围（M2.1～M2.4）：**
-- src/data_platform_analysis/analysis/inventory.py
-- src/data_platform_analysis/analysis/layer_assessment.py
-- src/data_platform_analysis/analysis/sql_analysis.py
-- src/data_platform_analysis/analysis/references.py
-- src/data_platform_analysis/analysis/lineage.py
+- src/data_platform_analysis/analysis/inventory/inventory.py
+- src/data_platform_analysis/analysis/layer/layer_assessment.py
+- src/data_platform_analysis/analysis/sql/sql_analysis.py
+- src/data_platform_analysis/analysis/lineage/references.py
+- src/data_platform_analysis/analysis/lineage/lineage.py
 - src/data_platform_analysis/analysis/pipeline.py
 
-> `profiling.py`（M2.5）不列入本轮范围；首轮已审状态见 §2 ⏭ 小节。
+> `profiling/profiling.py`（M2.5）不列入本轮范围；首轮已审状态见 §2 ⏭ 小节。
 
 **冻结产物（M2.1～M2.4）：**
 - analysis/inventory/{workspaces,files,tables,columns}.json

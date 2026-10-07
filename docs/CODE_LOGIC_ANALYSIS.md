@@ -32,7 +32,7 @@ Convention Assessment → 目标分层设计 → DWS / Semantic Layer  → 数�
 | 目录以稳定 `workspace_id` 标识，不以可变 name | ADR-0001 |
 | 所有列表有确定性排序键，连续运行产物一致 | `numeric_id_sort_key` + 各阶段 sort |
 | 单对象失败 → 记录可恢复错误 → 继续；只有致命错误才中断 | `errors.py` |
-| 不伪造数据（没有行级样本就不给行级统计量） | `profiling.py` |
+| 不伪造数据（没有行级样本就不给行级统计量） | `profiling/profiling.py` |
 
 ---
 
@@ -109,7 +109,7 @@ source/
 
 执行顺序 `M2.1 → M2.2 → M2.3 → M2.4 → M2.5` 是刻意的：M2.2 只依赖表清单与规则配置，必须先于 M2.4 完成，血缘才能直接引用 `candidate_layer`（见 ADR-0003）。
 
-### 3.1 M2.1 Warehouse Inventory（`inventory.py`）
+### 3.1 M2.1 Warehouse Inventory（`inventory/inventory.py`）
 
 **输入**：`files-index.json` / `tables-index.json` + raw JSON。
 
@@ -122,7 +122,7 @@ source/
 
 **产出字段（tables.json）**：`workspace_id / workspace_name / project / schema / table / table_key / comment / column_count / partition_count / size / is_virtual_view / lifecycle / creation_time / last_modified_time / raw_file`。
 
-### 3.2 M2.2 Layer Assessment（`layer_assessment.py`）——唯一的层级判定
+### 3.2 M2.2 Layer Assessment（`layer/layer_assessment.py`）——唯一的层级判定
 
 **输入**：`analysis/inventory/tables.json` + `config/layer-rules.yaml`（外部配置，改规则不用改代码）。
 
@@ -154,7 +154,7 @@ matching: {case_sensitive: false}
 - 排序：`(workspace_id, project, table_name)`；JSON 信封 `{count, assessments[]}`。
 - **历史决策**：取代 M2.1 的 `naming.layer_candidate`（纯表名前缀、不看 workspace，对本项目 69% 表失效且有 35 条错判），见 `docs/adr/0003-layer-candidate-single-source.md`。
 
-### 3.3 M2.3 SQL Analysis（`sql_analysis.py` + `normalization.py` + `dialect.py` + `fallback.py`）
+### 3.3 M2.3 SQL Analysis（`sql/sql_analysis.py` + `sql/normalization.py` + `sql/dialect.py` + `sql/fallback.py`）
 
 **处理流水**：
 
@@ -170,21 +170,21 @@ content（只取 NodeId 有效 File）
 **关键设计**：
 
 - **三层原则**：raw SQL = 真相源；normalized SQL = 只给 parser 的副本；分析输出 = 派生证据。`StatementRecord.sql` 永远是原文，归一化明细在 `normalizations` 里可追溯，**不允许为了 errors=0 吞错**。
-- **CTAS Fallback**：AST 解析为 `unsupported`（Command）且具备 CTAS 特征时，交给 token scanner（`fallback.py`，单向前扫描、游标必须严格前进）提取引用；提取成功记 `extraction_method=fallback`，失败保持 unsupported。与 Normalization 是两个独立阶段，互不混用。
+- **CTAS Fallback**：AST 解析为 `unsupported`（Command）且具备 CTAS 特征时，交给 token scanner（`sql/fallback.py`，单向前扫描、游标必须严格前进）提取引用；提取成功记 `extraction_method=fallback`，失败保持 unsupported。与 Normalization 是两个独立阶段，互不混用。
 - **失败处理**：单条语句失败只影响该条，写入 `sql/parse-errors.json` 与 `errors.json`，文件级与分析级继续。
 
 **当前实测**：1963 条语句全部 `success`（ast=1962、fallback=1），归一化生效 1 条，unsupported=0、error=0。
 
-### 3.4 M2.4 Table Reference / Lineage（`references.py` + `lineage.py`）
+### 3.4 M2.4 Table Reference / Lineage（`lineage/references.py` + `lineage/lineage.py`）
 
-**引用提取规则（`references.py`）**：
+**引用提取规则（`lineage/references.py`）**：
 
 1. `target` = 写入目标（INSERT / CREATE TABLE / CREATE VIEW / MERGE / UPDATE / DELETE）。
 2. `source` = 只在"可读语句根类型"（SELECT / INSERT / CREATE / UNION / MERGE / UPDATE / DELETE / WITH / SUBQUERY / VALUES）上提取，避免 DROP / ALTER / SET / USE 产生虚假引用。
 3. 排除：与 target 同表（原地重写不构成血缘）、CTE 别名、`CREATE TABLE ... LIKE` 的模板表。
 4. 表名先从 AST 还原，再把 `${scheduler_variable}` 归一化成 `project.table`，原始 SQL 不改写。
 
-**血缘构建（`lineage.py`）**：
+**血缘构建（`lineage/lineage.py`）**：
 
 - edge 身份 = `(workspace_id, source_key, target_key)`，同一条边只保留一次，多条 SQL 证据收进 `evidence[]`（带 file_id / statement_id / extraction_method），可回答"为什么认为这两张表有上下游关系"。
 - `source_key/target_key` 是补齐 Project 后的规范标识，据此识别**跨 Workspace** 血缘。
@@ -192,7 +192,7 @@ content（只取 NodeId 有效 File）
 - 核心表候选排序：`downstream_count` 降序 → `upstream_count` → `table_key`；只反映数据流向，不代表业务价值。
 - 引用了但不在 Inventory 的表也保留（`in_inventory=false`），不静默丢弃。
 
-### 3.5 M2.5 Metadata Profiling（`profiling.py`）
+### 3.5 M2.5 Metadata Profiling（`profiling/profiling.py`）
 
 - 唯一来源是 Inventory 元数据，`profile_status` 恒为 `metadata_only`。
 - `row_count / distinct_count / min / max / sample_values` 一律 `null`；`is_candidate_key` 恒为 false（缺唯一性证据）——**不伪造统计量**。
@@ -207,7 +207,7 @@ content（只取 NodeId 有效 File）
 
 当前实测可恢复错误 = 0。
 
-### 3.7 M3 Business Understanding（`business_understanding.py`，独立命令）
+### 3.7 M3 Business Understanding（`business/understanding.py`，独立命令）
 
 **入口**：`cli.analyze-business` → `run_business_understanding()`。**不在 `AnalysisPipeline.run()` 里**：`analyze` 不产出 `analysis/business/`，M3 也不会顺带跑 M2；M2 产物更新后需重新执行 `analyze-business`（否则 `analysis/business/` 停留在旧输入上）。
 
@@ -228,7 +228,7 @@ content（只取 NodeId 有效 File）
 
 **当前实测（3 workspace / 3719 表）**：术语候选 6032 条（出现 201486 次、来源位置 201182 个）；有 Domain 候选的表 3285、有 Object 候选的表 3182、两者至少其一 3367（90.5%）；UNKNOWN 352（9.5%）、AMBIGUOUS（≥2 Domain）2460、存在 high 候选的表 1383、核心表标记 1753；表级证据 47056 条（column_name 21962、column_comment 14176、sql 7403、table_name 2422、table_comment 1093、**lineage 0**）。lineage=0 的原因：血缘邻居表名的关键词在本数据集上**总是**已经被本表名称 / 注释或引用它的 SQL 覆盖（SQL 里通常就写着邻居表名），按防膨胀规则不再重复记入。
 
-### 3.8 M3.1 Business Understanding Quality Assessment（`business_quality.py`，独立命令）
+### 3.8 M3.1 Business Understanding Quality Assessment（`business/quality.py`，独立命令）
 
 **入口**：`cli.analyze-business-quality` → `run_business_quality_assessment()`。**同样不在 `AnalysisPipeline.run()` 里**：只评估已有结果，不回退跑 M2 / `analyze-business`。
 
@@ -249,7 +249,7 @@ content（只取 NodeId 有效 File）
 
 ---
 
-### 3.9 M3.2 Business Object & Relationship Analysis（`business_objects.py`，独立命令）
+### 3.9 M3.2 Business Object & Relationship Analysis（`business/objects.py`，独立命令）
 
 **入口**：`cli.analyze-business-objects` → `run_business_object_analysis()`。**不在 `AnalysisPipeline.run()` 里**：只把已有的 M2 / M3 / M3.1 产物整理成「Object → Table → Relationship → Evidence」的证据结构，不回退跑 `analyze` / `analyze-business` / `analyze-business-quality`，也不改写它们。
 
@@ -273,7 +273,7 @@ content（只取 NodeId 有效 File）
 
 ---
 
-### 3.10 M3.3 Business Process Candidate Analysis（`business_processes.py`，独立命令）
+### 3.10 M3.3 Business Process Candidate Analysis（`business/processes.py`，独立命令）
 
 **入口**：`cli.analyze-business-processes` → `run_business_process_analysis()`。**不在 `AnalysisPipeline.run()` 里**：只把已有 M2 / M3 / M3.1 / M3.2 产物与 `config/process-rules.yaml` 组合成 process candidate，不回退跑前置阶段，也不改写它们。
 
@@ -299,7 +299,7 @@ content（只取 NodeId 有效 File）
 
 ---
 
-### 3.11 M3.4 Grain Candidate Analysis（`business_grain.py`，独立命令）
+### 3.11 M3.4 Grain Candidate Analysis（`business/grain.py`，独立命令）
 
 **入口**：`cli.analyze-business-grain` → `run_business_grain_analysis()`。**不在 `AnalysisPipeline.run()` 里**：只读已有 M2 / M3 / M3.1 / M3.2 / M3.3 产物，组合成 grain candidate，不回退跑前置阶段，也不改写它们；**不新增任何配置**。
 
@@ -325,7 +325,7 @@ content（只取 NodeId 有效 File）
 
 **边界（必须记住）**：Grain Signal ≠ Grain Candidate；Grain Candidate ≠ Confirmed Grain（status 恒 candidate）；空 `candidate_keys` ≠ 没有 grain；不伪造唯一性（Profiling 无样本，strength 只是证据源数量）；role 只用 `anchor / supporting`，不产出 DWD / DWS / Fact / Dimension 命名；`analyze` 及所有前置阶段都不刷新 M3.4 产物，上游变化后需重跑 `analyze-business-grain`。
 
-### 3.12 M3.5 Fact / Dimension Candidate Analysis（`business_model.py`，独立命令）
+### 3.12 M3.5 Fact / Dimension Candidate Analysis（`model/business_model.py`，独立命令）
 
 **入口**：`cli.analyze-business-model` → `run_business_model_analysis()`。**不在 `AnalysisPipeline.run()` 里**：只读已有 M2 / M3 / M3.1 / M3.2 / M3.3 / M3.4 产物，组合成 fact / dimension / relationship candidate，不回退跑前置阶段，也不改写它们；**不新增任何配置**。
 
@@ -352,7 +352,7 @@ content（只取 NodeId 有效 File）
 
 **边界（必须记住）**：fact / dimension / relationship candidate ≠ confirmed 模型（机器阶段不写 confirmed，只有人工回填才会变 confirmed）；strength 只是证据源数量，Profiling 是 metadata-only、不伪造唯一性；`layer` 只作 `candidate_layer`，`core_candidate` 只作证据覆盖与复核优先级；多角色与 UNKNOWN / AMBIGUOUS 一律保留，不合并、不拆分、不删表、不挑 winner；不读 `source/`、不重解析原始数据、不重做 Object / Process / Grain classifier、不调用 LLM / 外部 API；**不产出 DWD / DWS / Semantic Layer / DDL**（那是后续 Target DWD Design 阶段）；上游变化后需重跑 `analyze-business-model` 才刷新本阶段产物。
 
-### 3.13 M3.6 Current-State Model Review（`model_review.py`，独立命令）
+### 3.13 M3.6 Current-State Model Review（`review/findings.py`，独立命令）
 
 **入口**：`cli.analyze-current-state-model` → `run_current_state_model_analysis()`；同时支持 `uv run python -m data_platform_analysis.cli analyze-current-state-model`（`cli.py` 末尾的 `if __name__ == "__main__": main()` 守卫）。**不在 `AnalysisPipeline.run()` 里**：只读已有 M2 / M3 / M3.5 产物做评审，不回退跑前置阶段，也不改写它们；**不新增任何配置**。
 
@@ -378,11 +378,11 @@ content（只取 NodeId 有效 File）
 
 ---
 
-### 3.14 M3.6 v2 Current-State Problem Assessment（`problem_assessment.py`，同命令附带）
+### 3.14 M3.6 v2 Current-State Problem Assessment（`review/problems.py`，同命令附带）
 
 **方法论长文**：[docs/M36_PROBLEM_ASSESSMENT.md](M36_PROBLEM_ASSESSMENT.md) 覆盖阶段链路、Finding ≠ Problem、13 类 taxonomy 每类 7 项说明、四条原则（Overlap ≠ Duplication、UNKNOWN ≠ BAD MODEL、Aggregate Fact ≠ Problem、Fact Gate Failure ≠ Fact Invalid）、M3.6 → M4 决策边界、人工裁决生命周期与优先级、重构证据模板与矩阵、真实数据摘要、完成标准与禁用表达清单；本节只记录代码事实，两者冲突以代码与实测数据为准。
 
-**入口**：仍是 `cli.analyze-current-state-model` → `run_current_state_model_analysis()`，**不新增子命令**：写完 5 个 M3.6 产物后在同一次运行里把 finding 聚合成 problem candidate，结果挂到 `CurrentStateModelResult.problem`。循环依赖处理：`problem_assessment.py` 顶层 import `model_review`，`model_review` 在函数体内 lazy import `problem_assessment`。**不新增配置**，阈值全部是常量。
+**入口**：仍是 `cli.analyze-current-state-model` → `run_current_state_model_analysis()`，**不新增子命令**：写完 5 个 M3.6 产物后在同一次运行里把 finding 聚合成 problem candidate，结果挂到 `CurrentStateModelResult.problem`。循环依赖处理：`review/problems.py` 顶层 import `findings`，`findings` 在函数体内 lazy import `problems`。**不新增配置**，阈值全部是常量。
 
 **输入（只读）**：本次运行的 M3.6 finding 与表级行 + 同一批 13 个上游产物 + 可选 `business/current-state-problem-review-checklist.md`（v2 清单回填，重跑带回）。
 
@@ -488,8 +488,8 @@ content（只取 NodeId 有效 File）
 - 过程信号规则：`config/process-rules.yaml`（transaction_identifiers / transaction_measures / event_time / status；**只被 `analyze-business-processes` 读取**，段缺失、空列表、跨段冲突直接报错，配置里不得出现业务过程命名）。
 - Grain 规则：**无专用配置**，`analyze-business-grain` 只读上一阶段产物；候选键来自形态级联与 `inventory/columns.json` 实际字段。
 - Fact / Dimension 候选：**无专用配置**，`analyze-business-model` 只读上一阶段产物（含 `layer/assessments.json` 的 `candidate_layer`），不读规则文件、不新增配置项。
-- Current-State Model Review：**无专用配置**，`analyze-current-state-model` 只读 M2 / M3 / M3.5 产物，阈值全部是 `model_review.py` 里的常量（宽表 ≥100 字段、重合 ≥10 字段且 Jaccard ≥0.5、结果表入边 ≥1、报告 / 清单每区 ≤50 行）。
-- Problem Assessment（M3.6 v2）：**无专用配置**，与 M3.6 同一命令一次跑完，阈值全部是 `problem_assessment.py` / `models.py` 的常量（问题级证据 ≥4 strong、3 moderate、≤2 weak；选择歧义 ≥10 个重复组；单 problem 证据行 ≤50、报告 Top Problems ≤20、清单每区 ≤50）。
+- Current-State Model Review：**无专用配置**，`analyze-current-state-model` 只读 M2 / M3 / M3.5 产物，阈值全部是 `review/findings.py` 里的常量（宽表 ≥100 字段、重合 ≥10 字段且 Jaccard ≥0.5、结果表入边 ≥1、报告 / 清单每区 ≤50 行）。
+- Problem Assessment（M3.6 v2）：**无专用配置**，与 M3.6 同一命令一次跑完，阈值全部是 `review/problems.py` / `models.py` 的常量（问题级证据 ≥4 strong、3 moderate、≤2 weak；选择歧义 ≥10 个重复组；单 problem 证据行 ≤50、报告 Top Problems ≤20、清单每区 ≤50）。
 - 常用命令：
 
 ```bash
@@ -614,19 +614,19 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # 368 tests / lint / ty
 | --- | --- |
 | 编排与执行顺序 | `src/data_platform_analysis/analysis/pipeline.py` |
 | 快照只读访问 | `analysis/snapshot.py` |
-| 资产清单 | `analysis/inventory.py` |
-| **层级判定（唯一口径）** | `analysis/layer_assessment.py` + `config/layer-rules.yaml` |
-| SQL 解析 / 归一化 / 方言 / CTAS 兜底 | `analysis/sql_analysis.py`、`normalization.py`、`dialect.py`、`fallback.py` |
-| 引用与血缘 | `analysis/references.py`、`lineage.py` |
-| 元数据画像 | `analysis/profiling.py` |
-| **业务候选（M3）** | `analysis/business_understanding.py` + `config/business-rules.yaml` |
-| **质量评估（M3.1）** | `analysis/business_quality.py` |
-| **Object / Relationship 证据结构（M3.2）** | `analysis/business_objects.py`（+ `reports.py::render_object_graph`） |
-| **Process 候选与信号（M3.3）** | `analysis/business_processes.py` + `config/process-rules.yaml`（+ `reports.py::render_process_summary` / `render_process_review_checklist`） |
-| **Grain 候选与形态（M3.4）** | `analysis/business_grain.py`（无专用配置；+ `reports.py::render_grain_summary` / `render_grain_review_checklist`） |
-| **Fact / Dimension 候选（M3.5）** | `analysis/business_model.py`（无专用配置；+ `reports.py::render_model_summary` / `render_model_review_checklist`） |
-| **Current-State Model Review（M3.6）** | `analysis/model_review.py`（无专用配置；+ `reports.py::render_current_state_summary` / `render_current_state_review_checklist`） |
-| **Problem Assessment（M3.6 v2）** | `analysis/problem_assessment.py`（无专用配置，与 M3.6 同一命令；+ `reports.py::render_current_state_problem_summary` / `render_current_state_problem_review_checklist`） |
+| 资产清单 | `analysis/inventory/inventory.py` |
+| **层级判定（唯一口径）** | `analysis/layer/layer_assessment.py` + `config/layer-rules.yaml` |
+| SQL 解析 / 归一化 / 方言 / CTAS 兜底 | `analysis/sql/sql_analysis.py`、`analysis/sql/normalization.py`、`analysis/sql/dialect.py`、`analysis/sql/fallback.py` |
+| 引用与血缘 | `analysis/lineage/references.py`、`analysis/lineage/lineage.py` |
+| 元数据画像 | `analysis/profiling/profiling.py` |
+| **业务候选（M3）** | `analysis/business/understanding.py` + `config/business-rules.yaml` |
+| **质量评估（M3.1）** | `analysis/business/quality.py` |
+| **Object / Relationship 证据结构（M3.2）** | `analysis/business/objects.py`（+ `reports.py::render_object_graph`） |
+| **Process 候选与信号（M3.3）** | `analysis/business/processes.py` + `config/process-rules.yaml`（+ `reports.py::render_process_summary` / `render_process_review_checklist`） |
+| **Grain 候选与形态（M3.4）** | `analysis/business/grain.py`（无专用配置；+ `reports.py::render_grain_summary` / `render_grain_review_checklist`） |
+| **Fact / Dimension 候选（M3.5）** | `analysis/model/business_model.py`（无专用配置；+ `reports.py::render_model_summary` / `render_model_review_checklist`） |
+| **Current-State Model Review（M3.6）** | `analysis/review/findings.py`（无专用配置；+ `reports.py::render_current_state_summary` / `render_current_state_review_checklist`） |
+| **Problem Assessment（M3.6 v2）** | `analysis/review/problems.py`（无专用配置，与 M3.6 同一命令；+ `reports.py::render_current_state_problem_summary` / `render_current_state_problem_review_checklist`） |
 | 数据模型 / 排序契约 | `analysis/models.py` |
 | 报告渲染 | `analysis/reports.py` |
 | 错误账本 | `analysis/errors.py` |

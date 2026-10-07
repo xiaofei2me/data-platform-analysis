@@ -23,8 +23,8 @@ from typing import Any
 import pytest
 from helpers import source_tree_hash, write_snapshot
 
-from data_platform_analysis.analysis.normalization import _quoted_end, normalize_for_parser
-from data_platform_analysis.analysis.sql_analysis import parse_statement
+from data_platform_analysis.analysis.sql.normalization import _quoted_end, normalize_for_parser
+from data_platform_analysis.analysis.sql.sql_analysis import parse_statement
 
 
 def _read(path: Path) -> Any:

@@ -24,8 +24,8 @@ import re
 
 from sqlglot.tokens import Token, Tokenizer, TokenType
 
+from ..naming import normalize_scheduler_variables
 from .dialect import DIALECT, register_dialect
-from .naming import normalize_scheduler_variables
 
 register_dialect()
 

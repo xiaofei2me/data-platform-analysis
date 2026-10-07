@@ -22,15 +22,6 @@ from test_model_review import (  # 复用 M3.6 v1 合成输入夹具
     _write_inputs,
 )
 
-from data_platform_analysis.analysis import problem_assessment as problem_module
-from data_platform_analysis.analysis.model_review import (
-    INPUT_FILES,
-    build_current_state_model,
-    read_review_inputs,
-)
-from data_platform_analysis.analysis.model_review import (
-    OUTPUT_FILES as REVIEW_OUTPUT_FILES,
-)
 from data_platform_analysis.analysis.models import (
     GRAIN_ASSESSMENT_CONFIRMED_CONFLICT,
     GRAIN_ASSESSMENT_POSSIBLE_CONFLICT,
@@ -60,13 +51,22 @@ from data_platform_analysis.analysis.models import (
     UNKNOWN_REASON_NO_ANCHOR,
     UNKNOWN_REASON_NO_EVIDENCE,
 )
-from data_platform_analysis.analysis.problem_assessment import (
+from data_platform_analysis.analysis.reports import (
+    render_current_state_problem_review_checklist,
+)
+from data_platform_analysis.analysis.review import problems as problem_module
+from data_platform_analysis.analysis.review.findings import (
+    INPUT_FILES,
+    build_current_state_model,
+    read_review_inputs,
+)
+from data_platform_analysis.analysis.review.findings import (
+    OUTPUT_FILES as REVIEW_OUTPUT_FILES,
+)
+from data_platform_analysis.analysis.review.problems import (
     build_current_state_problems,
     read_problem_carry_over,
     write_current_state_problems,
-)
-from data_platform_analysis.analysis.reports import (
-    render_current_state_problem_review_checklist,
 )
 
 PROBLEMS_FILE = PROBLEM_OUTPUT_FILES[0]
@@ -138,7 +138,7 @@ def _patch_problem_status(
 ) -> Path:
     """把问题清单里某一行的人工三列回填（列序同 PROBLEM_CHECKLIST_HEADERS）。"""
 
-    from data_platform_analysis.analysis.business_grain import _split_markdown_row
+    from data_platform_analysis.analysis.business.grain import _split_markdown_row
 
     path = analysis_dir / "business" / CHECKLIST_FILE
     lines = path.read_text(encoding="utf-8").splitlines()

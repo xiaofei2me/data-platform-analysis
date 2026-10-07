@@ -45,9 +45,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..config import PROJECT_ROOT
-from ..io_utils import ensure_dir, write_json, write_text
-from .models import (
+from ...config import PROJECT_ROOT
+from ...io_utils import ensure_dir, write_json, write_text
+from ..models import (
     BUSINESS_CONFIDENCE_HIGH,
     BUSINESS_CONFIDENCE_ORDER,
     BUSINESS_CONFIDENCE_UNKNOWN,
@@ -83,8 +83,8 @@ from .models import (
     numeric_id_sort_key,
     quality_diversity_bucket,
 )
-from .naming import qualify_table_ref
-from .reports import render_business_quality_report, render_review_checklist
+from ..naming import qualify_table_ref
+from ..reports import render_business_quality_report, render_review_checklist
 
 logger = logging.getLogger(__name__)
 

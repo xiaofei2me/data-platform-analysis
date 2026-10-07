@@ -16,7 +16,7 @@ from test_business_objects import _prepare
 from test_business_processes import _write_process_rules
 from test_business_understanding import _table
 
-from data_platform_analysis.analysis.business_grain import (
+from data_platform_analysis.analysis.business.grain import (
     CARRYOVER_CHECKLIST_INPUT_FILE,
     INPUT_FILES,
     OUTPUT_FILES,
@@ -25,10 +25,10 @@ from data_platform_analysis.analysis.business_grain import (
     read_grain_inputs,
     run_business_grain_analysis,
 )
-from data_platform_analysis.analysis.business_objects import (
+from data_platform_analysis.analysis.business.objects import (
     run_business_object_analysis,
 )
-from data_platform_analysis.analysis.business_processes import (
+from data_platform_analysis.analysis.business.processes import (
     run_business_process_analysis,
 )
 from data_platform_analysis.analysis.models import (
@@ -851,7 +851,7 @@ def test_anchor_and_supporting_roles(tmp_path: Path) -> None:
 def test_supporting_rows_are_capped(tmp_path: Path) -> None:
     """supporting 行每个候选最多 5 条（上限常量生效）。"""
 
-    from data_platform_analysis.analysis.business_grain import (  # noqa: PLC0415
+    from data_platform_analysis.analysis.business.grain import (  # noqa: PLC0415
         GRAIN_SUPPORTING_ROW_LIMIT,
     )
 

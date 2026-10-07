@@ -71,8 +71,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..io_utils import ensure_dir, write_json, write_text
-from .business_grain import (
+from ...io_utils import ensure_dir, write_json, write_text
+from ..business.grain import (
     BusinessGrainError,
     _dict_values,
     _display_path,
@@ -82,7 +82,8 @@ from .business_grain import (
     _status_counts,
     _table_column_sort_key,
 )
-from .business_model import (
+from ..business.objects import _table_sort_key, _text
+from ..model.business_model import (
     FACT_GATE_DIRECT_PATTERNS,
     FACT_GATE_REASON_MEASURE,
     FACT_GATE_REASON_PATTERN,
@@ -92,8 +93,7 @@ from .business_model import (
     _sources,
     fact_gate,
 )
-from .business_objects import _table_sort_key, _text
-from .models import (
+from ..models import (
     CURRENT_MODEL_ROLE_AMBIGUOUS,
     CURRENT_MODEL_ROLE_DIMENSION,
     CURRENT_MODEL_ROLE_FACT,
@@ -167,7 +167,7 @@ from .models import (
     REVIEW_SEVERITY_BY_PRIORITY,
     CurrentStateModelResult,
 )
-from .reports import (
+from ..reports import (
     render_current_state_review_checklist,
     render_current_state_summary,
 )
@@ -2555,7 +2555,7 @@ def run_current_state_model_analysis(
 
     # M3.6 v2：在同一次运行里把 finding 聚合成 problem candidate 并写出四个新产物。
     # 局部导入避免 problem_assessment → model_review 的循环依赖。
-    from .problem_assessment import (
+    from .problems import (
         build_current_state_problems,
         read_problem_carry_over,
         write_current_state_problems,

@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from helpers import write_snapshot
 
-from data_platform_analysis.analysis.business_understanding import (
+from data_platform_analysis.analysis.business.understanding import (
     BusinessUnderstandingError,
     KeywordMatcher,
     business_tokens,

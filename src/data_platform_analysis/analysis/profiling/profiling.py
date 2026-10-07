@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import logging
 
-from .inventory import Inventory
-from .models import (
+from ..inventory.inventory import Inventory
+from ..models import (
     PROFILE_STATUS_METADATA_ONLY,
     ColumnInventory,
     ColumnProfile,

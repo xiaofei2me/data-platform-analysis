@@ -30,13 +30,13 @@ from pathlib import Path
 
 from ..io_utils import ensure_dir, write_json, write_text
 from .errors import AnalysisFatalError, ErrorLedger
-from .inventory import Inventory, InventoryBuilder
-from .layer_assessment import (
+from .inventory.inventory import Inventory, InventoryBuilder
+from .layer.layer_assessment import (
     LayerAssessmentError,
     LayerAssessmentResult,
     run_layer_assessment,
 )
-from .lineage import LineageBuilder, LineageResult
+from .lineage.lineage import LineageBuilder, LineageResult
 from .models import (
     ColumnProfile,
     FileInventory,
@@ -47,7 +47,7 @@ from .models import (
     is_analysis_eligible,
     numeric_id_sort_key,
 )
-from .profiling import MetadataProfiler
+from .profiling.profiling import MetadataProfiler
 from .reports import (
     SummaryContext,
     render_analysis_summary,
@@ -56,7 +56,7 @@ from .reports import (
     render_profiling_summary,
 )
 from .snapshot import SnapshotReader
-from .sql_analysis import ParseErrorRecord, SqlAnalyzer
+from .sql.sql_analysis import ParseErrorRecord, SqlAnalyzer
 
 logger = logging.getLogger(__name__)
 
