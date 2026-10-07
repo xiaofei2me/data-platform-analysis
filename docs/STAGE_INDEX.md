@@ -10,7 +10,7 @@
 
 - **代码**列省略公共前缀 `src/data_platform_analysis/`。
 - **产物**列相对 `analysis/`（由 `ANALYSIS_DIR` 决定，默认 `analysis`）；采集阶段写 `source/`。
-- `source/`、`output/` 被 gitignore（各保留 `.gitkeep`）；`analysis/` 产物自 Phase 2 起随代码一并入库，本文件是入库文档，不受影响。
+- `source/`、`analysis/`、`output/` 均被 gitignore（各保留 `.gitkeep`），本文件是入库文档，不受影响。
 
 ## 1. 两套编号：M*（Milestone）与 NN（Stage）
 
@@ -117,7 +117,7 @@ status = review_required    →     rejected             →   status = rejected
 ### 5.1 目录
 
 - **产物目录 = 生产它的源码模块**：`inventory/`、`layer/`、`sql/`、`lineage/`、`profiling/`、`business/`（06–10）、`model/`（11）、`review/`（12–14）全部满足；Stage 15 无产物目录（回填工件与所属阶段同目录）。
-- **不给现有 59 个产物加 `NN-` 前缀**：全仓字面 `analysis/` 引用 540 处（src 252 / tests 93 / workbench 24 / docs 164 / README 7），换不到顺序信息（真正入口是 §2.2 的阅读链，而不是路径序号）。
+- **不给现有 59 个产物加 `NN-` 前缀**：全仓字面 `analysis/` 引用 540 处（src 252 / tests 93 / workbench 24 / docs 164 / README 7），换不到顺序信息（`analysis/` 本身被 gitignore，真正入口是 §2.2 的阅读链）。
 - **新增阶段**：新目录可带 Stage 号（如 `analysis/16-confirmed/`），**旧文件不补号**——避免混合风格蔓延。
 
 ### 5.2 文件名

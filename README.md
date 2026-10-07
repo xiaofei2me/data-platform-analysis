@@ -212,7 +212,7 @@ data-platform-analysis/
 │           └── naming.py       # 表名 / 引用工具
 │
 ├── source/                     # Snapshot 输出目录（gitignore）
-├── analysis/                   # Analysis 产物（M2 ~ M3.6，入库）
+├── analysis/                   # Analysis 产物（M2 ~ M3.6，gitignore）
 ├── output/                     # 导出产物
 │
 ├── docs/
