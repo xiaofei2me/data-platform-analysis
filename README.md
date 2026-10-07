@@ -111,6 +111,14 @@ source/
 
 ## 4. 命令
 
+一次性准备（每个新环境执行一次）：
+
+```bash
+uv sync                              # 安装依赖
+cp .env.example .env                 # 配置模板，需填写 WORKSPACES 与阿里云凭证
+uv run data-platform-analysis config # 核对生效配置（不含密钥）
+```
+
 ```bash
 # 全部 Workspace：DataWorks + MaxCompute
 uv run data-platform-analysis export
@@ -150,7 +158,7 @@ uv run data-platform-analysis analyze-current-state-model  # M3.6 Current-State 
 | 1 | 存在 Workspace / 文件 / 表级失败，或命令执行失败 |
 | 130 | 用户中断 |
 
-详细参数说明见 [docs/COMMANDS.md](docs/COMMANDS.md)。
+详细参数说明见 [docs/COMMANDS.md](docs/COMMANDS.md)；从采集到 M3.6 人工裁决 / Workbench 的完整阶段链（每阶段输入、命令、输出、依赖与推荐执行顺序）见 [Current-State Evidence Execution Chain](docs/COMMANDS.md#current-state-evidence-execution-chain)。
 
 ## 5. Cleanup 安全规则
 
