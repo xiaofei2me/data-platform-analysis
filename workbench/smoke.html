@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>M3.6 工作台浏览器冒烟检查</title>
+  </head>
+  <body>
+    <h1>M3.6 工作台浏览器冒烟检查</h1>
+    <p>浏览器端检查：人工裁决持久化、重新加载产物语义、导出与二次确认重置。</p>
+    <pre id="out">运行中…</pre>
+    <p><a href="./index.html">← 返回工作台</a></p>
+    <script type="module">
+      import { createAdjudicationRepository } from "./src/data/adjudicationRepository.js";
+      import { loadArtifacts } from "./src/data/artifacts.js";
+      import { createProblemRepository } from "./src/data/problemRepository.js";
+      import { computePriorityCounts, computeStatusCounts, computeTypeCounts } from "./src/logic/filtering.js";
+
+      const STORAGE_KEY = "m36-human-adjudication";
+      const results = [];
+      const record = (key, value) => results.push(`${key}=${value}`);
+
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        record("storage.cleared", true);
+
+        const repo = createAdjudicationRepository();
+        const saved = repo.save({
+          problem_id: "problem_0050",
+          human_status: "confirmed",
+          human_name: "smoke-check",
+          human_note: "browser persistence check",
+        });
+        record("save.ok", saved.ok);
+
+        // new repository instance = refreshed page, same localStorage
+        const refreshed = createAdjudicationRepository();
+        record("persisted.human_status", refreshed.get("problem_0050")?.human_status || "missing");
+        record("persisted.human_name", refreshed.get("problem_0050")?.human_name || "missing");
+
+        const artifacts = await loadArtifacts();
+        const problems = createProblemRepository(artifacts).list();
+        const counts = computeStatusCounts(problems, refreshed.loadAll());
+        record("problems.total", counts.total);
+        record("problems.confirmed", counts.confirmed);
+        record("problems.pending", counts.pending);
+
+        const priorities = computePriorityCounts(problems);
+        record("priorities", `${priorities.P0}/${priorities.P1}/${priorities.P2}/${priorities.P3}`);
+        record("types", computeTypeCounts(problems).length);
+
+        // Reload Artifacts must not overwrite human decisions
+        await loadArtifacts();
+        record("afterReload.decisions", Object.keys(createAdjudicationRepository().loadAll()).length);
+
+        const payload = refreshed.exportPayload();
+        record("export.decisions", payload.decisions.length);
+        record("export.source", payload.source);
+        record("export.filename", "m36-human-adjudication.json");
+
+        // Reset is double-confirmed; cancelling the second confirmation keeps data
+        let confirmCalls = 0;
+        const cancelling = createAdjudicationRepository({
+          confirmFn: () => {
+            confirmCalls += 1;
+            return confirmCalls < 2;
+          },
+        });
+        const cancelled = cancelling.reset();
+        record("reset.confirm.calls", confirmCalls);
+        record("reset.cancelled", cancelled.reason);
+        record("data.intact", createAdjudicationRepository().get("problem_0050")?.human_status);
+
+        const wiping = createAdjudicationRepository({ confirmFn: () => true });
+        record("reset.done", wiping.reset().ok);
+        record("storage.empty", createAdjudicationRepository().get("problem_0050") === null);
+        localStorage.removeItem(STORAGE_KEY);
+        record("PASS", true);
+      } catch (error) {
+        record("PASS", false);
+        record("error", error && error.message);
+      }
+
+      document.getElementById("out").textContent = results.join("\n");
+    </script>
+  </body>
+</html>

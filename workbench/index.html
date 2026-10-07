@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>M3.6 当前状态模型评审工作台</title>
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <div id="loading-screen" class="screen">
+      <div class="screen-card">
+        <div class="screen-kicker">M3.6 · 人工裁决</div>
+        <h1>当前状态模型评审工作台</h1>
+        <p class="screen-sub">机器识别的问题候选，最终结论由人工裁决。</p>
+        <ul id="loading-files" class="file-list"></ul>
+        <p id="loading-status" class="screen-status">正在加载 M3.6 产物…</p>
+        <div id="loading-error" class="error-block hidden"></div>
+      </div>
+    </div>
+
+    <div id="app" class="app hidden">
+      <header class="app-header">
+        <div class="brand">
+          <span class="brand-milestone">M3.6</span>
+          <div class="brand-text">
+            <h1>当前状态模型评审工作台</h1>
+            <p>当前状态模型问题评审 · 人工裁决</p>
+          </div>
+        </div>
+        <div id="header-meta" class="header-meta"></div>
+        <div class="header-actions">
+          <button type="button" id="btn-reload" class="btn">重新加载产物</button>
+          <button type="button" id="btn-export" class="btn">导出裁决</button>
+          <button type="button" id="btn-reset" class="btn btn-danger">重置本机裁决</button>
+        </div>
+      </header>
+
+      <p class="disclaimer">
+        机器识别的问题候选，最终结论由人工裁决。
+        机器状态与人工状态相互独立——工作台从不改写任何机器产物。
+      </p>
+
+      <section id="overview" class="overview" aria-label="概览"></section>
+
+      <main class="layout">
+        <aside class="queue" aria-label="评审队列">
+          <div class="queue-head">
+            <h2>评审队列</h2>
+            <span id="queue-count" class="queue-count"></span>
+          </div>
+          <div id="queue-filters" class="queue-filters"></div>
+          <div id="audit-banner" class="audit-banner hidden"></div>
+          <div id="queue-list" class="queue-list" role="listbox" aria-label="问题列表"></div>
+        </aside>
+
+        <section class="detail" aria-label="问题详情">
+          <div id="detail-body" class="detail-body"></div>
+          <nav id="detail-nav" class="detail-nav" aria-label="导航"></nav>
+        </section>
+      </main>
+
+      <div id="toast" class="toast hidden" role="status"></div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

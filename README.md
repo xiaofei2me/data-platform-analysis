@@ -33,6 +33,8 @@ DataWorks + MaxCompute
 
 要理解 `M3.6 → M3.6 v2 → 人工裁决 → 重构证据 → M4` 的方法论（Finding ≠ Problem、13 类 Problem Taxonomy、四条原则、裁决优先级、重构证据模板），见 [docs/M36_PROBLEM_ASSESSMENT.md](docs/M36_PROBLEM_ASSESSMENT.md)——人工裁决从那份文档开始。
 
+要实际组织人工裁决（数据团队 / 业务专家视角：看哪些文件、按什么顺序、每类 Problem 怎么问、什么时候 confirmed / rejected、一周怎么排），见 [docs/M36_HUMAN_ADJUDICATION_GUIDE.md](docs/M36_HUMAN_ADJUDICATION_GUIDE.md)——干活从那份文档开始。
+
 仍明确不负责（边界约束）：
 
 - Task Dependency（任务级依赖）分析
@@ -192,7 +194,10 @@ data-platform-analysis/
 │   ├── COMMANDS.md             # 命令参考
 │   ├── CODE_LOGIC_ANALYSIS.md  # 代码与阶段逻辑分析（M2 ~ M3.6）
 │   ├── M36_PROBLEM_ASSESSMENT.md  # M3.6 v2 方法论（Finding/Problem、taxonomy、人工裁决）
+│   ├── M36_HUMAN_ADJUDICATION_GUIDE.md  # M3.6 人工裁决工作指南（面向数据团队 / 业务专家）
 │   └── adr/                    # 架构决策记录
+│
+├── workbench/                  # M3.6 Current-State Model Review Workbench（静态 Web UI，零依赖）
 │
 └── tests/                      # CLI 黑盒测试（只在 SDK 边界 stub）
 ```
@@ -227,3 +232,18 @@ uv run pytest
 ```
 
 测试约定：唯一测试接缝是 CLI 黑盒，只在 SDK 调用边界（DataWorks OpenAPI Client、PyODPS ODPS）打桩。
+
+## 9. M3.6 Review Workbench（人工裁决工作台）
+
+`workbench/` 是一个**只读消费 M3.6 产物**的静态 Web 工作台，用于替代手工翻 JSON / Markdown / Checklist：
+
+```bash
+python3 -m http.server 8787        # 在仓库根目录启动静态服务
+open http://localhost:8787/workbench/
+```
+
+- 读取 `analysis/business/current-state-problems.json`、`current-state-problem-evidence.json`（必需）与 `current-state-model-tables.json`、`analysis/layer/assessments.json`（可降级），**不写回任何产物**。
+- 人工裁决写入浏览器 `localStorage`（key `m36-human-adjudication`），通过「导出裁决」导出 `m36-human-adjudication.json`，再按 [人工裁决指南](docs/M36_HUMAN_ADJUDICATION_GUIDE.md) 回填。
+- 无构建、无运行时依赖，界面为中文（保留 `problem_id` / 类型枚举 / `P0`–`P3` 等技术标识）；测试：`cd workbench && npm test`（Node 内置 `node --test`）。
+
+细节见 [workbench/README.md](workbench/README.md)。
