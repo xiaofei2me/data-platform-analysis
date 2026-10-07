@@ -40,7 +40,13 @@ uv run data-platform-analysis [--log-level LEVEL] <command> [options]
 | `analyze-business-processes` | 基于已有 M2 ~ M3.1 产物执行 M3.3 Process Candidate Analysis |
 | `analyze-business-grain` | 基于已有 M2 ~ M3.2 产物执行 M3.4 Grain Candidate Analysis |
 | `analyze-business-model` | 基于已有 M2 ~ M3.4 产物执行 M3.5 Fact / Dimension Candidate Analysis（candidate + 证据，不产出 DWD / DWS / Semantic Layer） |
-| `analyze-current-state-model` | 基于已有 M2 ~ M3.5 产物执行 M3.6 Current-State Model Review（只评审：当前形态分类 + 18 类 finding + 人工清单），并附带 M3.6 v2 Problem Assessment（finding → problem candidate + 13 类 taxonomy + 证据 / 影响 / 根因 + 人工清单），一次写出 9 个产物，不设计 Target DWD、不改上游产物；方法论与人工裁决流程见 [M36_PROBLEM_ASSESSMENT.md](M36_PROBLEM_ASSESSMENT.md) |
+| `analyze-current-state-model` | 基于已有 M2 ~ M3.5 产物执行 M3.6 Current-State Model Review（只评审：当前形态分类 + 18 类 finding + 人工清单），并附带 M3.6 v2 Problem Assessment（finding → problem candidate + 13 类 taxonomy + 证据 / 影响 / 根因 + 人工清单），一次写出 9 个产物，不设计 Target DWD、不改上游产物；方法论与人工裁决流程见 [M36_PROBLEM_ASSESSMENT.md](M36_PROBLEM_ASSESSMENT.md)，人工裁决实操见 [M36_HUMAN_ADJUDICATION_GUIDE.md](M36_HUMAN_ADJUDICATION_GUIDE.md) |
+
+### 人工裁决回填（M3.6 Human Adjudication）
+
+1. 编辑 `analysis/business/current-state-problem-review-checklist.md`（Problem 侧，13 分区）与 / 或 `analysis/business/current-state-review-checklist.md`（Finding 侧，5 分区），**只填 `human_status` / `human_name` / `note` 三列**，取值 `pending` / `confirmed` / `rejected` / `needs_review` / `needs_discussion`；
+2. 重跑 `uv run data-platform-analysis analyze-current-state-model`，人工三列原样保留，`current-state-problems.json` 的 `status` 与 `confirmed` 计数随之更新；机器列会被重新生成，勿手改列名或删列（必需列缺失 → 退出码 1）；
+3. 清单每分区最多渲染 50 行（Problem 侧合计 260 行 / 1190 条），全量见 `current-state-problems.json`，实操见 [M36_HUMAN_ADJUDICATION_GUIDE.md](M36_HUMAN_ADJUDICATION_GUIDE.md)。
 
 分析命令共性：无参数、无专用配置，只读上游产物并写 `analysis/`；上游缺失或跨文件引用未知即退出码 1（不回退执行前置阶段）。等价入口：`uv run python -m data_platform_analysis.cli <子命令>`。
 
