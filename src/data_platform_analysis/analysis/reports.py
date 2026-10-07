@@ -12,7 +12,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .inventory.inventory import Inventory
+from .inventory.inventory import (
+    STAGE_ANALYZED,
+    STAGE_DISCOVERED,
+    STAGE_ELIGIBLE,
+    STAGE_EXCEPTION,
+    STAGE_EXCLUDED,
+    Inventory,
+    InventorySummary,
+    WorkspaceInventorySummary,
+)
 from .lineage.lineage import LineageResult
 from .models import (
     AGGREGATE_ASSESSMENT_ORDER,
@@ -121,36 +130,610 @@ from .models import (
 from .sql.sql_analysis import ParseErrorRecord
 
 
-def render_inventory_summary(inventory: Inventory) -> str:
-    """生成 analysis/inventory/summary.md。"""
+def render_inventory_summary(summary: InventorySummary) -> str:
+    """生成 analysis/inventory/summary.md（9 节）。
+
+    只做纯渲染：全部数字来自 InventorySummary，
+    不在这里推断业务结论，也不把 Excluded 写成采集失败。
+    """
+
+    dataworks = summary.dataworks
+    maxcompute = summary.maxcompute
+    workspaces = summary.workspaces
 
     lines = [
         "# M2.1 Warehouse Inventory",
         "",
-        f"- Workspace：{len(inventory.workspaces)}",
-        f"- DataWorks File：{len(inventory.files)}",
-        f"- MaxCompute Table：{len(inventory.tables)}",
-        f"- Column：{len(inventory.columns)}",
+        "> 本报告是当前 `source/` Snapshot 的**技术资产盘点与采集覆盖基线**：",
+        "> 只描述平台资产、采集结果、分析覆盖范围与技术异常，",
+        "> **不包含**业务对象、业务过程、Grain、Fact / Dimension、",
+        "> DWD / DWS / Semantic Layer 或数据质量判断。",
         "",
-        "## Workspace",
+        "## 1. Executive Summary",
+        "",
+        f"本次 Inventory Analysis 基于当前 Snapshot，对 {len(workspaces)} 个 DataWorks "
+        "Workspace 及其对应的 MaxCompute Project 进行资产盘点。",
         "",
         _table(
-            ["workspace_id", "workspace_name", "project", "files", "tables"],
+            ["指标", "数量"],
+            [
+                ["Workspaces", _num(len(workspaces))],
+                ["DataWorks Files", _num(dataworks.discovered_count)],
+                ["Files with valid Node ID", _num(dataworks.valid_node_id_count)],
+                ["Files with content available", _num(dataworks.content_available_count)],
+                ["MaxCompute Tables", _num(maxcompute.registered_count)],
+                ["MaxCompute Columns", _num(maxcompute.column_count)],
+            ],
+            alignments=["left", "right"],
+        ),
+        "",
+        "### Key Findings",
+        "",
+        *_key_findings(summary),
+        "",
+        "## 2. Workspace Overview",
+        "",
+        *_workspace_overview(workspaces),
+        "",
+        "## 3. DataWorks File Inventory",
+        "",
+        _table(
+            ["Category", "Count", "Percentage"],
             [
                 [
-                    item.workspace_id,
-                    item.workspace_name,
-                    item.project,
-                    item.file_count,
-                    item.table_count,
-                ]
-                for item in inventory.workspaces
+                    "Total Files (Discovered)",
+                    _num(dataworks.discovered_count),
+                    _pct(dataworks.discovered_count, dataworks.discovered_count),
+                ],
+                [
+                    "Files with valid Node ID",
+                    _num(dataworks.valid_node_id_count),
+                    _pct(dataworks.valid_node_id_count, dataworks.discovered_count),
+                ],
+                [
+                    "Files without / invalid Node ID",
+                    _num(dataworks.missing_node_id_count),
+                    _pct(dataworks.missing_node_id_count, dataworks.discovered_count),
+                ],
+                [
+                    "Files with retrievable content",
+                    _num(dataworks.content_available_count),
+                    _pct(dataworks.content_available_count, dataworks.discovered_count),
+                ],
+                [
+                    "Files without content",
+                    _num(dataworks.content_unavailable_count),
+                    _pct(dataworks.content_unavailable_count, dataworks.discovered_count),
+                ],
+                [
+                    "Files eligible for downstream analysis",
+                    _num(dataworks.eligible_count),
+                    _pct(dataworks.eligible_count, dataworks.discovered_count),
+                ],
+                [
+                    "Files excluded from downstream analysis",
+                    _num(dataworks.excluded_count),
+                    _pct(dataworks.excluded_count, dataworks.discovered_count),
+                ],
+            ],
+            alignments=["left", "right", "right"],
+        ),
+        "",
+        f"百分比以 Total Files（{_num(dataworks.discovered_count)}）为分母；"
+        "Files eligible 即具备有效 Node ID 的 File。",
+        "",
+        "## 4. Downstream Analysis Eligibility",
+        "",
+        "Inventory 只用一条规则判断 File 能否进入后续 SQL / Lineage 等分析："
+        "**该 File 必须具备有效 Node ID**（`is_analysis_eligible`）。"
+        "Content 是否可用、内容格式是否为 SQL 不改变这条判定，"
+        "它们是下游阶段自己的前置条件。",
+        "",
+        "### Stage Funnel",
+        "",
+        _table(
+            ["Stage", "Count", "Meaning"],
+            [
+                [
+                    STAGE_DISCOVERED,
+                    _num(dataworks.discovered_count),
+                    "在 files-index 中被发现的 DataWorks File",
+                ],
+                [
+                    STAGE_ELIGIBLE,
+                    _num(dataworks.eligible_count),
+                    "满足后续分析前置条件（有效 Node ID）",
+                ],
+                [
+                    STAGE_ANALYZED,
+                    _num(dataworks.registered_count),
+                    "Inventory 阶段已成功登记进 files.json 的 File",
+                ],
+                [
+                    STAGE_EXCLUDED,
+                    _num(dataworks.excluded_count),
+                    "因规则不满足而未进入后续分析",
+                ],
+                [
+                    STAGE_EXCEPTION,
+                    _num(dataworks.asset_exception_count),
+                    "因技术原因未能处理（采集失败 / 身份缺失 / Content 文件缺失）",
+                ],
+            ],
+            alignments=["left", "right", "left"],
+        ),
+        "",
+        "Eligible 描述**下游**可用性，Analyzed 描述**本阶段**的处理完成度："
+        "Inventory 对全部 Discovered 的 File 都做登记，因此 Analyzed = 已登记数，"
+        "与 Eligible 是两个不同维度，不构成包含关系。"
+        "Excluded 与 Exception 互斥：前者是规则不满足，后者是技术失败；"
+        "GetFile 采集失败的 File 不在 files-index.files 中，单独计入 Exception。",
+        "",
+        "### Eligibility Categories",
+        "",
+        _table(
+            ["Category", "Count", "Meaning"],
+            [
+                [
+                    "All Files",
+                    _num(dataworks.discovered_count),
+                    "当前 Snapshot 发现的全部 DataWorks File",
+                ],
+                [
+                    "Valid Node ID",
+                    _num(dataworks.valid_node_id_count),
+                    "具有有效 Node ID（非 None、非空白）",
+                ],
+                [
+                    "Content Available",
+                    _num(dataworks.content_available_count),
+                    "成功取得内容（content_file 指向的 Snapshot 文件存在）",
+                ],
+                [
+                    "Analysis Eligible",
+                    _num(dataworks.eligible_count),
+                    "满足后续分析前置条件（当前实现 = 有效 Node ID）",
+                ],
+                [
+                    "Excluded",
+                    _num(dataworks.excluded_count),
+                    "当前阶段不进入后续分析",
+                ],
+            ],
+            alignments=["left", "right", "left"],
+        ),
+        "",
+        "### Exclusion Reasons",
+        "",
+        *_exclusion_reason_rows(summary),
+        "",
+        "### SQL Analysis 的前置条件（事实）",
+        "",
+        _table(
+            ["Metric", "Count", "Share of Eligible"],
+            [
+                [
+                    "Analysis Eligible",
+                    _num(dataworks.eligible_count),
+                    _pct(dataworks.eligible_count, dataworks.eligible_count),
+                ],
+                [
+                    "Eligible 且 content_format = SQL",
+                    _num(dataworks.eligible_sql_format_count),
+                    _pct(dataworks.eligible_sql_format_count, dataworks.eligible_count),
+                ],
+                [
+                    "Eligible 且 Content Available",
+                    _num(dataworks.eligible_content_available_count),
+                    _pct(
+                        dataworks.eligible_content_available_count,
+                        dataworks.eligible_count,
+                    ),
+                ],
+                [
+                    "Eligible 且 SQL 格式且 Content Available",
+                    _num(dataworks.eligible_sql_content_count),
+                    _pct(dataworks.eligible_sql_content_count, dataworks.eligible_count),
+                ],
+            ],
+            alignments=["left", "right", "right"],
+        ),
+        "",
+        "SQL Analysis 除 Node ID 外还要求 `content_format = SQL` 且 Content 可读，"
+        f"因此实际进入 SQL 解析的 File 是 {_num(dataworks.eligible_sql_content_count)}，"
+        f"而不是 {_num(dataworks.eligible_count)}，"
+        f"更不是 {_num(dataworks.discovered_count)}。"
+        "这是下游阶段的过滤行为，不属于 Inventory 的排除原因。",
+        "",
+        "## 5. MaxCompute Table Inventory",
+        "",
+        _table(
+            ["Metric", "Count"],
+            [
+                ["Total Tables", _num(maxcompute.registered_count)],
+                ["Total Columns", _num(maxcompute.column_count)],
+                ["Tables with columns", _num(maxcompute.tables_with_columns)],
+                ["Tables without columns", _num(maxcompute.tables_without_columns)],
+                ["Tables with raw metadata", _num(maxcompute.tables_with_raw_metadata)],
+                ["Tables without raw metadata", _num(maxcompute.tables_without_raw_metadata)],
+                ["GetTable 采集失败", _num(maxcompute.collect_failure_count)],
+            ],
+            alignments=["left", "right"],
+        ),
+        "",
+        *_maxcompute_by_workspace(workspaces),
+        "",
+        "Table 身份为 project.table（table_key，不含 schema）；"
+        "Column 按其所属 Table 归到对应 Workspace 统计。"
+        "没有列清单的 Table 只出现在 Total Tables 里，不贡献 Column 数。",
+        "",
+        "## 6. Collection Completeness",
+        "",
+        "### DataWorks",
+        "",
+        _table(
+            ["Status", "Count"],
+            [[item.label, _num(item.count)] for item in summary.completeness.dataworks],
+            alignments=["left", "right"],
+        ),
+        "",
+        "### MaxCompute",
+        "",
+        _table(
+            ["Status", "Count"],
+            [[item.label, _num(item.count)] for item in summary.completeness.maxcompute],
+            alignments=["left", "right"],
+        ),
+        "",
+        "### Assessment",
+        "",
+        *_assessment(summary),
+        "",
+        "## 7. Collection Exceptions",
+        "",
+        "本节只列**技术**采集 / 处理异常。Severity 采用固定保守规则"
+        "（当前代码没有 severity 机制）：High = 采集对象整体缺失，"
+        "Medium = 单对象身份或元数据缺失，Low = 分类信息缺失。",
+        "",
+        _table(
+            ["Severity", "Exception", "Count", "Impact"],
+            [
+                [item.severity, item.exception, _num(item.count), item.impact]
+                for item in summary.exceptions
+            ],
+            alignments=["left", "left", "right", "left"],
+        ),
+        "",
+        "- 计数为 0 表示本次已检查、未发生该类异常。",
+        "- 因规则不满足而未进入后续分析的 File 属于 **Excluded**，见第 4 节，不在本节。",
+        "- `content_file` 为空（API 未返回 Content）是采集结果事实，"
+        "**不计入**本节异常；本节只统计 content_file 指向的文件在 Snapshot 中缺失。",
+        "- 本节不是 M3.6 Problem，也不是数据质量或模型问题。",
+        "",
+        f"Inventory 阶段可恢复错误合计：{_num(summary.inventory_error_count)} 条，"
+        "明细见 `analysis/errors.json`。",
+        "",
+        "## 8. Conclusion",
+        "",
+        "### What we know",
+        "",
+        *_what_we_know(summary),
+        "",
+        "### What we don't know",
+        "",
+        "- Inventory 不确认业务对象、业务过程、Grain、Fact / Dimension，"
+        "也不确认 DWD / DWS / Semantic Layer 归属。",
+        "- Inventory 不判断数据质量：comment 为空、Content 缺失都不代表数据有问题。",
+        "- Inventory 不证明血缘、不证明调度依赖，也不证明任何模型结论。",
+        "- 未被采集的 Workspace / 对象不在清单中，清单只覆盖当前 Snapshot。",
+        "",
+        "### Downstream impact",
+        "",
+        *_downstream_impact(summary),
+        "",
+        "## 9. Definitions",
+        "",
+        _table(
+            ["Term", "Definition"],
+            [
+                ["File", "DataWorks 工作空间内的文件，稳定身份为 workspace_id + file_id。"],
+                [
+                    "Valid Node ID",
+                    "node_id 非 None 且去除空白后非空，表示该 File 对应已提交的调度节点。",
+                ],
+                [
+                    "Content Available",
+                    "files-index 的 content_file 非空，"
+                    "且该文件在 Snapshot 中存在（只看路径，不读内容）。",
+                ],
+                [
+                    "Analysis Eligible",
+                    "满足后续分析前置条件的 File；当前实现 = Valid Node ID。",
+                ],
+                [
+                    "Excluded",
+                    "因规则不满足（当前只有 Missing Node ID）未进入后续分析，"
+                    "属于 Analysis Scope Filter，不是错误。",
+                ],
+                [
+                    "Exception",
+                    "因技术原因（采集失败、身份缺失、元数据缺失、Content 文件缺失）"
+                    "未能处理，记入第 7 节。",
+                ],
+                ["Table", "MaxCompute 表，稳定身份为 project.table（table_key，不含 schema）。"],
+                ["Column", "MaxCompute 表的字段，按 table_key + ordinal 定位。"],
+                [
+                    "Discovered / Analyzed",
+                    "Discovered = files-index 中被发现的资产；"
+                    "Analyzed = Inventory 阶段已成功登记的资产。",
+                ],
             ],
         ),
+        "",
+        "> Inventory 指标描述技术资产与采集状态，不代表业务结论。",
         "",
     ]
 
     return "\n".join(lines)
+
+
+def _num(value: int) -> str:
+    """千分位数字（标识类字段不要用它格式化）。"""
+
+    return f"{value:,}"
+
+
+def _pct(count: int, total: int) -> str:
+    """百分比；分母为 0 时返回占位符。"""
+
+    if not total:
+        return "—"
+
+    return f"{count / total * 100:.1f}%"
+
+
+def _key_findings(summary: InventorySummary) -> list[str]:
+    """Executive Summary 的 Key Findings（全部由计数生成）。"""
+
+    dataworks = summary.dataworks
+    maxcompute = summary.maxcompute
+    workspaces = summary.workspaces
+
+    names = "、".join(f"{item.workspace_id} {item.workspace_name}" for item in workspaces)
+    missing_dataworks = [
+        item.workspace_id for item in workspaces if not item.has_dataworks_snapshot
+    ]
+    missing_maxcompute = [
+        item.workspace_id for item in workspaces if not item.has_maxcompute_snapshot
+    ]
+
+    coverage = f"Snapshot 覆盖 {len(workspaces)} 个 Workspace：{names}。"
+
+    if missing_dataworks or missing_maxcompute:
+        details: list[str] = []
+
+        if missing_dataworks:
+            details.append(f"缺少 DataWorks Snapshot：{_join_ids(missing_dataworks)}")
+
+        if missing_maxcompute:
+            details.append(f"缺少 MaxCompute Snapshot：{_join_ids(missing_maxcompute)}")
+
+        coverage += "（" + "；".join(details) + "）"
+
+    else:
+        coverage += "DataWorks 与 MaxCompute 两侧均有 Snapshot。"
+
+    findings = [
+        f"- {coverage}",
+        f"- {_num(dataworks.discovered_count)} 个 DataWorks File 中 "
+        f"{_num(dataworks.valid_node_id_count)} 个"
+        f"（{_pct(dataworks.valid_node_id_count, dataworks.discovered_count)}）"
+        "具备有效 Node ID，构成 downstream-eligible subset。",
+        f"- {_num(dataworks.content_available_count)} 个 File"
+        f"（{_pct(dataworks.content_available_count, dataworks.discovered_count)}）"
+        f"在 Snapshot 中有可读 Content，"
+        f"{_num(dataworks.content_unavailable_count)} 个没有 Content；"
+        "Content 缺失是采集结果事实，不等于采集失败。",
+        f"- MaxCompute 侧已登记 {_num(maxcompute.registered_count)} 张表、"
+        f"{_num(maxcompute.column_count)} 列，"
+        f"其中 {_num(maxcompute.tables_without_columns)} 张表没有列清单。",
+        f"- 采集失败条目：GetFile {_num(dataworks.collect_failure_count)} 条、"
+        f"GetTable {_num(maxcompute.collect_failure_count)} 条；"
+        f"Inventory 阶段可恢复错误 {_num(summary.inventory_error_count)} 条。",
+    ]
+
+    return findings
+
+
+def _join_ids(workspace_ids: Sequence[int]) -> str:
+    """把 workspace_id 列表拼成可读文本。"""
+
+    return "、".join(str(workspace_id) for workspace_id in workspace_ids)
+
+
+def _workspace_overview(
+    workspaces: Sequence[WorkspaceInventorySummary],
+) -> list[str]:
+    """第 2 节：Workspace Overview 表格与说明。"""
+
+    if not workspaces:
+        return ["_（无 Workspace）_"]
+
+    rows: list[list[object]] = [
+        [
+            item.workspace_name,
+            item.workspace_id,
+            item.project,
+            _num(item.discovered_file_count),
+            _num(item.eligible_file_count),
+            _num(item.content_available_count),
+            _num(item.table_count),
+            _num(item.column_count),
+        ]
+        for item in workspaces
+    ]
+
+    rows.append(
+        [
+            "**Total**",
+            "—",
+            "—",
+            _num(sum(item.discovered_file_count for item in workspaces)),
+            _num(sum(item.eligible_file_count for item in workspaces)),
+            _num(sum(item.content_available_count for item in workspaces)),
+            _num(sum(item.table_count for item in workspaces)),
+            _num(sum(item.column_count for item in workspaces)),
+        ]
+    )
+
+    return [
+        _table(
+            [
+                "Workspace",
+                "Workspace ID",
+                "MaxCompute Project",
+                "Files",
+                "Valid Node ID",
+                "Content Available",
+                "Tables",
+                "Columns",
+            ],
+            rows,
+            alignments=["left", "right", "left", "right", "right", "right", "right", "right"],
+        ),
+        "",
+        "Workspace 排序按 workspace_id 升序，与 Inventory 清单一致；"
+        "Files 为 files-index 条目数，Valid Node ID / Content Available "
+        "按该 Workspace 的 File 统计。",
+    ]
+
+
+def _maxcompute_by_workspace(
+    workspaces: Sequence[WorkspaceInventorySummary],
+) -> list[str]:
+    """第 5 节的 MaxCompute 分 Workspace 表格。"""
+
+    if not workspaces:
+        return ["_（无 Workspace）_"]
+
+    rows: list[list[object]] = [
+        [item.workspace_name, _num(item.table_count), _num(item.column_count)]
+        for item in workspaces
+    ]
+
+    rows.append(
+        [
+            "**Total**",
+            _num(sum(item.table_count for item in workspaces)),
+            _num(sum(item.column_count for item in workspaces)),
+        ]
+    )
+
+    return [
+        _table(
+            ["Workspace", "Tables", "Columns"],
+            rows,
+            alignments=["left", "right", "right"],
+        ),
+    ]
+
+
+def _exclusion_reason_rows(summary: InventorySummary) -> list[str]:
+    """第 4 节的 Exclusion Reasons 表格。"""
+
+    dataworks = summary.dataworks
+
+    if not dataworks.exclusion_reasons:
+        return ["_（没有被排除的 File）_"]
+
+    return [
+        _table(
+            ["Reason", "Count", "Share of Excluded"],
+            [
+                [item.reason, _num(item.count), _pct(item.count, dataworks.excluded_count)]
+                for item in dataworks.exclusion_reasons
+            ],
+            alignments=["left", "right", "right"],
+        ),
+        "",
+        "当前实现只有一条排除规则：File 没有有效 Node ID 就不进入 "
+        "SQL / Table Reference / Lineage Analysis（`is_analysis_eligible`）。",
+        "不存在 `Invalid Node ID`、`Content unavailable`、`Unsupported file type` "
+        "这类排除原因；它们要么不是规则，要么属于下游阶段的过滤。",
+    ]
+
+
+def _assessment(summary: InventorySummary) -> list[str]:
+    """第 6 节的 Assessment。"""
+
+    dataworks = summary.dataworks
+    maxcompute = summary.maxcompute
+
+    lines = [
+        f"- DataWorks File 的 metadata inventory 已完成："
+        f"{_num(dataworks.discovered_count)} 个 index 条目中 "
+        f"{_num(dataworks.registered_count)} 个登记成功，"
+        f"采集失败 {_num(dataworks.collect_failure_count)} 条；"
+        f"但只有 {_num(dataworks.content_available_count)} 个 File 具备可用于内容级分析的 Content，"
+        f"{_num(dataworks.content_unavailable_count)} 个没有 Content。",
+        f"- MaxCompute 元数据采集情况：{_num(maxcompute.registered_count)} 张表登记，"
+        f"{_num(maxcompute.tables_with_raw_metadata)} 张表读到 raw metadata，"
+        f"{_num(maxcompute.tables_with_columns)} 张表带列清单，"
+        f"采集失败 {_num(maxcompute.collect_failure_count)} 条。",
+        "",
+        "因此：",
+        "",
+        "- Asset Inventory 可以作为当前平台资产基线；",
+        "- SQL / Lineage Analysis **不能**把全部 File 数量视为可分析 File 数量；",
+        f"- 后续分析应使用明确的 downstream-eligible subset"
+        f"（{_num(dataworks.eligible_count)} 个 File），"
+        f"其中能进入 SQL 解析的还要满足 content_format = SQL 与 Content 可读"
+        f"（{_num(dataworks.eligible_sql_content_count)} 个）；",
+        "- metadata collection 完成只代表清单建立完成，"
+        "**不代表** SQL / Lineage 分析已经完整覆盖全部资产。",
+    ]
+
+    return lines
+
+
+def _what_we_know(summary: InventorySummary) -> list[str]:
+    """第 8 节 What we know。"""
+
+    dataworks = summary.dataworks
+    maxcompute = summary.maxcompute
+
+    return [
+        f"- 当前 Snapshot 覆盖 {len(summary.workspaces)} 个 Workspace"
+        f"（{ '、'.join(str(item.workspace_id) for item in summary.workspaces) }）。",
+        f"- 已建立 DataWorks File 清单 {_num(dataworks.registered_count)} 条、"
+        f"MaxCompute Table 清单 {_num(maxcompute.registered_count)} 条、"
+        f"Column 清单 {_num(maxcompute.column_count)} 条。",
+        f"- 已统计采集状态：有效 Node ID {_num(dataworks.valid_node_id_count)} 个、"
+        f"Content 可用 {_num(dataworks.content_available_count)} 个、"
+        f"downstream-eligible {_num(dataworks.eligible_count)} 个。",
+        f"- 已建立 {len(summary.exceptions)} 类技术异常检查项，"
+        f"其中 {sum(1 for item in summary.exceptions if item.count)} 类本次发生；"
+        f"Inventory 阶段可恢复错误 {_num(summary.inventory_error_count)} 条。",
+    ]
+
+
+def _downstream_impact(summary: InventorySummary) -> list[str]:
+    """第 8 节 Downstream impact。"""
+
+    dataworks = summary.dataworks
+
+    return [
+        f"- Layer / SQL / Lineage 应基于明确的 eligible dataset"
+        f"（{_num(dataworks.eligible_count)} 个 File），"
+        f"而不是全部 {_num(dataworks.discovered_count)} 个 DataWorks File。",
+        f"- SQL 解析的真实输入上限是 "
+        f"{_num(dataworks.eligible_sql_content_count)} 个 File；"
+        f"缺少 Content 的 {_num(dataworks.content_unavailable_count)} 个 File "
+        "无法做内容级分析。",
+        f"- MaxCompute 侧 {_num(summary.maxcompute.registered_count)} 张表"
+        f"（{_num(summary.maxcompute.column_count)} 列）可直接作为表 / 字段身份基线。",
+        "- 清单只覆盖当前 Snapshot；新增采集后需要重新运行 Analysis 才会更新。",
+    ]
 
 
 def render_lineage_summary(lineage: LineageResult) -> str:
@@ -3560,8 +4143,13 @@ def _table(
     headers: list[object],
     rows: list[list[object]],
     limit: int | None = None,
+    alignments: Sequence[str] | None = None,
 ) -> str:
-    """渲染 Markdown 表格。"""
+    """渲染 Markdown 表格。
+
+    alignments 与 headers 对应，取值 "left" / "right"，决定分隔行是
+    ``---`` 还是 ``---:``；缺省全部左对齐，既有产物保持不变。
+    """
 
     if limit is not None and len(rows) > limit:
         rows = rows[:limit]
@@ -3569,8 +4157,17 @@ def _table(
     if not rows:
         return "_（无数据）_"
 
+    cells = [
+        "---:"
+        if alignments is not None
+        and index < len(alignments)
+        and str(alignments[index]).lower() == "right"
+        else "---"
+        for index, _ in enumerate(headers)
+    ]
+
     header = "| " + " | ".join(str(item) for item in headers) + " |"
-    separator = "| " + " | ".join("---" for _ in headers) + " |"
+    separator = "| " + " | ".join(cells) + " |"
     body = ["| " + " | ".join(str(item) for item in row) + " |" for row in rows]
 
     return "\n".join([header, separator, *body])

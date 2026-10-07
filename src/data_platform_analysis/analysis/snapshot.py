@@ -370,6 +370,64 @@ class SnapshotReader:
         return [entry for entry in tables if isinstance(entry, dict)]
 
     # ==========================================================
+    # 采集失败条目
+    # ==========================================================
+
+    def load_collection_failures(
+        self,
+        workspace_id: int,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """
+        读取单个 Workspace 的采集失败条目。
+
+        返回 ``(failed_files, failed_tables)``，来源分别是
+        ``files-index.json`` 的 ``failed_files`` 与
+        ``tables-index.json`` 的 ``failed_tables``。
+
+        只读、不写 ledger：index 解析失败已由 load_files_index /
+        load_tables_index 记录，这里重复记账会让同一个坏 index 产生两条错误。
+        """
+
+        failed_files = self._read_failed_entries(
+            f"dataworks/workspaces/{workspace_id}/files-index.json",
+            "failed_files",
+        )
+        failed_tables = self._read_failed_entries(
+            f"maxcompute/workspaces/{workspace_id}/tables-index.json",
+            "failed_tables",
+        )
+
+        return failed_files, failed_tables
+
+    def _read_failed_entries(
+        self,
+        relative_path: str,
+        key: str,
+    ) -> list[dict[str, Any]]:
+        """读取 index 里的采集失败条目；任何不可读情况都返回空列表。"""
+
+        path = self.resolve(relative_path)
+
+        if not path.exists():
+            return []
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+
+        except (OSError, json.JSONDecodeError):
+            return []
+
+        if not isinstance(data, dict):
+            return []
+
+        entries = data.get(key)
+
+        if not isinstance(entries, list):
+            return []
+
+        return [entry for entry in entries if isinstance(entry, dict)]
+
+    # ==========================================================
     # Content 读取
     # ==========================================================
 

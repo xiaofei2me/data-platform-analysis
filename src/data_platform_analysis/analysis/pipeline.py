@@ -30,7 +30,12 @@ from pathlib import Path
 
 from ..io_utils import ensure_dir, write_json, write_text
 from .errors import AnalysisFatalError, ErrorLedger
-from .inventory.inventory import Inventory, InventoryBuilder
+from .inventory.inventory import (
+    Inventory,
+    InventoryBuilder,
+    InventorySummary,
+    build_inventory_summary,
+)
 from .layer.layer_assessment import (
     LayerAssessmentError,
     LayerAssessmentResult,
@@ -123,6 +128,10 @@ class AnalysisPipeline:
 
         self._write_inventory(inventory)
 
+        # 盘点统计只依赖刚构建的 Inventory 与只读 Snapshot，
+        # 在 SQL / Lineage 之前算好，保证它只反映 M2.1 的事实。
+        inventory_summary = build_inventory_summary(inventory, reader=self.reader)
+
         # M2.2：只依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
         # 先于 SQL / Lineage 执行，Lineage 的层级标注直接引用其 candidate_layer。
         layer_result = self._run_layer_assessment()
@@ -151,6 +160,7 @@ class AnalysisPipeline:
 
         summary_path = self._write_reports(
             inventory=inventory,
+            inventory_summary=inventory_summary,
             statements=statements,
             references=references,
             parse_errors=parse_errors,
@@ -388,6 +398,7 @@ class AnalysisPipeline:
         self,
         *,
         inventory: Inventory,
+        inventory_summary: InventorySummary,
         statements: list[StatementRecord],
         references: list[TableReference],
         parse_errors: list[ParseErrorRecord],
@@ -401,7 +412,7 @@ class AnalysisPipeline:
 
         write_text(
             self.analysis_dir / "inventory" / "summary.md",
-            render_inventory_summary(inventory),
+            render_inventory_summary(inventory_summary),
         )
         write_text(
             self.analysis_dir / "lineage" / "summary.md",
