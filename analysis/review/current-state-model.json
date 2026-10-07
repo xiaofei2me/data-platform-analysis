@@ -1,0 +1,401 @@
+{
+  "count": 3719,
+  "note": "current-state model 只描述当前平台已经存在的模型形态与评审发现，不是 Target DWD Design；review finding 是候选问题，finding ≠ confirmed 问题",
+  "scope": {
+    "workspace_ids": [
+      466337,
+      466338,
+      466339
+    ],
+    "inventory_table_count": 3719,
+    "classified_table_count": 3719,
+    "fact_count": 3364,
+    "dimension_count": 5,
+    "relationship_count": 15979,
+    "fact_table_row_count": 15697,
+    "dimension_table_row_count": 7195,
+    "process_count": 17,
+    "grain_count": 5679,
+    "object_count": 5
+  },
+  "role_counts": {
+    "FACT_DIMENSION_AMBIGUOUS": 0,
+    "FACT": 997,
+    "DIMENSION": 627,
+    "WIDE_ANALYTICAL": 52,
+    "RESULT_TABLE": 2,
+    "UNKNOWN": 2041
+  },
+  "shape_counts": {
+    "TRANSACTION": 144,
+    "EVENT": 0,
+    "PERIODIC": 152,
+    "SNAPSHOT": 16,
+    "AGGREGATE": 374,
+    "MIXED": 130,
+    "UNKNOWN": 2903
+  },
+  "finding_count": 4439,
+  "priority_counts": {
+    "P0": 696,
+    "P1": 3147,
+    "P2": 581,
+    "P3": 15
+  },
+  "finding_type_counts": {
+    "fact_gate_no_measure": 3,
+    "fact_gate_pattern": 0,
+    "evidence_strength_semantics": 1,
+    "fact_without_measure": 50,
+    "aggregate_fact": 504,
+    "grain_conflict": 559,
+    "mixed_grain": 130,
+    "snapshot_periodic_ambiguous": 0,
+    "process_multiple_grains": 15,
+    "dimension_object_derived": 1,
+    "role_ambiguous": 4,
+    "relationship_technical_only": 1,
+    "relationship_object_co_occurrence": 1,
+    "duplicate_fact": 489,
+    "overlapping_fact": 2605,
+    "multi_process_table": 0,
+    "wide_analytical_table": 39,
+    "result_table": 37
+  },
+  "review_group_counts": {
+    "fact_review": 558,
+    "dimension_review": 5,
+    "grain_review": 704,
+    "relationship_review": 2,
+    "model_issue_review": 3170
+  },
+  "status_counts": {
+    "candidate": 4439,
+    "confirmed": 0,
+    "rejected": 0,
+    "needs_discussion": 0
+  },
+  "model_quality": {
+    "grain_conflict": 559,
+    "mixed_grain": 130,
+    "role_ambiguity": 4,
+    "duplicate_fact": 489,
+    "overlapping_fact": 2605,
+    "multi_process_table": 0,
+    "wide_analytical": 39,
+    "aggregate_fact": 504,
+    "snapshot_periodic": 0,
+    "result_table": 37,
+    "fact_without_measure": 50,
+    "relationship_technical_only": 358,
+    "relationship_object_co_occurrence": 5880
+  },
+  "fact_gate_review": {
+    "qualified_count": 3364,
+    "rejected_count": 2315,
+    "rejected_reason_counts": {
+      "no_measure_evidence": 2315
+    },
+    "passed_by_pattern": {
+      "aggregation": 1730,
+      "periodic": 934,
+      "snapshot": 43,
+      "transaction": 476,
+      "unknown": 181
+    },
+    "rejected_by_pattern": {
+      "aggregation": 804,
+      "periodic": 1044,
+      "unknown": 467
+    },
+    "measure_rejected_by_pattern": {
+      "aggregation": 804,
+      "periodic": 1044,
+      "unknown": 467
+    },
+    "sample_rejected": {
+      "no_measure_evidence": {
+        "aggregation": [
+          {
+            "grain_candidate_id": "grain_candidate_045",
+            "table_key": "dme_ads.tb_controlling_sku_nes_report_prof",
+            "grain_pattern": "aggregation",
+            "candidate_keys": [
+              "customer_code",
+              "ds"
+            ],
+            "identifier_columns": [
+              "customer_code"
+            ]
+          },
+          {
+            "grain_candidate_id": "grain_candidate_047",
+            "table_key": "dme_ads.tb_dashboard_nka_sale_summary_pos_add_vs",
+            "grain_pattern": "aggregation",
+            "candidate_keys": [
+              "ds",
+              "henkel_store_code"
+            ],
+            "identifier_columns": [
+              "dist_code",
+              "henkel_store_code"
+            ]
+          },
+          {
+            "grain_candidate_id": "grain_candidate_048",
+            "table_key": "dme_ads.tb_dme_pos_inventory_data_source",
+            "grain_pattern": "aggregation",
+            "candidate_keys": [
+              "customer_code",
+              "ds"
+            ],
+            "identifier_columns": [
+              "customer_code",
+              "ka_code",
+              "shop_id",
+              "shop_id_tp"
+            ]
+          },
+          {
+            "grain_candidate_id": "grain_candidate_079",
+            "table_key": "dme_ads.tb_inventory_sku_distributor_sale_ws_bu",
+            "grain_pattern": "aggregation",
+            "candidate_keys": [
+              "ds",
+              "product_line_id"
+            ],
+            "identifier_columns": [
+              "brand_code",
+              "category_code",
+              "city_id",
+              "dist_code",
+              "first_channel_id",
+              "fourth_channel_id",
+              "henkel_region_id",
+              "ka_code",
+              "product_line_id",
+              "province_id",
+              "second_channel_id",
+              "third_channel_id"
+            ]
+          },
+          {
+            "grain_candidate_id": "grain_candidate_080",
+            "table_key": "dme_ads.tb_inventory_sku_distributor_sale_ws_bu",
+            "grain_pattern": "aggregation",
+            "candidate_keys": [
+              "dt_type",
+              "product_line_id"
+            ],
+            "identifier_columns": [
+              "brand_code",
+              "category_code",
+              "city_id",
+              "dist_code",
+              "first_channel_id",
+              "fourth_channel_id",
+              "henkel_region_id",
+              "ka_code",
+              "product_line_id",
+              "province_id",
+              "second_channel_id",
+              "third_channel_id"
+            ]
+          }
+        ],
+        "periodic": [
+          {
+            "grain_candidate_id": "grain_candidate_029",
+            "table_key": "dme_ads.tb_controlling_blue_table_clannel_collect_by_month_mf_bu_foc_tmp1",
+            "grain_pattern": "periodic",
+            "candidate_keys": [
+              "customer_code",
+              "month"
+            ],
+            "identifier_columns": [
+              "customer_code"
+            ]
+          },
+          {
+            "grain_candidate_id": "grain_candidate_042",
+            "table_key": "dme_ads.tb_controlling_reports_database_by_region_mf_v2",
+            "grain_pattern": "periodic",
+            "candidate_keys": [
+              "month_en"
+            ],
+            "identifier_columns": []
+          },
+          {
+            "grain_candidate_id": "grain_candidate_043",
+            "table_key": "dme_ads.tb_controlling_reports_database_by_region_mf_v2",
+            "grain_pattern": "periodic",
+            "candidate_keys": [
+              "month"
+            ],
+            "identifier_columns": []
+          },
+          {
+            "grain_candidate_id": "grain_candidate_044",
+            "table_key": "dme_ads.tb_controlling_reports_database_by_region_mf_v2",
+            "grain_pattern": "periodic",
+            "candidate_keys": [
+              "year"
+            ],
+            "identifier_columns": []
+          },
+          {
+            "grain_candidate_id": "grain_candidate_054",
+            "table_key": "dme_ads.tb_ecom_gtm_pl_cp_tmp0",
+            "grain_pattern": "periodic",
+            "candidate_keys": [
+              "customer_code",
+              "months"
+            ],
+            "identifier_columns": [
+              "customer_code",
+              "store_code"
+            ]
+          }
+        ],
+        "unknown": [
+          {
+            "grain_candidate_id": "grain_candidate_007",
+            "table_key": "dme_ods.s_product_sample_mapping",
+            "grain_pattern": "unknown",
+            "candidate_keys": [],
+            "identifier_columns": [
+              "id",
+              "qbi_system_upload_id"
+            ]
+          },
+          {
+            "grain_candidate_id": "grain_candidate_009",
+            "table_key": "dme_ods.s_service_revenue_mapping",
+            "grain_pattern": "unknown",
+            "candidate_keys": [],
+            "identifier_columns": [
+              "id",
+              "qbi_system_upload_id"
+            ]
+          },
+          {
+            "grain_candidate_id": "grain_candidate_010",
+            "table_key": "dme_cdm.dwd_direct_store_info",
+            "grain_pattern": "unknown",
+            "candidate_keys": [],
+            "identifier_columns": [
+              "app_id",
+              "id",
+              "number"
+            ]
+          },
+          {
+            "grain_candidate_id": "grain_candidate_017",
+            "table_key": "dme_ods.s_04sd_customer_sap_his",
+            "grain_pattern": "unknown",
+            "candidate_keys": [],
+            "identifier_columns": []
+          },
+          {
+            "grain_candidate_id": "grain_candidate_018",
+            "table_key": "dme_ods.s_04sd_customer_sap",
+            "grain_pattern": "unknown",
+            "candidate_keys": [],
+            "identifier_columns": []
+          }
+        ]
+      }
+    },
+    "m35_gate": {
+      "qualified_count": 3364,
+      "rejected_count": 2315,
+      "rejected_reason_counts": {
+        "no_measure_evidence": 2315
+      }
+    },
+    "gate_rule": "transaction / event / snapshot 直接通过；periodic / aggregation / unknown 必须有 measure_columns；本阶段只复算并评审，不修改闸门",
+    "matches_m35": true
+  },
+  "evidence_strength_review": {
+    "total": 3364,
+    "strength_counts": {
+      "weak": 0,
+      "moderate": 0,
+      "strong": 3364
+    },
+    "evidence_source_presence": {
+      "process": 3364,
+      "grain": 3364,
+      "table": 1244,
+      "column": 3364,
+      "sql": 1507,
+      "lineage": 1507,
+      "object": 2839
+    },
+    "constructional_sources": [
+      "process",
+      "grain"
+    ],
+    "interpretation": "Evidence Strength（证据源多样性）≠ Candidate Confidence（候选可信度）",
+    "observation": "process 与 grain 证据由候选构造本身产生（每个 fact candidate 必然携带），column 证据来自 M3.4 的字段形态；因此「≥3 类证据」几乎必然成立，strong 只说明证据来源丰富，不说明该表高度确定是事实表"
+  },
+  "dimension_review": {
+    "count": 5,
+    "object_keys": [
+      "customer",
+      "employee",
+      "order",
+      "product",
+      "store"
+    ],
+    "derived_from_object_count": 5,
+    "role_status_counts": {
+      "candidate": 1,
+      "ambiguous": 4
+    },
+    "strength_counts": {
+      "weak": 0,
+      "moderate": 0,
+      "strong": 5
+    },
+    "unresolved_counts": {
+      "fact_and_dimension_ambiguous": 4,
+      "missing_fact_reference": 1
+    },
+    "attribute_limit": 50,
+    "observation": "dimension candidate 按 M3.2 Object 一一映射生成，没有独立的 Dimension Suitability 判定；attributes 只是关联表字段清单（上限 50 条），不是维度属性结论",
+    "status_counts": {
+      "candidate": 5,
+      "confirmed": 0,
+      "rejected": 0,
+      "needs_discussion": 0
+    }
+  },
+  "relationship_review": {
+    "count": 15979,
+    "strength_counts": {
+      "weak": 3821,
+      "moderate": 3641,
+      "strong": 8517
+    },
+    "single_evidence_count": 3821,
+    "technical_only_count": 358,
+    "object_co_occurrence_only_count": 5880,
+    "no_shared_table_count": 6238,
+    "evidence_source_counts": {
+      "process_object": 9741,
+      "object_relationship": 11690,
+      "table_reference": 9741,
+      "sql_reference": 6604,
+      "lineage": 9341
+    },
+    "observation": "关系行的 Object / Process 链接来自 M3.2 的表共现、同 SQL 与表级血缘；技术引用 ≠ 业务关系，确认前必须核对 source_id",
+    "status_counts": {
+      "candidate": 15979,
+      "confirmed": 0,
+      "rejected": 0,
+      "needs_discussion": 0
+    }
+  },
+  "finding_status_counts_note": "机器阶段 finding 的 status 恒为 candidate；只有 current-state-review-checklist.md 回填后才会改变"
+}

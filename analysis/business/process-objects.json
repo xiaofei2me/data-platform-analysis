@@ -1,0 +1,821 @@
+{
+  "count": 47,
+  "note": "object 只以 participant 角色参与 process candidate，不表达 fact / dimension / owner，也不构成 Object ↔ Process 的简单映射。",
+  "objects": [
+    {
+      "process_key": "process_candidate_001",
+      "object": "customer",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 8,
+      "core_table_count": 8,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 4
+    },
+    {
+      "process_key": "process_candidate_001",
+      "object": "employee",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 8,
+      "core_table_count": 8,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 4
+    },
+    {
+      "process_key": "process_candidate_001",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 8,
+      "core_table_count": 8,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 4
+    },
+    {
+      "process_key": "process_candidate_001",
+      "object": "product",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 8,
+      "core_table_count": 8,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 4
+    },
+    {
+      "process_key": "process_candidate_001",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 8,
+      "core_table_count": 8,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 4
+    },
+    {
+      "process_key": "process_candidate_002",
+      "object": "customer",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 4,
+      "core_table_count": 2,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_002",
+      "object": "employee",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 4,
+      "core_table_count": 2,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_002",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 4,
+      "core_table_count": 2,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_002",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 4,
+      "core_table_count": 2,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_003",
+      "object": "customer",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 2,
+      "core_table_count": 2,
+      "signal_types": [
+        "event_time",
+        "multi_object"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_003",
+      "object": "employee",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 2,
+      "core_table_count": 2,
+      "signal_types": [
+        "event_time",
+        "multi_object"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_003",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 2,
+      "core_table_count": 2,
+      "signal_types": [
+        "event_time",
+        "multi_object"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_004",
+      "object": "customer",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 490,
+      "core_table_count": 468,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_004",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 490,
+      "core_table_count": 468,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_004",
+      "object": "product",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 490,
+      "core_table_count": 468,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_004",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 490,
+      "core_table_count": 468,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_005",
+      "object": "customer",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 151,
+      "core_table_count": 129,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_005",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 151,
+      "core_table_count": 129,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_005",
+      "object": "product",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 151,
+      "core_table_count": 129,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_006",
+      "object": "customer",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 109,
+      "core_table_count": 75,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_006",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 109,
+      "core_table_count": 75,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_006",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 109,
+      "core_table_count": 75,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_007",
+      "object": "customer",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 115,
+      "core_table_count": 112,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_007",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 115,
+      "core_table_count": 112,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_008",
+      "object": "customer",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 290,
+      "core_table_count": 167,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_008",
+      "object": "product",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 290,
+      "core_table_count": 167,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_008",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 290,
+      "core_table_count": 167,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_009",
+      "object": "customer",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 195,
+      "core_table_count": 96,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_009",
+      "object": "product",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 195,
+      "core_table_count": 96,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_010",
+      "object": "customer",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 106,
+      "core_table_count": 33,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_010",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 106,
+      "core_table_count": 33,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_011",
+      "object": "employee",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 3,
+      "core_table_count": 0,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_011",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 3,
+      "core_table_count": 0,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_011",
+      "object": "product",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 3,
+      "core_table_count": 0,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_011",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 3,
+      "core_table_count": 0,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 3
+    },
+    {
+      "process_key": "process_candidate_012",
+      "object": "employee",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 2,
+      "core_table_count": 0,
+      "signal_types": [
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_012",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 2,
+      "core_table_count": 0,
+      "signal_types": [
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_013",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 240,
+      "core_table_count": 152,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_013",
+      "object": "product",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 240,
+      "core_table_count": 152,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_013",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 240,
+      "core_table_count": 152,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 2
+    },
+    {
+      "process_key": "process_candidate_014",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 130,
+      "core_table_count": 55,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_014",
+      "object": "product",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 130,
+      "core_table_count": 55,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_015",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 57,
+      "core_table_count": 20,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_015",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 57,
+      "core_table_count": 20,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_016",
+      "object": "order",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 107,
+      "core_table_count": 59,
+      "signal_types": [
+        "transaction_id",
+        "transaction_measure",
+        "event_time",
+        "status",
+        "lifecycle"
+      ],
+      "relationship_count": 0
+    },
+    {
+      "process_key": "process_candidate_017",
+      "object": "product",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 301,
+      "core_table_count": 96,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    },
+    {
+      "process_key": "process_candidate_017",
+      "object": "store",
+      "role": "participant",
+      "object_status": "candidate",
+      "status": "candidate",
+      "table_count": 301,
+      "core_table_count": 96,
+      "signal_types": [
+        "transaction_measure",
+        "event_time",
+        "status",
+        "multi_object",
+        "lifecycle"
+      ],
+      "relationship_count": 1
+    }
+  ]
+}
