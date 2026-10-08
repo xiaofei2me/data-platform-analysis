@@ -17,26 +17,26 @@
 
 输入（只读 analysis/ 产物，不读 source/，不调 API，不修改 M2 / M3 / M3.1）：
 
-    analysis/business/objects.json
-    analysis/business/tables.json
-    analysis/business/domains.json
-    analysis/business/quality-assessment.json
-    analysis/business/review-checklist.md
+    analysis/understanding/business/objects.json
+    analysis/understanding/business/tables.json
+    analysis/understanding/business/domains.json
+    analysis/understanding/business/quality-assessment.json
+    analysis/understanding/business/review-checklist.md
     analysis/inventory/tables.json
     analysis/inventory/columns.json
-    analysis/sql/statements.json
-    analysis/sql/table-references.json
-    analysis/lineage/table-lineage.json
-    analysis/lineage/core-table-candidates.json
-    analysis/layer/assessments.json
+    analysis/evidence/sql/statements.json
+    analysis/evidence/sql/table-references.json
+    analysis/evidence/lineage/table-lineage.json
+    analysis/evidence/lineage/core-table-candidates.json
+    analysis/evidence/layer/assessments.json
 
 输出：
 
-    analysis/business/objects-registry.json
-    analysis/business/object-tables.json
-    analysis/business/object-relationships.json
-    analysis/business/object-evidence-matrix.json
-    analysis/business/object-graph.md
+    analysis/understanding/business/objects-registry.json
+    analysis/understanding/business/object-tables.json
+    analysis/understanding/business/object-relationships.json
+    analysis/understanding/business/object-evidence-matrix.json
+    analysis/understanding/business/object-graph.md
 
 原则：
 
@@ -68,9 +68,9 @@ from itertools import combinations
 from pathlib import Path
 from typing import Any
 
-from ...config import PROJECT_ROOT
-from ...io_utils import ensure_dir, write_json, write_text
-from ..models import (
+from .... import config
+from ....io_utils import ensure_dir, write_json, write_text
+from ...models import (
     BUSINESS_EVIDENCE_LINEAGE,
     BUSINESS_EVIDENCE_ORDER,
     BUSINESS_EVIDENCE_SQL,
@@ -91,8 +91,8 @@ from ..models import (
     evidence_type_sort_key,
     numeric_id_sort_key,
 )
-from ..naming import qualify_table_ref
-from ..reports import render_object_graph
+from ...naming import qualify_table_ref
+from ...reports import render_object_graph
 from .quality import LAYER_UNDETERMINED
 
 logger = logging.getLogger(__name__)
@@ -102,23 +102,23 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 ARRAY_INPUT_FILES: tuple[tuple[str, str, str], ...] = (
-    ("business/objects.json", "objects", "objects"),
-    ("business/tables.json", "tables", "tables"),
-    ("business/domains.json", "domains", "domains"),
+    ("understanding/business/objects.json", "objects", "objects"),
+    ("understanding/business/tables.json", "tables", "tables"),
+    ("understanding/business/domains.json", "domains", "domains"),
     ("inventory/tables.json", "tables", "inventory_tables"),
     ("inventory/columns.json", "columns", "inventory_columns"),
-    ("sql/statements.json", "statements", "statements"),
-    ("sql/table-references.json", "references", "references"),
-    ("lineage/table-lineage.json", "edges", "edges"),
-    ("lineage/core-table-candidates.json", "candidates", "candidates"),
-    ("layer/assessments.json", "assessments", "assessments"),
+    ("evidence/sql/statements.json", "statements", "statements"),
+    ("evidence/sql/table-references.json", "references", "references"),
+    ("evidence/lineage/table-lineage.json", "edges", "edges"),
+    ("evidence/lineage/core-table-candidates.json", "candidates", "candidates"),
+    ("evidence/layer/assessments.json", "assessments", "assessments"),
 )
 """M3.2 依赖的数组型 M2 / M3 产物（相对 analysis/ 路径 → JSON 数组字段名 → 属性名）。"""
 
-QUALITY_INPUT_FILE = "business/quality-assessment.json"
+QUALITY_INPUT_FILE = "understanding/business/quality-assessment.json"
 """M3.1 质量基线（对象型 JSON，单独校验）。"""
 
-CHECKLIST_INPUT_FILE = "business/review-checklist.md"
+CHECKLIST_INPUT_FILE = "understanding/business/review-checklist.md"
 """M3.1 人工复核清单：唯一的人工确认来源。"""
 
 INPUT_FILES: tuple[str, ...] = (
@@ -151,9 +151,7 @@ _SPLIT_NAME_RE = re.compile(r"[,，;；、]+")
 _TABLE_SEPARATOR_RE = re.compile(r"^:?-+:?$")
 """Markdown 表格分隔行（例如 `| --- | --- |`）。"""
 
-_EMPTY_NAME_VALUES: frozenset[str] = frozenset(
-    {"", "-", "—", "n/a", "na", "none", "null", "无"}
-)
+_EMPTY_NAME_VALUES: frozenset[str] = frozenset({"", "-", "—", "n/a", "na", "none", "null", "无"})
 """human 单元格里的空占位写法，解析时忽略。"""
 
 
@@ -165,7 +163,7 @@ def _display_path(path: Path) -> str:
     """日志与报告中展示的路径：项目根内用相对路径，其余保持绝对。"""
 
     try:
-        return str(path.resolve().relative_to(PROJECT_ROOT))
+        return str(path.resolve().relative_to(config.PROJECT_ROOT))
 
     except ValueError:
         return str(path)
@@ -371,9 +369,7 @@ def parse_review_checklist(text: str, *, source: Path) -> dict[str, HumanReview]
         if not cells or cells[0] != "table":
             continue
 
-        found = {
-            name: cells.index(name) for name in CHECKLIST_REQUIRED_COLUMNS if name in cells
-        }
+        found = {name: cells.index(name) for name in CHECKLIST_REQUIRED_COLUMNS if name in cells}
 
         if len(found) == len(CHECKLIST_REQUIRED_COLUMNS):
             header_index = index
@@ -531,7 +527,7 @@ def read_object_inputs(analysis_dir: Path) -> ObjectInputs:
     """读取 M3.2 依赖的全部 M2 / M3 / M3.1 产物。
 
     任何输入缺失或 JSON 非法都明确报错，
-    不自动回退执行 analyze / analyze-business / analyze-business-quality。
+    不自动回退执行 analyze / analyze --stage。
     """
 
     missing = [relative for relative in INPUT_FILES if not (analysis_dir / relative).exists()]
@@ -540,8 +536,8 @@ def read_object_inputs(analysis_dir: Path) -> ObjectInputs:
         raise BusinessObjectsError(
             "M2 / M3 / M3.1 产物缺失，无法执行 M3.2 Business Object & Relationship Analysis："
             f"{'、'.join(missing)}（目录：{_display_path(analysis_dir)}）；"
-            "请先执行 analyze 生成 M2 产物、analyze-business 生成 M3 产物、"
-            "analyze-business-quality 生成 M3.1 产物"
+            "请先执行 analyze --stage evidence 生成 M2 产物、"
+            "analyze --stage understanding 生成 M3 ~ M3.5 产物"
         )
 
     def load(relative: str, key: str) -> list[dict[str, Any]]:
@@ -640,11 +636,7 @@ def _index_core_keys(
 ) -> set[str]:
     """核心表候选索引：M2.4 core-table-candidates ∪ M3 tables.json 的 is_core_candidate。"""
 
-    keys = {
-        key.casefold()
-        for record in candidates
-        if (key := _text(record.get("table_key")))
-    }
+    keys = {key.casefold() for record in candidates if (key := _text(record.get("table_key")))}
 
     for record in tables:
         if record.get("is_core_candidate"):
@@ -744,9 +736,7 @@ def _table_flags(
             continue
 
         lookup_key = key.casefold()
-        domains = [
-            item for item in record.get("domain_candidates") or [] if isinstance(item, dict)
-        ]
+        domains = [item for item in record.get("domain_candidates") or [] if isinstance(item, dict)]
         objects = [
             item
             for item in record.get("business_object_candidates") or []
@@ -837,15 +827,15 @@ def _build_associations(
         entries: list[tuple[str, str | None, list[dict[str, Any]], str]] = []
 
         for obj, confidence, evidence in sorted(candidates, key=lambda item: item[0]):
-            entries.append(
-                (obj, confidence, evidence, _resolve_machine_status(obj, review))
-            )
+            entries.append((obj, confidence, evidence, _resolve_machine_status(obj, review)))
 
         # 人工确认 / 待讨论的 Object 可能不在机器候选里（例如 P1 的 UNKNOWN 表），
         # 这类 association 只来自人工回填，不经过任何机器分类器。
         extra_objects = sorted(
             human_objects - machine_objects
-            if review is not None and review.status in {
+            if review is not None
+            and review.status
+            in {
                 OBJECT_STATUS_CONFIRMED,
                 OBJECT_STATUS_NEEDS_DISCUSSION,
             }
@@ -857,9 +847,8 @@ def _build_associations(
 
             for obj in extra_objects:
                 extra_status = (
-                    (review.status if review is not None else None)
-                    or OBJECT_STATUS_CANDIDATE
-                )
+                    review.status if review is not None else None
+                ) or OBJECT_STATUS_CANDIDATE
                 entries.append((obj, None, [], extra_status))
 
         if not entries:
@@ -875,8 +864,10 @@ def _build_associations(
             }
 
         candidate_layer = candidate_layer_by_key.get(lookup_key)
-        candidate_layer = candidate_layer if candidate_layer is not None else _text(
-            record.get("candidate_sub_layer")
+        candidate_layer = (
+            candidate_layer
+            if candidate_layer is not None
+            else _text(record.get("candidate_sub_layer"))
         )
 
         for obj, confidence, evidence, status in entries:
@@ -903,9 +894,7 @@ def _build_associations(
         logger.warning(
             "review-checklist.md 有 %s 行的 table 不在 business/tables.json 中，已忽略：%s",
             len(unmatched_reviews),
-            "、".join(
-                sorted(reviews[key].table_key for key in unmatched_reviews)[:5]
-            ),
+            "、".join(sorted(reviews[key].table_key for key in unmatched_reviews)[:5]),
         )
 
     if human_object_tables:
@@ -1015,9 +1004,7 @@ def _build_registry(
             lineage_evidence_tables += int(bool(evidence.get(BUSINESS_EVIDENCE_LINEAGE)))
 
         lookup_keys = [str(row.get("table_key") or "").casefold() for row in rows]
-        ordered_type_counts = {
-            kind: evidence_type_counts[kind] for kind in BUSINESS_EVIDENCE_ORDER
-        }
+        ordered_type_counts = {kind: evidence_type_counts[kind] for kind in BUSINESS_EVIDENCE_ORDER}
 
         for kind in sorted(
             key for key in evidence_type_counts if key not in BUSINESS_EVIDENCE_ORDER
@@ -1050,9 +1037,7 @@ def _build_registry(
                     "table_count_referenced_by_sql": sum(
                         1 for key in lookup_keys if key in referenced_keys
                     ),
-                    "table_count_in_lineage": sum(
-                        1 for key in lookup_keys if key in lineage_keys
-                    ),
+                    "table_count_in_lineage": sum(1 for key in lookup_keys if key in lineage_keys),
                 },
                 "tables": [str(row.get("table_key") or "") for row in rows],
             }
@@ -1061,7 +1046,8 @@ def _build_registry(
     return {
         "count": len(entries),
         "note": (
-            "Object 清单只来自 analysis/business/objects.json（+ 人工回填的新 Object），"
+            "Object 清单只来自 analysis/understanding/business/objects.json"
+            "（+ 人工回填的新 Object），"
             "M3.2 不做第二次 Object 分类；status 默认 candidate，"
             "只有 review-checklist.md 显式回填 confirmed / rejected / needs_discussion 才会改变，"
             "未出现在清单中 ≠ confirmed；tables 按表稳定排序，一个 Object 可以关联多张表。"
@@ -1093,9 +1079,7 @@ def _evidence_entry(
         evidence_id = f"co:{source_table}"
 
     elif evidence_type == RELATIONSHIP_EVIDENCE_SQL:
-        evidence_id = (
-            f"sql:{workspace_id}:{file_id}:{statement_id}:{source_table}->{target_table}"
-        )
+        evidence_id = f"sql:{workspace_id}:{file_id}:{statement_id}:{source_table}->{target_table}"
 
     else:
         evidence_id = f"lineage:{workspace_id}:{source_table}->{target_table}"
@@ -1586,7 +1570,7 @@ def run_business_object_analysis(
     """执行 M3.2 Business Object & Relationship Analysis 并写出产物。
 
     只读 M2 / M3 / M3.1 产物；输入缺失时直接报错，
-    不自动回退去跑 analyze / analyze-business / analyze-business-quality。
+    不自动回退去跑 analyze / analyze --stage。
     """
 
     inputs = read_object_inputs(analysis_dir)

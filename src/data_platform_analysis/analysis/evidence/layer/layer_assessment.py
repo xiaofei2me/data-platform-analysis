@@ -12,8 +12,8 @@
 
 输出：
 
-    analysis/layer/assessments.json
-    analysis/layer/summary.md
+    analysis/evidence/layer/assessments.json
+    analysis/evidence/layer/summary.md
 
 约定：
 
@@ -43,9 +43,9 @@ from typing import Any
 
 import yaml
 
-from ...config import PROJECT_ROOT
-from ...io_utils import ensure_dir, write_json, write_text
-from ..models import (
+from .... import config
+from ....io_utils import ensure_dir, write_json, write_text
+from ...models import (
     EVIDENCE_TYPE_PREFIX,
     EVIDENCE_TYPE_SUFFIX,
     EVIDENCE_TYPE_WORKSPACE,
@@ -54,7 +54,7 @@ from ..models import (
     LAYER_STATUS_UNKNOWN,
     LayerAssessment,
 )
-from ..reports import render_layer_summary
+from ...reports import render_layer_summary
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ def _display_path(path: Path) -> str:
     """日志与报告中展示的路径：项目根内用相对路径，其余保持绝对。"""
 
     try:
-        return str(path.resolve().relative_to(PROJECT_ROOT))
+        return str(path.resolve().relative_to(config.PROJECT_ROOT))
 
     except ValueError:
         return str(path)
@@ -241,9 +241,7 @@ def _parse_sub_layers(value: Any, path: Path) -> dict[str, tuple[SubLayerRule, .
                 spec = {}
 
             if not isinstance(spec, dict):
-                raise LayerAssessmentError(
-                    f"sub_layers.{layer_name}.{sub_name} 必须是映射：{path}"
-                )
+                raise LayerAssessmentError(f"sub_layers.{layer_name}.{sub_name} 必须是映射：{path}")
 
             rules.append(
                 SubLayerRule(
@@ -342,9 +340,7 @@ def assess_tables(
     保证重复运行 deterministic。
     """
 
-    assessments = [
-        _assess_table(rules, entry, position) for position, entry in enumerate(tables)
-    ]
+    assessments = [_assess_table(rules, entry, position) for position, entry in enumerate(tables)]
 
     assessments.sort(key=lambda item: (item.workspace_id, item.project, item.table_name))
 
@@ -414,9 +410,7 @@ def _assess_table(
     # 不改变 candidate（仓库现状按 workspace 分层）。
     # ----------------------------------------------------
     if layer != CDM_LAYER and layer not in rules.sub_layers:
-        evidence.extend(
-            _match_sub_layers(rules, table_name, _all_sub_layer_rules(rules))
-        )
+        evidence.extend(_match_sub_layers(rules, table_name, _all_sub_layer_rules(rules)))
 
         return LayerAssessment(
             workspace_id=workspace_id,
@@ -467,9 +461,7 @@ def _assess_table(
 def _all_sub_layer_rules(rules: LayerRules) -> tuple[SubLayerRule, ...]:
     """全部子层规则，按配置顺序展平，用于 ODS / ADS 的跨层命名提示。"""
 
-    return tuple(
-        rule for entries in rules.sub_layers.values() for rule in entries
-    )
+    return tuple(rule for entries in rules.sub_layers.values() for rule in entries)
 
 
 def _match_sub_layers(
@@ -554,11 +546,7 @@ class LayerAssessmentResult:
         """未在 layer-rules.yaml 中配置的 workspace_id，升序。"""
 
         return sorted(
-            {
-                item.workspace_id
-                for item in self.assessments
-                if item.workspace_layer is None
-            }
+            {item.workspace_id for item in self.assessments if item.workspace_layer is None}
         )
 
 
@@ -587,9 +575,7 @@ def read_inventory_tables(path: Path) -> list[dict[str, Any]]:
 
         tables.append(entry)
 
-    logger.info(
-        "Inventory 输入已读取：%s（table=%s）", _display_path(path), len(tables)
-    )
+    logger.info("Inventory 输入已读取：%s（table=%s）", _display_path(path), len(tables))
 
     return tables
 
@@ -600,9 +586,9 @@ def run_layer_assessment(
     rules_path: Path,
     output_dir: Path,
 ) -> LayerAssessmentResult:
-    """执行 M2.2 并写出 analysis/layer 产物。
+    """执行 M2.2 并写出 analysis/evidence/layer 产物。
 
-    CLI 子命令与 AnalysisPipeline 共用这一个入口，保证两条路径行为一致。
+    由 AnalysisPipeline.run_stage_evidence() 统一调用，保证两条路径行为一致。
     """
 
     rules = load_layer_rules(rules_path)
@@ -619,8 +605,7 @@ def run_layer_assessment(
 
     if unconfigured:
         logger.warning(
-            "layer-rules.yaml 未配置的 workspace_id：%s；"
-            "这些表不做任何推断，一律记为 UNKNOWN",
+            "layer-rules.yaml 未配置的 workspace_id：%s；这些表不做任何推断，一律记为 UNKNOWN",
             ", ".join(str(item) for item in unconfigured),
         )
 
@@ -628,15 +613,12 @@ def run_layer_assessment(
 
     if conflicts:
         logger.warning(
-            "M2.2 检出 %s 条 CONFLICT（prefix 与 suffix 命中不同子层），"
-            "需人工判定，明细见 %s",
+            "M2.2 检出 %s 条 CONFLICT（prefix 与 suffix 命中不同子层），需人工判定，明细见 %s",
             conflicts,
             _display_path(output_dir / "summary.md"),
         )
 
-    cross_layer = sum(
-        1 for item in result.assessments if item.cross_layer_hits
-    )
+    cross_layer = sum(1 for item in result.assessments if item.cross_layer_hits)
 
     if cross_layer:
         logger.warning(

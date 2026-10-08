@@ -27,7 +27,7 @@ test.before(async () => {
   problemsArtifact = await readArtifact("analysis/review/current-state-problems.json");
   evidenceArtifact = await readArtifact("analysis/review/current-state-problem-evidence.json");
   tableArtifact = await readArtifact("analysis/review/current-state-model-tables.json");
-  layerArtifact = await readArtifact("analysis/layer/assessments.json");
+  layerArtifact = await readArtifact("analysis/evidence/layer/assessments.json");
 });
 
 test("machine artifacts: 1190 problems and 4439 findings", () => {

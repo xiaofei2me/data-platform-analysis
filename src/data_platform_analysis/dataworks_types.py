@@ -457,21 +457,3 @@ def get_file_type_info(file_type: int | None) -> FileTypeInfo:
 def get_file_type(file_type: int | None) -> FileTypeInfo:
     """兼容现有代码的 FileType 查询接口。"""
     return get_file_type_info(file_type)
-
-
-def is_task_type(file_type: int | None) -> bool:
-    """判断 FileType 是否属于任务类型。"""
-    return get_file_type_info(file_type).category == CATEGORY_TASK
-
-
-def is_resource_type(file_type: int | None) -> bool:
-    """判断 FileType 是否属于资源类型。"""
-    return get_file_type_info(file_type).category == CATEGORY_RESOURCE
-
-
-def is_known_file_type(file_type: int | None) -> bool:
-    """判断 FileType 是否已经在 Registry 中定义。"""
-    if file_type is None:
-        return False
-
-    return file_type in FILE_TYPE_REGISTRY

@@ -27,21 +27,25 @@ import logging
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from ..config import settings
 from ..io_utils import ensure_dir, write_json, write_text
 from .errors import AnalysisFatalError, ErrorLedger
+from .evidence.layer.layer_assessment import (
+    LayerAssessmentError,
+    LayerAssessmentResult,
+    run_layer_assessment,
+)
+from .evidence.lineage.lineage import LineageBuilder, LineageResult
+from .evidence.profiling.profiling import MetadataProfiler
+from .evidence.sql.sql_analysis import ParseErrorRecord, SqlAnalyzer
 from .inventory.inventory import (
     Inventory,
     InventoryBuilder,
     InventorySummary,
     build_inventory_summary,
 )
-from .layer.layer_assessment import (
-    LayerAssessmentError,
-    LayerAssessmentResult,
-    run_layer_assessment,
-)
-from .lineage.lineage import LineageBuilder, LineageResult
 from .models import (
     ColumnProfile,
     FileInventory,
@@ -52,7 +56,11 @@ from .models import (
     is_analysis_eligible,
     numeric_id_sort_key,
 )
-from .profiling.profiling import MetadataProfiler
+
+if TYPE_CHECKING:
+    from .understanding.business.understanding import BusinessUnderstandingResult
+
+
 from .reports import (
     SummaryContext,
     render_analysis_summary,
@@ -61,12 +69,16 @@ from .reports import (
     render_profiling_summary,
 )
 from .snapshot import SnapshotReader
-from .sql.sql_analysis import ParseErrorRecord, SqlAnalyzer
 
 logger = logging.getLogger(__name__)
 
-PRODUCTION_DIRS: tuple[str, ...] = ("inventory", "sql", "lineage", "profiling", "layer")
-PRODUCTION_FILES: tuple[str, ...] = ("errors.json", "Summary.md")
+PRODUCTION_DIRS: tuple[str, ...] = (
+    "inventory",
+    "evidence",
+    "understanding",
+    "review",
+)
+PRODUCTION_FILES: tuple[str, ...] = ("evidence/errors.json", "summary.md")
 
 LOG_INTERVAL = 500
 """SQL 文件分析进度日志间隔。"""
@@ -172,7 +184,7 @@ class AnalysisPipeline:
         )
 
         write_json(
-            self.analysis_dir / "errors.json",
+            self.analysis_dir / "evidence" / "errors.json",
             {
                 "count": len(errors),
                 "errors": errors,
@@ -197,7 +209,7 @@ class AnalysisPipeline:
         logger.info(
             "Analysis 完成：workspace=%s，file=%s（eligible=%s，excluded=%s），table=%s，"
             "statement=%s，reference=%s，edge=%s，error=%s",
-            len(result.workspace_ids),
+            len(identities),
             result.file_count,
             result.eligible_file_count,
             result.excluded_file_count,
@@ -208,7 +220,289 @@ class AnalysisPipeline:
             result.error_count,
         )
 
+        # 执行 M3 业务理解（Stage 06-11）与 M3.6 Review（Stage 12-14）；
+        # run_stage_review 内部会先执行 run_stage_understanding，
+        # 这里不再重复调用，保证 Understanding 每次运行只执行一遍。
+        # 两者只产生阶段产物，run() 的返回值仍是 Evidence 阶段的 AnalysisResult。
+        self.run_stage_review()
+
         return result
+
+    # ==========================================================
+    # 四阶段 Pipeline 支持
+    # ==========================================================
+
+    def run_stage_inventory(self) -> AnalysisResult:
+        """只执行 Stage 01（Inventory）。"""
+        identities = self.reader.select_identities(
+            self.reader.load_workspace_identities(),
+            self.workspace_id,
+        )
+
+        self._reset_outputs()
+
+        inventory = InventoryBuilder(
+            reader=self.reader,
+            identities=identities,
+        ).build()
+
+        self._write_inventory(inventory)
+
+        inventory_summary = build_inventory_summary(inventory, reader=self.reader)
+
+        errors = self.ledger.records()
+
+        summary_path = self._write_reports_stage_inventory(
+            inventory=inventory,
+            inventory_summary=inventory_summary,
+            errors=errors,
+        )
+
+        result = AnalysisResult(
+            analysis_dir=self.analysis_dir,
+            workspace_ids=[identity.workspace_id for identity in identities],
+            file_count=len(inventory.files),
+            eligible_file_count=sum(1 for item in inventory.files if is_analysis_eligible(item)),
+            excluded_file_count=len(inventory.files),
+            table_count=len(inventory.tables),
+            column_count=len(inventory.columns),
+            statement_count=0,
+            reference_count=0,
+            edge_count=0,
+            error_count=len(errors),
+            summary_path=summary_path,
+        )
+
+        return result
+
+    def _write_reports_stage_inventory(
+        self,
+        *,
+        inventory: Inventory,
+        inventory_summary: InventorySummary,
+        errors: list[dict[str, object]],
+    ) -> Path:
+        """写出 Inventory 阶段 Summary。"""
+
+        write_text(
+            self.analysis_dir / "inventory" / "summary.md",
+            render_inventory_summary(inventory_summary),
+        )
+
+        summary_path = self.analysis_dir / "summary.md"
+
+        from .evidence.lineage.lineage import LineageResult
+        from .reports import SummaryContext, render_analysis_summary
+
+        write_text(
+            summary_path,
+            render_analysis_summary(
+                SummaryContext(
+                    inventory=inventory,
+                    lineage=LineageResult(edges=[], candidates=[]),
+                    statements=[],
+                    references=[],
+                    parse_errors=[],
+                    table_profiles=[],
+                    column_profiles=[],
+                    layer_assessments=[],
+                    errors=errors,
+                )
+            ),
+        )
+
+        return summary_path
+
+    def run_stage_evidence(self) -> AnalysisResult:
+        """执行 Stage 01-05（Evidence）。"""
+        # 先运行 inventory
+        identities = self.reader.select_identities(
+            self.reader.load_workspace_identities(),
+            self.workspace_id,
+        )
+
+        self._reset_outputs()
+
+        inventory = InventoryBuilder(
+            reader=self.reader,
+            identities=identities,
+        ).build()
+
+        self._write_inventory(inventory)
+
+        # 盘点统计
+        inventory_summary = build_inventory_summary(inventory, reader=self.reader)
+
+        # 执行 M2.2
+        layer_result = self._run_layer_assessment()
+
+        eligible_files = [item for item in inventory.files if is_analysis_eligible(item)]
+
+        statements, references, parse_errors = self._analyze_sql(eligible_files)
+        self._write_sql(statements, references, parse_errors)
+
+        from .evidence.lineage.lineage import LineageBuilder
+
+        lineage = LineageBuilder(
+            references,
+            inventory,
+            layer_result.assessments,
+        ).build()
+
+        self._write_lineage(lineage)
+
+        table_profiles, column_profiles = MetadataProfiler(inventory).profile()
+        self._write_profiling(table_profiles, column_profiles)
+
+        errors = self.ledger.records()
+
+        # Evidence stage 的报告契约与全量 Analysis 完全一致：
+        # 复用 _write_reports()，用上面刚算好的真实 Layer / SQL /
+        # Lineage / Profiling 结果渲染，不制造空 LineageResult，
+        # 也不重复计算任何 M2 输入。
+        summary_path = self._write_reports(
+            inventory=inventory,
+            inventory_summary=inventory_summary,
+            statements=statements,
+            references=references,
+            parse_errors=parse_errors,
+            lineage=lineage,
+            table_profiles=table_profiles,
+            column_profiles=column_profiles,
+            layer_assessments=layer_result.assessments,
+            errors=errors,
+        )
+
+        write_json(
+            self.analysis_dir / "evidence" / "errors.json",
+            {
+                "count": len(errors),
+                "errors": errors,
+            },
+        )
+
+        return AnalysisResult(
+            analysis_dir=self.analysis_dir,
+            workspace_ids=[identity.workspace_id for identity in identities],
+            file_count=len(inventory.files),
+            eligible_file_count=len(eligible_files),
+            excluded_file_count=len(inventory.files) - len(eligible_files),
+            table_count=len(inventory.tables),
+            column_count=len(inventory.columns),
+            statement_count=len(statements),
+            reference_count=len(references),
+            edge_count=len(lineage.edges),
+            error_count=len(errors),
+            summary_path=summary_path,
+        )
+
+    def run_stage_understanding(self) -> BusinessUnderstandingResult:
+        """执行 Stage 01-11（Understanding）。"""
+        # 先检查 evidence 是否存在，如果不存在则执行 run_stage_evidence
+
+        if not (self.analysis_dir / "evidence" / "layer" / "assessments.json").exists():
+            print("Evidence 阶段未完成，执行 run_stage_evidence")
+            self.run_stage_evidence()
+
+        # 执行 M3 业务理解
+        try:
+            from .understanding.business.understanding import (
+                run_business_understanding,
+            )
+        except ImportError as exc:
+            raise AnalysisFatalError(f"导入 Understanding 模块失败：{exc}") from exc
+
+        try:
+            understanding_result = run_business_understanding(
+                analysis_dir=self.analysis_dir,
+                rules_path=settings.business_rules_path,
+                output_dir=self.analysis_dir / "understanding" / "business",
+            )
+        except Exception as exc:
+            raise AnalysisFatalError(f"M3 Business Understanding 无法继续：{exc}") from exc
+
+        try:
+            from .understanding.business.quality import (
+                run_business_quality_assessment,
+            )
+
+            run_business_quality_assessment(
+                analysis_dir=self.analysis_dir,
+                output_dir=self.analysis_dir / "understanding" / "business",
+            )
+        except Exception as exc:
+            raise AnalysisFatalError(f"M3.1 Business Quality Assessment 无法继续：{exc}") from exc
+
+        try:
+            from .understanding.business.objects import (
+                run_business_object_analysis,
+            )
+
+            run_business_object_analysis(
+                analysis_dir=self.analysis_dir,
+                output_dir=self.analysis_dir / "understanding" / "business",
+            )
+        except Exception as exc:
+            raise AnalysisFatalError(f"M3.2 Business Object Analysis 无法继续：{exc}") from exc
+
+        try:
+            from .understanding.business.processes import (
+                run_business_process_analysis,
+            )
+
+            run_business_process_analysis(
+                analysis_dir=self.analysis_dir,
+                output_dir=self.analysis_dir / "understanding" / "business",
+                rules_path=settings.process_rules_path,
+            )
+        except Exception as exc:
+            raise AnalysisFatalError(f"M3.3 Business Process Analysis 无法继续：{exc}") from exc
+
+        try:
+            from .understanding.business.grain import (
+                run_business_grain_analysis,
+            )
+
+            run_business_grain_analysis(
+                analysis_dir=self.analysis_dir,
+                output_dir=self.analysis_dir / "understanding" / "business",
+            )
+        except Exception as exc:
+            raise AnalysisFatalError(f"M3.4 Grain Analysis 无法继续：{exc}") from exc
+
+        try:
+            from .understanding.modeling.business_model import (
+                run_business_model_analysis,
+            )
+
+            run_business_model_analysis(
+                analysis_dir=self.analysis_dir,
+                output_dir=self.analysis_dir / "understanding" / "modeling",
+            )
+        except Exception as exc:
+            raise AnalysisFatalError(f"M3.5 Business Model 分析无法继续：{exc}") from exc
+
+        return understanding_result
+
+    def run_stage_review(self) -> BusinessUnderstandingResult:
+        """执行 Stage 01-14（Review）。"""
+        understanding_result = self.run_stage_understanding()
+
+        # 执行 M3.6 Review
+        try:
+            from .review.findings import run_current_state_model_analysis
+        except ImportError as exc:
+            raise AnalysisFatalError(f"导入 Review 模块失败：{exc}") from exc
+
+        try:
+            run_current_state_model_analysis(
+                analysis_dir=self.analysis_dir,
+                output_dir=self.analysis_dir / "review",
+            )
+        except Exception as exc:
+            raise AnalysisFatalError(f"M3.6 Review 无法继续：{exc}") from exc
+
+        return understanding_result
 
     # ==========================================================
     # M2.3 SQL Analysis
@@ -271,7 +565,7 @@ class AnalysisPipeline:
     # ==========================================================
 
     def _run_layer_assessment(self) -> LayerAssessmentResult:
-        """执行 M2.2 Layer Assessment，写出 analysis/layer 产物。
+        """执行 M2.2 Layer Assessment，写出 analysis/evidence/layer 产物。
 
         输入固定为刚写出的 inventory/tables.json 与 layer-rules 配置；
         配置缺失或非法视为 Fatal Error，不静默跳过。
@@ -281,7 +575,7 @@ class AnalysisPipeline:
             return run_layer_assessment(
                 inventory_path=self.analysis_dir / "inventory" / "tables.json",
                 rules_path=self.layer_rules_path,
-                output_dir=self.analysis_dir / "layer",
+                output_dir=self.analysis_dir / "evidence" / "layer",
             )
 
         except LayerAssessmentError as exc:
@@ -332,21 +626,21 @@ class AnalysisPipeline:
         """写出 M2.3 产物。"""
 
         self._write(
-            "sql/statements.json",
+            "evidence/sql/statements.json",
             {
                 "count": len(statements),
                 "statements": [item.to_dict() for item in statements],
             },
         )
         self._write(
-            "sql/table-references.json",
+            "evidence/sql/table-references.json",
             {
                 "count": len(references),
                 "references": [item.to_dict() for item in references],
             },
         )
         self._write(
-            "sql/parse-errors.json",
+            "evidence/sql/parse-errors.json",
             {
                 "count": len(parse_errors),
                 "errors": [item.to_dict() for item in parse_errors],
@@ -357,14 +651,14 @@ class AnalysisPipeline:
         """写出 M2.4 产物。"""
 
         self._write(
-            "lineage/table-lineage.json",
+            "evidence/lineage/table-lineage.json",
             {
                 "count": len(lineage.edges),
                 "edges": [item.to_dict() for item in lineage.edges],
             },
         )
         self._write(
-            "lineage/core-table-candidates.json",
+            "evidence/lineage/core-table-candidates.json",
             {
                 "count": len(lineage.candidates),
                 "sort_by": "downstream_count_desc",
@@ -380,14 +674,14 @@ class AnalysisPipeline:
         """写出 M2.5 产物。"""
 
         self._write(
-            "profiling/tables.json",
+            "evidence/profiling/tables.json",
             {
                 "count": len(table_profiles),
                 "tables": [item.to_dict() for item in table_profiles],
             },
         )
         self._write(
-            "profiling/columns.json",
+            "evidence/profiling/columns.json",
             {
                 "count": len(column_profiles),
                 "columns": [item.to_dict() for item in column_profiles],
@@ -415,15 +709,15 @@ class AnalysisPipeline:
             render_inventory_summary(inventory_summary),
         )
         write_text(
-            self.analysis_dir / "lineage" / "summary.md",
+            self.analysis_dir / "evidence" / "lineage" / "summary.md",
             render_lineage_summary(lineage),
         )
         write_text(
-            self.analysis_dir / "profiling" / "summary.md",
+            self.analysis_dir / "evidence" / "profiling" / "summary.md",
             render_profiling_summary(table_profiles, column_profiles),
         )
 
-        summary_path = self.analysis_dir / "Summary.md"
+        summary_path = self.analysis_dir / "summary.md"
 
         write_text(
             summary_path,
@@ -459,6 +753,9 @@ class AnalysisPipeline:
         for name in PRODUCTION_FILES:
             (self.analysis_dir / name).unlink(missing_ok=True)
 
+        for name in LEGACY_PRODUCTION_FILES:
+            (self.analysis_dir / name).unlink(missing_ok=True)
+
     def _write(self, relative_path: str, data: object) -> None:
         """写出单个 JSON 产物。"""
 
@@ -467,3 +764,8 @@ class AnalysisPipeline:
             data,
             overwrite=True,
         )
+
+
+# 旧的生产文件定义，用于兼容性和清理逻辑
+LEGACY_PRODUCTION_FILES = ("errors.json", "Summary.md")
+"""旧的生产文件定义（用于兼容性检查和清理）。"""

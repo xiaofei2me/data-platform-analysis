@@ -116,9 +116,7 @@ class InventoryBuilder:
         )
 
         inventory_errors = [
-            record
-            for record in self.reader.ledger.records()
-            if record.get("stage") == "inventory"
+            record for record in self.reader.ledger.records() if record.get("stage") == "inventory"
         ]
 
         if inventory_errors:
@@ -127,7 +125,7 @@ class InventoryBuilder:
             )
             logger.warning(
                 "M2.1 检出 %s 条可恢复错误（缺索引 / 缺 raw / 解析失败，"
-                "明细见 analysis/errors.json）：%s",
+                "明细见 analysis/evidence/errors.json）：%s",
                 len(inventory_errors),
                 "，".join(f"{key}={value}" for key, value in sorted(type_counts.items())),
             )
@@ -241,9 +239,7 @@ class InventoryBuilder:
             file_entries = snapshot.file_entries or []
             table_entries = snapshot.table_entries or []
             task_count = sum(1 for entry in file_entries if entry.get("category") == "TASK")
-            resource_count = sum(
-                1 for entry in file_entries if entry.get("category") == "RESOURCE"
-            )
+            resource_count = sum(1 for entry in file_entries if entry.get("category") == "RESOURCE")
 
             inventory.workspaces.append(
                 WorkspaceInventory(
@@ -916,9 +912,7 @@ def _summarize_tables(
 
     tables_with_columns = {(item.workspace_id, item.table_key) for item in inventory.columns}
     summary.tables_with_columns = sum(
-        1
-        for item in inventory.tables
-        if (item.workspace_id, item.table_key) in tables_with_columns
+        1 for item in inventory.tables if (item.workspace_id, item.table_key) in tables_with_columns
     )
     summary.tables_without_columns = summary.registered_count - summary.tables_with_columns
     summary.tables_without_raw_metadata = _count_error_types(error_counts, ERROR_TYPE_TABLE_RAW)

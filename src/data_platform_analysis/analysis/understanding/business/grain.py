@@ -20,31 +20,31 @@
 输入（只读 analysis/ 与 config/ 之外的产物，不读 source/，不调 API，
 不修改 M2 / M3 / M3.1 / M3.2 / M3.3 产物）：
 
-    analysis/business/process-signals.json
-    analysis/business/processes.json
-    analysis/business/process-tables.json
-    analysis/business/process-objects.json
-    analysis/business/objects-registry.json
-    analysis/business/object-tables.json
-    analysis/business/object-relationships.json
+    analysis/understanding/business/process-signals.json
+    analysis/understanding/business/processes.json
+    analysis/understanding/business/process-tables.json
+    analysis/understanding/business/process-objects.json
+    analysis/understanding/business/objects-registry.json
+    analysis/understanding/business/object-tables.json
+    analysis/understanding/business/object-relationships.json
     analysis/inventory/tables.json
     analysis/inventory/columns.json
-    analysis/sql/statements.json
-    analysis/sql/table-references.json
-    analysis/lineage/table-lineage.json
-    analysis/lineage/core-table-candidates.json
-    analysis/profiling/tables.json
-    analysis/profiling/columns.json
-    analysis/business/process-review-checklist.md   （可选：Process 人工确认状态）
-    analysis/business/grain-review-checklist.md     （可选：本阶段清单的人工回填）
+    analysis/evidence/sql/statements.json
+    analysis/evidence/sql/table-references.json
+    analysis/evidence/lineage/table-lineage.json
+    analysis/evidence/lineage/core-table-candidates.json
+    analysis/evidence/profiling/tables.json
+    analysis/evidence/profiling/columns.json
+    understanding/business/process-review-checklist.md   （可选：Process 人工确认状态）
+    understanding/business/grain-review-checklist.md     （可选：本阶段清单的人工回填）
 
 输出：
 
-    analysis/business/grain-signals.json
-    analysis/business/grain-candidates.json
-    analysis/business/grain-tables.json
-    analysis/business/grain-summary.md
-    analysis/business/grain-review-checklist.md
+    analysis/understanding/business/grain-signals.json
+    analysis/understanding/business/grain-candidates.json
+    analysis/understanding/business/grain-tables.json
+    analysis/understanding/business/grain-summary.md
+    understanding/business/grain-review-checklist.md
 
 原则：
 
@@ -76,9 +76,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ...config import PROJECT_ROOT
-from ...io_utils import ensure_dir, write_json, write_text
-from ..models import (
+from .... import config
+from ....io_utils import (
+    ensure_dir,
+    relocate_legacy_artifacts,
+    write_json,
+    write_text,
+)
+from ...models import (
     EVIDENCE_STRENGTH_ORDER,
     EVIDENCE_STRENGTH_WEAK,
     GRAIN_CANDIDATE_NOTE,
@@ -128,8 +133,11 @@ from ..models import (
     BusinessGrainResult,
     evidence_strength,
 )
-from ..naming import qualify_table_ref
-from ..reports import render_grain_review_checklist, render_grain_summary
+from ...naming import qualify_table_ref
+from ...reports import (
+    render_grain_review_checklist,
+    render_grain_summary,
+)
 from .objects import (
     _string_list,
     _table_sort_key,
@@ -145,33 +153,31 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 ARRAY_INPUT_FILES: tuple[tuple[str, str, str], ...] = (
-    ("business/process-signals.json", "signals", "process_signals"),
-    ("business/processes.json", "processes", "processes"),
-    ("business/process-tables.json", "tables", "process_tables"),
-    ("business/process-objects.json", "objects", "process_objects"),
-    ("business/objects-registry.json", "objects", "registry_objects"),
-    ("business/object-tables.json", "associations", "associations"),
-    ("business/object-relationships.json", "relationships", "relationships"),
+    ("understanding/business/process-signals.json", "signals", "process_signals"),
+    ("understanding/business/processes.json", "processes", "processes"),
+    ("understanding/business/process-tables.json", "tables", "process_tables"),
+    ("understanding/business/process-objects.json", "objects", "process_objects"),
+    ("understanding/business/objects-registry.json", "objects", "registry_objects"),
+    ("understanding/business/object-tables.json", "associations", "associations"),
+    ("understanding/business/object-relationships.json", "relationships", "relationships"),
     ("inventory/tables.json", "tables", "inventory_tables"),
     ("inventory/columns.json", "columns", "columns"),
-    ("sql/statements.json", "statements", "statements"),
-    ("sql/table-references.json", "references", "references"),
-    ("lineage/table-lineage.json", "edges", "edges"),
-    ("lineage/core-table-candidates.json", "candidates", "core_candidates"),
-    ("profiling/tables.json", "tables", "profile_tables"),
-    ("profiling/columns.json", "columns", "profile_columns"),
+    ("evidence/sql/statements.json", "statements", "statements"),
+    ("evidence/sql/table-references.json", "references", "references"),
+    ("evidence/lineage/table-lineage.json", "edges", "edges"),
+    ("evidence/lineage/core-table-candidates.json", "candidates", "core_candidates"),
+    ("evidence/profiling/tables.json", "tables", "profile_tables"),
+    ("evidence/profiling/columns.json", "columns", "profile_columns"),
 )
 """M3.4 依赖的数组型 M2 / M3 产物（相对 analysis/ 路径 → JSON 数组字段名 → 属性名）。"""
 
-PROCESS_CHECKLIST_INPUT_FILE = "business/process-review-checklist.md"
+PROCESS_CHECKLIST_INPUT_FILE = "understanding/business/process-review-checklist.md"
 """M3.3 人工确认清单（可选输入）：只用于记录 Process 是否已被人工确认。"""
 
-CARRYOVER_CHECKLIST_INPUT_FILE = "business/grain-review-checklist.md"
+CARRYOVER_CHECKLIST_INPUT_FILE = "understanding/business/grain-review-checklist.md"
 """本阶段清单（可选输入）：回填过的人工确认在重跑时被带回去。"""
 
-INPUT_FILES: tuple[str, ...] = tuple(
-    relative for relative, _key, _attr in ARRAY_INPUT_FILES
-)
+INPUT_FILES: tuple[str, ...] = tuple(relative for relative, _key, _attr in ARRAY_INPUT_FILES)
 """M3.4 的必需输入（相对 analysis/ 路径）；两个 markdown 清单属于可选输入。"""
 
 OUTPUT_FILES: tuple[str, ...] = (
@@ -202,9 +208,7 @@ _TRUE_VALUES: frozenset[str] = frozenset({"true", "yes", "y", "1", "confirmed", 
 # 字段名形态 token（模块常量，不进 config：只影响候选生成，不是业务规则）
 # ============================================================
 
-IDENTIFIER_TOKENS: frozenset[str] = frozenset(
-    {"id", "no", "number", "key", "code", "guid", "uuid"}
-)
+IDENTIFIER_TOKENS: frozenset[str] = frozenset({"id", "no", "number", "key", "code", "guid", "uuid"})
 """字段名最后一个 token 命中即视为标识形态（例如 order_id / batch_no）。"""
 
 IDENTIFIER_NAMES: frozenset[str] = frozenset({"id", "guid", "uuid"})
@@ -299,7 +303,7 @@ def _display_path(path: Path) -> str:
     """日志与报告中展示的路径：项目根内用相对路径，其余保持绝对。"""
 
     try:
-        return str(path.resolve().relative_to(PROJECT_ROOT))
+        return str(path.resolve().relative_to(config.PROJECT_ROOT))
 
     except ValueError:
         return str(path)
@@ -360,10 +364,7 @@ def _example_list(values: Sequence[str]) -> str:
     if len(ordered) <= GRAIN_SIGNAL_EXAMPLE_LIMIT:
         return "、".join(ordered)
 
-    return (
-        f"{'、'.join(ordered[:GRAIN_SIGNAL_EXAMPLE_LIMIT])}"
-        f" 等 {len(ordered)} 个字段"
-    )
+    return f"{'、'.join(ordered[:GRAIN_SIGNAL_EXAMPLE_LIMIT])} 等 {len(ordered)} 个字段"
 
 
 # ============================================================
@@ -401,22 +402,17 @@ def read_grain_inputs(analysis_dir: Path) -> GrainInputs:
     """读取 M3.4 依赖的全部 M2 / M3 / M3.3 产物。
 
     任何必需输入缺失或 JSON 非法都明确报错，
-    不自动回退执行 analyze / analyze-business / analyze-business-objects /
-    analyze-business-processes。
+    不自动回退执行 analyze / analyze --stage。
     """
 
-    missing = [
-        relative for relative in INPUT_FILES if not (analysis_dir / relative).exists()
-    ]
+    missing = [relative for relative in INPUT_FILES if not (analysis_dir / relative).exists()]
 
     if missing:
         raise BusinessGrainError(
             "M2 / M3 / M3.3 产物缺失，无法执行 M3.4 Grain Candidate Analysis："
             f"{'、'.join(missing)}（目录：{_display_path(analysis_dir)}）；"
-            "请先执行 analyze 生成 M2 产物、analyze-business 生成 M3 产物、"
-            "analyze-business-quality 生成 M3.1 产物、"
-            "analyze-business-objects 生成 M3.2 产物、"
-            "analyze-business-processes 生成 M3.3 产物"
+            "请先执行 analyze --stage evidence 生成 M2 产物、"
+            "analyze --stage understanding 生成 M3 ~ M3.5 产物"
         )
 
     def load(relative: str, key: str) -> list[dict[str, Any]]:
@@ -426,9 +422,7 @@ def read_grain_inputs(analysis_dir: Path) -> GrainInputs:
             raw = json.loads(path.read_text(encoding="utf-8"))
 
         except json.JSONDecodeError as exc:
-            raise BusinessGrainError(
-                f"产物不是合法的 JSON：{path}（{exc}）"
-            ) from exc
+            raise BusinessGrainError(f"产物不是合法的 JSON：{path}（{exc}）") from exc
 
         if not isinstance(raw, dict):
             raise BusinessGrainError(f"产物根节点不是对象：{path}")
@@ -548,17 +542,14 @@ def _parse_checklist_rows(
         missing = [name for name in required if name not in cells]
 
         if missing:
-            raise BusinessGrainError(
-                f"{label} 缺少必需列：{'、'.join(missing)}（{source}）"
-            )
+            raise BusinessGrainError(f"{label} 缺少必需列：{'、'.join(missing)}（{source}）")
 
         columns = {name: position for position, name in enumerate(cells) if name}
         break
 
     if not columns:
         raise BusinessGrainError(
-            f"{label} 找不到 {required[0]} 表头"
-            f"（必需列：{'、'.join(required)}）：{source}"
+            f"{label} 找不到 {required[0]} 表头（必需列：{'、'.join(required)}）：{source}"
         )
 
     rows: dict[str, dict[str, str]] = {}
@@ -578,10 +569,7 @@ def _parse_checklist_rows(
 
         rows.setdefault(
             key,
-            {
-                name: values[index] if index < len(values) else ""
-                for name, index in columns.items()
-            },
+            {name: values[index] if index < len(values) else "" for name, index in columns.items()},
         )
 
     return rows
@@ -619,25 +607,17 @@ class GrainIndexes:
     table_meta: dict[str, dict[str, Any]] = field(default_factory=dict)
     table_comment: dict[str, str | None] = field(default_factory=dict)
     columns_by_table: dict[str, tuple[ColumnFacts, ...]] = field(default_factory=dict)
-    column_signals: dict[tuple[str, str], tuple[tuple[str, str], ...]] = field(
-        default_factory=dict
-    )
-    table_signal_columns: dict[str, dict[str, tuple[str, ...]]] = field(
-        default_factory=dict
-    )
+    column_signals: dict[tuple[str, str], tuple[tuple[str, str], ...]] = field(default_factory=dict)
+    table_signal_columns: dict[str, dict[str, tuple[str, ...]]] = field(default_factory=dict)
     process_objects: dict[str, tuple[str, ...]] = field(default_factory=dict)
     object_status: dict[str, str] = field(default_factory=dict)
     associations: dict[str, dict[str, str]] = field(default_factory=dict)
     relationships: dict[tuple[str, str], str] = field(default_factory=dict)
     sql_refs: dict[str, tuple[dict[str, Any], ...]] = field(default_factory=dict)
-    lineage_refs: dict[str, tuple[tuple[int, str, str], ...]] = field(
-        default_factory=dict
-    )
+    lineage_refs: dict[str, tuple[tuple[int, str, str], ...]] = field(default_factory=dict)
     lineage_tables: set[str] = field(default_factory=set)
     core_keys: set[str] = field(default_factory=set)
-    process_tables_by_process: dict[str, tuple[str, ...]] = field(
-        default_factory=dict
-    )
+    process_tables_by_process: dict[str, tuple[str, ...]] = field(default_factory=dict)
     process_validated: dict[str, bool] = field(default_factory=dict)
     profiling: dict[str, Any] = field(default_factory=dict)
 
@@ -716,11 +696,14 @@ def _index_process_signals(
     column_signals: dict[tuple[str, str], list[tuple[str, str]]] = {}
     table_signals: dict[str, dict[str, set[str]]] = {}
 
-    for row in sorted(rows, key=lambda item: (
-        str(item.get("table_key") or "").casefold(),
-        str(item.get("column_name") or ""),
-        _rank(str(item.get("signal_type") or ""), PROCESS_SIGNAL_TYPE_ORDER),
-    )):
+    for row in sorted(
+        rows,
+        key=lambda item: (
+            str(item.get("table_key") or "").casefold(),
+            str(item.get("column_name") or ""),
+            _rank(str(item.get("signal_type") or ""), PROCESS_SIGNAL_TYPE_ORDER),
+        ),
+    ):
         folded = str(row.get("table_key") or "").casefold()
         signal_type = str(row.get("signal_type") or "")
         column_name = _text(row.get("column_name"))
@@ -731,9 +714,7 @@ def _index_process_signals(
         column_signals.setdefault((folded, column_name), []).append(
             (signal_type, str(row.get("signal") or ""))
         )
-        table_signals.setdefault(folded, {}).setdefault(signal_type, set()).add(
-            column_name
-        )
+        table_signals.setdefault(folded, {}).setdefault(signal_type, set()).add(column_name)
 
     frozen_columns = {
         key: tuple(
@@ -783,8 +764,7 @@ def _index_columns(
 
         ordinal = record.get("ordinal")
         signal_types = [
-            signal_type
-            for signal_type, _signal in column_signals.get((folded, name), ())
+            signal_type for signal_type, _signal in column_signals.get((folded, name), ())
         ]
         flags = _column_flags(
             name,
@@ -864,9 +844,7 @@ def _index_sql_refs(
         workspace_id = record.get("workspace_id")
         project = workspace_projects.get(workspace_id) if isinstance(workspace_id, int) else None
         raw_statement_id = record.get("statement_id")
-        statement_id = (
-            raw_statement_id if isinstance(raw_statement_id, int) else 0
-        )
+        statement_id = raw_statement_id if isinstance(raw_statement_id, int) else 0
         identity = (
             workspace_id if isinstance(workspace_id, int) else 0,
             str(record.get("file_id") or ""),
@@ -971,11 +949,7 @@ def _index_core_keys(
 ) -> set[str]:
     """core 表候选（M2.4 ∪ M3.3 process-tables 标记）；只作证据覆盖与复核优先级。"""
 
-    keys = {
-        key.casefold()
-        for record in core_candidates
-        if (key := _text(record.get("table_key")))
-    }
+    keys = {key.casefold() for record in core_candidates if (key := _text(record.get("table_key")))}
 
     for record in process_tables:
         if record.get("core_candidate") and (key := _text(record.get("table_key"))):
@@ -990,9 +964,7 @@ def _profiling_stats(
 ) -> dict[str, Any]:
     """Profiling 证据可用性统计（metadata-only，用于 limitations）。"""
 
-    candidate_key_count = sum(
-        1 for record in profile_columns if record.get("is_candidate_key")
-    )
+    candidate_key_count = sum(1 for record in profile_columns if record.get("is_candidate_key"))
 
     return {
         "table_count": len(profile_tables),
@@ -1010,15 +982,11 @@ def _profiling_stats(
 def build_indexes(inputs: GrainInputs) -> GrainIndexes:
     """把 M3.4 输入整理成只读索引。"""
 
-    table_meta, table_comment = _index_table_meta(
-        inputs.process_tables, inputs.inventory_tables
-    )
+    table_meta, table_comment = _index_table_meta(inputs.process_tables, inputs.inventory_tables)
     column_signals, table_signal_columns = _index_process_signals(inputs.process_signals)
 
     process_folds = set(table_meta)
-    columns_by_table = _index_columns(
-        inputs.columns, process_folds, column_signals
-    )
+    columns_by_table = _index_columns(inputs.columns, process_folds, column_signals)
 
     process_objects: dict[str, set[str]] = {}
 
@@ -1069,9 +1037,7 @@ def build_indexes(inputs: GrainInputs) -> GrainIndexes:
         table_signal_columns=table_signal_columns,
         process_objects={key: tuple(sorted(values)) for key, values in process_objects.items()},
         object_status={
-            str(record.get("object") or ""): str(
-                record.get("status") or GRAIN_STATUS_CANDIDATE
-            )
+            str(record.get("object") or ""): str(record.get("status") or GRAIN_STATUS_CANDIDATE)
             for record in inputs.registry_objects
         },
         associations=_index_associations(inputs.associations),
@@ -1105,13 +1071,11 @@ def _grain_signal_reason(
     """
 
     if signal_text:
-        return signal_text, (
-            f"M3.3 process signal {signal_text} 命中字段 {column_name}"
-        )
+        return signal_text, (f"M3.3 process signal {signal_text} 命中字段 {column_name}")
 
-    tokens = {
-        token.casefold() for token in tokenize_identifier(column_name)
-    } | ({column_name.casefold()} if column_name.casefold() in IDENTIFIER_NAMES else set())
+    tokens = {token.casefold() for token in tokenize_identifier(column_name)} | (
+        {column_name.casefold()} if column_name.casefold() in IDENTIFIER_NAMES else set()
+    )
     token_set = _TOKENS_BY_GRAIN_SIGNAL.get(signal_type)
     matched = sorted(tokens & token_set) if token_set else []
 
@@ -1247,12 +1211,8 @@ def build_grain_signals(
 
     for folded, meta in sorted(indexes.table_meta.items(), key=lambda item: item[0]):
         columns = indexes.columns_by_table.get(folded, ())
-        rows.extend(
-            _column_grain_signals(folded, columns, indexes.column_signals, meta)
-        )
-        rows.extend(
-            _table_grain_signals(folded, indexes.table_signal_columns, columns, meta)
-        )
+        rows.extend(_column_grain_signals(folded, columns, indexes.column_signals, meta))
+        rows.extend(_table_grain_signals(folded, indexes.table_signal_columns, columns, meta))
 
     return sorted(rows, key=_grain_signal_sort_key)
 
@@ -1371,18 +1331,10 @@ def _candidate_key_forms(
         return tuple(forms)
 
     if pairs and partition_time:
-        return tuple(
-            tuple(sorted({name, time}))
-            for name, _obj in pairs
-            for time in partition_time
-        )
+        return tuple(tuple(sorted({name, time})) for name, _obj in pairs for time in partition_time)
 
     if pairs and time_columns:
-        return tuple(
-            tuple(sorted({name, time}))
-            for name, _obj in pairs
-            for time in time_columns
-        )
+        return tuple(tuple(sorted({name, time})) for name, _obj in pairs for time in time_columns)
 
     if snapshot_columns:
         return tuple((name,) for name in snapshot_columns)
@@ -1544,8 +1496,7 @@ def _process_signal_evidence(
                     table_key=table_key,
                     column_name=name,
                     reason=(
-                        f"M3.3 process signal {signal_type}（规则 {signal}）"
-                        f"命中候选键字段 {name}"
+                        f"M3.3 process signal {signal_type}（规则 {signal}）命中候选键字段 {name}"
                     ),
                 )
             )
@@ -1621,10 +1572,7 @@ def _object_evidence(
                     workspace_id=workspace_id,
                     table_key=table_key,
                     column_name=None,
-                    reason=(
-                        f"M3.2 关系证据：{left} ↔ {right}"
-                        f"（evidence_strength={strength}）"
-                    ),
+                    reason=(f"M3.2 关系证据：{left} ↔ {right}（evidence_strength={strength}）"),
                 )
             )
 
@@ -1647,10 +1595,7 @@ def _sql_evidence(
     return [
         _evidence_entry(
             GRAIN_EVIDENCE_SQL,
-            (
-                f"sql:{first['workspace_id']}:{first['file_id']}"
-                f":{first['statement_id']}"
-            ),
+            (f"sql:{first['workspace_id']}:{first['file_id']}:{first['statement_id']}"),
             workspace_id=workspace_id,
             table_key=table_key,
             column_name=None,
@@ -1766,11 +1711,7 @@ def _evidence_counts(entries: Sequence[Mapping[str, Any]]) -> dict[str, int]:
 def _evidence_sources(entries: Sequence[Mapping[str, Any]]) -> list[str]:
     counts = _evidence_counts(entries)
 
-    return [
-        source_type
-        for source_type in GRAIN_EVIDENCE_ORDER
-        if counts.get(source_type)
-    ]
+    return [source_type for source_type in GRAIN_EVIDENCE_ORDER if counts.get(source_type)]
 
 
 # ============================================================
@@ -1862,9 +1803,7 @@ def _candidate_rows(
         meta = indexes.table_meta.get(folded, {})
         display_key = str(meta.get("table_key") or table_key)
         workspace_id = meta.get("workspace_id")
-        columns = {
-            column.name: column for column in indexes.columns_by_table.get(folded, ())
-        }
+        columns = {column.name: column for column in indexes.columns_by_table.get(folded, ())}
         table_columns = indexes.columns_by_table.get(folded, ())
 
         forms = _candidate_key_forms(folded, indexes, process_key)
@@ -1919,9 +1858,7 @@ def _candidate_rows(
                     "candidate_keys": key_list,
                     "grain_pattern": pattern,
                     "status": GRAIN_STATUS_CANDIDATE,
-                    "process_human_validated": bool(
-                        indexes.process_validated.get(process_key)
-                    ),
+                    "process_human_validated": bool(indexes.process_validated.get(process_key)),
                     "time_columns": list(context.time_columns),
                     "measure_columns": list(context.measure_columns),
                     "identifier_columns": list(context.identifier_columns),
@@ -2017,9 +1954,7 @@ def _grain_table_row(
 
     if evidence_counts is None:
         counts = {source_type: 0 for source_type in GRAIN_EVIDENCE_ORDER}
-        counts[GRAIN_EVIDENCE_COLUMN] = sum(
-            1 for key in keys if key.casefold() in present
-        )
+        counts[GRAIN_EVIDENCE_COLUMN] = sum(1 for key in keys if key.casefold() in present)
 
         if indexes.sql_refs.get(folded):
             counts[GRAIN_EVIDENCE_SQL] = 1
@@ -2041,9 +1976,7 @@ def _grain_table_row(
         "project": str(meta.get("project") or ""),
         "role": role,
         "supporting_table_count": supporting_table_count,
-        "core_candidate": bool(
-            folded in indexes.core_keys or meta.get("core_candidate")
-        ),
+        "core_candidate": bool(folded in indexes.core_keys or meta.get("core_candidate")),
         "evidence": counts,
     }
 
@@ -2058,12 +1991,9 @@ def build_business_grain(inputs: GrainInputs) -> BusinessGrainResult:
     signals_payload = {
         "count": len(signal_rows),
         "note": (
-            "Grain Signal 只表示字段 / 表上存在某类 grain 相关信号，"
-            f"不是 {GRAIN_CANDIDATE_NOTE}。"
+            f"Grain Signal 只表示字段 / 表上存在某类 grain 相关信号，不是 {GRAIN_CANDIDATE_NOTE}。"
         ),
-        "table_count": len(
-            {str(row.get("table_key") or "").casefold() for row in signal_rows}
-        ),
+        "table_count": len({str(row.get("table_key") or "").casefold() for row in signal_rows}),
         "type_counts": _status_counts(
             [str(row.get("signal_type") or "") for row in signal_rows],
             GRAIN_SIGNAL_TYPE_ORDER,
@@ -2092,9 +2022,7 @@ def build_business_grain(inputs: GrainInputs) -> BusinessGrainResult:
         "process_count": len(
             {str(row.get("process_candidate_id") or "") for row in candidate_rows}
         ),
-        "table_count": len(
-            {str(row.get("table_key") or "").casefold() for row in candidate_rows}
-        ),
+        "table_count": len({str(row.get("table_key") or "").casefold() for row in candidate_rows}),
         "candidates": candidate_rows,
     }
 
@@ -2186,6 +2114,16 @@ def run_business_grain_analysis(
     不自动回退去跑前置阶段。
     """
 
+    # 旧布局把 M3.4 产物写在 business/：先清理遗留文件（grain 清单搬迁保留人工列），
+    # 保证同一阶段的产物只存在于 output_dir。
+    relocate_legacy_artifacts(
+        analysis_dir,
+        output_dir,
+        legacy_dir="business",
+        output_files=OUTPUT_FILES,
+        carryover_files=(Path(CARRYOVER_CHECKLIST_INPUT_FILE).name,),
+    )
+
     inputs = read_grain_inputs(analysis_dir)
     result = build_business_grain(inputs)
     result.analysis_dir = analysis_dir
@@ -2197,9 +2135,7 @@ def run_business_grain_analysis(
         "（%s），grain table=%s，confirmed=%s",
         result.signal_count,
         result.candidate_count,
-        "，".join(
-            f"{key}={value}" for key, value in result.pattern_counts.items()
-        ),
+        "，".join(f"{key}={value}" for key, value in result.pattern_counts.items()),
         result.grain_table_count,
         result.status_counts.get(GRAIN_STATUS_CANDIDATE, 0),
     )

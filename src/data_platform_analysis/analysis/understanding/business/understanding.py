@@ -11,20 +11,20 @@
 
     analysis/inventory/tables.json
     analysis/inventory/columns.json
-    analysis/sql/statements.json
-    analysis/sql/table-references.json
-    analysis/lineage/table-lineage.json
-    analysis/lineage/core-table-candidates.json
-    analysis/layer/assessments.json
+    analysis/evidence/sql/statements.json
+    analysis/evidence/sql/table-references.json
+    analysis/evidence/lineage/table-lineage.json
+    analysis/evidence/lineage/core-table-candidates.json
+    analysis/evidence/layer/assessments.json
     config/business-rules.yaml
 
 输出：
 
-    analysis/business/terms.json
-    analysis/business/tables.json
-    analysis/business/domains.json
-    analysis/business/objects.json
-    analysis/business/summary.md
+    analysis/understanding/business/terms.json
+    analysis/understanding/business/tables.json
+    analysis/understanding/business/domains.json
+    analysis/understanding/business/objects.json
+    analysis/understanding/business/summary.md
 
 原则：
 
@@ -54,9 +54,9 @@ from typing import Any
 
 import yaml
 
-from ...config import PROJECT_ROOT
-from ...io_utils import ensure_dir, write_json, write_text
-from ..models import (
+from .... import config
+from ....io_utils import ensure_dir, write_json, write_text
+from ...models import (
     BUSINESS_CONFIDENCE_HIGH,
     BUSINESS_CONFIDENCE_LOW,
     BUSINESS_CONFIDENCE_MEDIUM,
@@ -81,8 +81,8 @@ from ..models import (
     evidence_type_sort_key,
     numeric_id_sort_key,
 )
-from ..naming import qualify_table_ref, table_name_of
-from ..reports import render_business_summary
+from ...naming import qualify_table_ref, table_name_of
+from ...reports import render_business_summary
 
 logger = logging.getLogger(__name__)
 
@@ -93,11 +93,11 @@ logger = logging.getLogger(__name__)
 M2_INPUT_FILES: tuple[tuple[str, str], ...] = (
     ("inventory/tables.json", "tables"),
     ("inventory/columns.json", "columns"),
-    ("sql/statements.json", "statements"),
-    ("sql/table-references.json", "references"),
-    ("lineage/table-lineage.json", "edges"),
-    ("lineage/core-table-candidates.json", "candidates"),
-    ("layer/assessments.json", "assessments"),
+    ("evidence/sql/statements.json", "statements"),
+    ("evidence/sql/table-references.json", "references"),
+    ("evidence/lineage/table-lineage.json", "edges"),
+    ("evidence/lineage/core-table-candidates.json", "candidates"),
+    ("evidence/layer/assessments.json", "assessments"),
 )
 """M3 依赖的 M2 产物（相对 analysis/ 的路径 → JSON 数组字段名）。"""
 
@@ -121,7 +121,7 @@ def _display_path(path: Path) -> str:
     """日志与报告中展示的路径：项目根内用相对路径，其余保持绝对。"""
 
     try:
-        return str(path.resolve().relative_to(PROJECT_ROOT))
+        return str(path.resolve().relative_to(config.PROJECT_ROOT))
 
     except ValueError:
         return str(path)
@@ -213,9 +213,7 @@ def load_business_rules(path: Path) -> BusinessRules:
         objects=objects,
     )
 
-    conflicts = sorted(
-        {keyword.casefold() for keyword in rules.all_keywords} & rules.stopwords
-    )
+    conflicts = sorted({keyword.casefold() for keyword in rules.all_keywords} & rules.stopwords)
 
     if conflicts:
         raise BusinessUnderstandingError(
@@ -319,9 +317,7 @@ def _parse_keywords(value: Any, *, label: str, path: Path) -> tuple[str, ...]:
 
     for item in value:
         if not isinstance(item, str) or not item.strip():
-            raise BusinessUnderstandingError(
-                    f"{label} 只能包含非空字符串：{item!r}（{path}）"
-                )
+            raise BusinessUnderstandingError(f"{label} 只能包含非空字符串：{item!r}（{path}）")
 
         keyword = item.strip()
         token = keyword.casefold()
@@ -418,9 +414,7 @@ class KeywordMatcher:
 
         self._ordered = ordered
         self._ascii = {key: value for key, value in ordered.items() if key.isascii()}
-        self._non_ascii = tuple(
-            (key, value) for key, value in ordered.items() if not key.isascii()
-        )
+        self._non_ascii = tuple((key, value) for key, value in ordered.items() if not key.isascii())
         self._pattern: re.Pattern[str] | None = None
 
         if self._ascii:
@@ -523,7 +517,7 @@ def read_m2_inputs(analysis_dir: Path) -> M2Inputs:
         raise BusinessUnderstandingError(
             "M2 产物缺失，无法执行 M3 Business Understanding："
             f"{'、'.join(missing)}（目录：{_display_path(analysis_dir)}）；"
-            "请先执行 analyze 生成 M2 产物"
+            "请先执行 analyze --stage evidence 生成 M2 产物"
         )
 
     def load(relative: str, key: str) -> list[dict[str, Any]]:
@@ -533,9 +527,7 @@ def read_m2_inputs(analysis_dir: Path) -> M2Inputs:
             raw = json.loads(path.read_text(encoding="utf-8"))
 
         except json.JSONDecodeError as exc:
-            raise BusinessUnderstandingError(
-                f"M2 产物不是合法的 JSON：{path}（{exc}）"
-            ) from exc
+            raise BusinessUnderstandingError(f"M2 产物不是合法的 JSON：{path}（{exc}）") from exc
 
         if not isinstance(raw, dict) or not isinstance(raw.get(key), list):
             raise BusinessUnderstandingError(f"M2 产物缺少 {key} 数组：{path}")
@@ -694,11 +686,7 @@ def _index_core_candidates(
 ) -> set[str]:
     """M2.4 核心表候选索引（table_key casefold，与表索引口径一致）。"""
 
-    return {
-        key.casefold()
-        for record in candidates
-        if (key := _text(record.get("table_key")))
-    }
+    return {key.casefold() for record in candidates if (key := _text(record.get("table_key")))}
 
 
 def _workspace_projects(
@@ -891,13 +879,9 @@ def build_business_understanding(
     term_forms: dict[str, Counter[str]] = {}
 
     domain_refs: dict[str, list[DomainTableRef]] = {rule.key: [] for rule in rules.domains}
-    domain_evidence_types: dict[str, Counter[str]] = {
-        rule.key: Counter() for rule in rules.domains
-    }
+    domain_evidence_types: dict[str, Counter[str]] = {rule.key: Counter() for rule in rules.domains}
     object_refs: dict[str, list[DomainTableRef]] = {rule.key: [] for rule in rules.objects}
-    object_evidence_types: dict[str, Counter[str]] = {
-        rule.key: Counter() for rule in rules.objects
-    }
+    object_evidence_types: dict[str, Counter[str]] = {rule.key: Counter() for rule in rules.objects}
 
     for table in tables:
         table_key = str(table.get("table_key") or "")
@@ -1370,7 +1354,7 @@ def write_business_understanding(
     result: BusinessUnderstandingResult,
     output_dir: Path,
 ) -> tuple[Path, ...]:
-    """写出 analysis/business 全部产物，返回路径列表（固定顺序）。"""
+    """写出 analysis/understanding/business 全部产物，返回路径列表（固定顺序）。"""
 
     ensure_dir(output_dir)
 
@@ -1439,7 +1423,7 @@ def run_business_understanding(
     rules_path: Path,
     output_dir: Path,
 ) -> BusinessUnderstandingResult:
-    """执行 M3 Business Understanding 并写出 analysis/business 产物。
+    """执行 M3 Business Understanding 并写出 analysis/understanding/business 产物。
 
     只读 M2 产物与 business-rules 配置；缺失 M2 输入时直接报错，
     不自动回退去跑 M2。
@@ -1455,8 +1439,7 @@ def run_business_understanding(
 
     if unknown:
         logger.warning(
-            "M3 检出 %s 张表没有任何 Domain / Object 候选（UNKNOWN），"
-            "明细见 %s",
+            "M3 检出 %s 张表没有任何 Domain / Object 候选（UNKNOWN），明细见 %s",
             unknown,
             _display_path(output_dir / "summary.md"),
         )

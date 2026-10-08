@@ -20,13 +20,6 @@ from test_business_understanding import (
     _write_rules,
 )
 
-from data_platform_analysis.analysis.business.quality import (
-    BusinessQualityError,
-    run_business_quality_assessment,
-)
-from data_platform_analysis.analysis.business.understanding import (
-    run_business_understanding,
-)
 from data_platform_analysis.analysis.models import (
     QUALITY_AMBIGUOUS_CONFLICT,
     QUALITY_AMBIGUOUS_DOMINANT,
@@ -38,6 +31,13 @@ from data_platform_analysis.analysis.models import (
     QUALITY_UNKNOWN_NAMING,
     QUALITY_UNKNOWN_SPARSE,
     QUALITY_UNKNOWN_SQL,
+)
+from data_platform_analysis.analysis.understanding.business.quality import (
+    BusinessQualityError,
+    run_business_quality_assessment,
+)
+from data_platform_analysis.analysis.understanding.business.understanding import (
+    run_business_understanding,
 )
 
 # ============================================================
@@ -98,7 +98,7 @@ def _prepare(
     run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=rules_path,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
     return analysis_dir
@@ -107,7 +107,7 @@ def _prepare(
 def _quality(analysis_dir: Path) -> Any:
     return run_business_quality_assessment(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
 
@@ -468,7 +468,7 @@ def test_core_flag_mismatch_detected(tmp_path: Path) -> None:
         ],
     )
 
-    tables_path = analysis_dir / "business" / "tables.json"
+    tables_path = analysis_dir / "understanding" / "business" / "tables.json"
     payload = _read(tables_path)
 
     for item in payload["tables"]:
@@ -516,7 +516,7 @@ def test_output_structure_and_reports(tmp_path: Path) -> None:
 
     result = _quality(analysis_dir)
     payload = _payload(result)
-    business_dir = analysis_dir / "business"
+    business_dir = analysis_dir / "understanding" / "business"
 
     assert list(payload) == [
         "summary",
@@ -601,7 +601,7 @@ def test_quality_is_deterministic_and_readonly(tmp_path: Path) -> None:
         candidates=[{"table_key": "proj.core_unk", "workspace_id": 9001}],
     )
 
-    business_dir = analysis_dir / "business"
+    business_dir = analysis_dir / "understanding" / "business"
     m3_before = {name: (business_dir / name).read_bytes() for name in M3_NAMES}
     m2_before = {
         path: path.read_bytes()
@@ -628,17 +628,17 @@ def test_quality_is_deterministic_and_readonly(tmp_path: Path) -> None:
 
 
 def test_missing_inputs_raise(tmp_path: Path) -> None:
-    """输入全缺 → 明确报错，不自动跑 M2 / analyze-business，也不写产物。"""
+    """输入全缺 → 明确报错，不自动跑 M2（analyze --stage evidence），也不写产物。"""
 
     analysis_dir = tmp_path / "analysis"
 
     with pytest.raises(BusinessQualityError, match="产物缺失"):
         run_business_quality_assessment(
             analysis_dir=analysis_dir,
-            output_dir=analysis_dir / "business",
+            output_dir=analysis_dir / "understanding" / "business",
         )
 
-    assert not (analysis_dir / "business").exists()
+    assert not (analysis_dir / "understanding" / "business").exists()
 
 
 def test_missing_m3_inputs_raise(tmp_path: Path) -> None:
@@ -651,10 +651,10 @@ def test_missing_m3_inputs_raise(tmp_path: Path) -> None:
     with pytest.raises(BusinessQualityError, match="business/tables.json"):
         run_business_quality_assessment(
             analysis_dir=analysis_dir,
-            output_dir=analysis_dir / "business",
+            output_dir=analysis_dir / "understanding" / "business",
         )
 
-    assert not (analysis_dir / "business" / "quality-assessment.json").exists()
+    assert not (analysis_dir / "understanding" / "business" / "quality-assessment.json").exists()
 
 
 def test_invalid_json_raises(tmp_path: Path) -> None:
@@ -665,12 +665,12 @@ def test_invalid_json_raises(tmp_path: Path) -> None:
         tables=[_table(9001, "proj", "only_tbl")],
         columns=[],
     )
-    (analysis_dir / "business" / "tables.json").write_text("{", encoding="utf-8")
+    (analysis_dir / "understanding" / "business" / "tables.json").write_text("{", encoding="utf-8")
 
     with pytest.raises(BusinessQualityError, match="不是合法的 JSON"):
         run_business_quality_assessment(
             analysis_dir=analysis_dir,
-            output_dir=analysis_dir / "business",
+            output_dir=analysis_dir / "understanding" / "business",
         )
 
 
@@ -685,7 +685,7 @@ def test_analyze_business_quality_command(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze-business-quality 产出 3 个文件，两次运行字节一致，且不改 M3 产物。"""
+    """analyze --stage understanding 产出 3 个质量文件，两次运行字节一致，且不改 M2 输入。"""
 
     rules_path = _write_rules(tmp_path / "config" / "business-rules.yaml")
     monkeypatch.setenv("BUSINESS_RULES_PATH", str(rules_path))
@@ -700,21 +700,20 @@ def test_analyze_business_quality_command(
         candidates=[{"table_key": "proj.core_unk", "workspace_id": 9001}],
     )
 
-    assert run_cli("analyze-business") == 0
+    m2_inputs = {path: path.read_bytes() for path in sorted(Path("analysis").rglob("*.json"))}
 
-    business_dir = Path("analysis/business")
-    m3_before = {path: path.read_bytes() for path in sorted(business_dir.iterdir())}
+    assert run_cli("analyze", "--stage", "understanding") == 0
 
-    assert run_cli("analyze-business-quality") == 0
+    business_dir = Path("analysis/understanding/business")
 
     for name in OUTPUT_NAMES:
         assert (business_dir / name).exists(), name
 
-    assert {path: path.read_bytes() for path in m3_before} == m3_before
+    assert {path: path.read_bytes() for path in m2_inputs} == m2_inputs
 
     first_run = {path: path.read_bytes() for path in sorted(business_dir.iterdir())}
 
-    assert run_cli("analyze-business-quality") == 0
+    assert run_cli("analyze", "--stage", "understanding") == 0
     assert {path: path.read_bytes() for path in sorted(business_dir.iterdir())} == first_run
 
 
@@ -724,16 +723,10 @@ def test_analyze_business_quality_command_fails_without_m3(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """缺 M3 产物 → 退出码 1，不写质量产物。"""
+    """前置产物缺失 → 退出码 1，不写质量产物。"""
 
     rules_path = _write_rules(tmp_path / "config" / "business-rules.yaml")
     monkeypatch.setenv("BUSINESS_RULES_PATH", str(rules_path))
 
-    _write_m2(
-        Path("analysis"),
-        tables=[_table(9001, "proj", "only_tbl")],
-        columns=[],
-    )
-
-    assert run_cli("analyze-business-quality") == 1
-    assert not Path("analysis/business/quality-assessment.json").exists()
+    assert run_cli("analyze", "--stage", "understanding") == 1
+    assert not Path("analysis/understanding/business/quality-assessment.json").exists()

@@ -43,14 +43,14 @@ def test_valid_node_id_is_analyzed(
 
     assert run_cli("analyze") == 0
 
-    statements = _read(Path("analysis/sql/statements.json"))
+    statements = _read(Path("analysis/evidence/sql/statements.json"))
     assert statements["count"] > 0
     assert {item["node_id"] for item in statements["statements"]} == {123}
 
-    references = _read(Path("analysis/sql/table-references.json"))
+    references = _read(Path("analysis/evidence/sql/table-references.json"))
     assert {item["node_id"] for item in references["references"]} == {123}
 
-    assert _read(Path("analysis/errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/errors.json"))["count"] == 0
 
 
 def test_node_id_none_is_excluded(
@@ -75,11 +75,11 @@ def test_node_id_none_is_excluded(
 
     assert run_cli("analyze") == 0
 
-    assert _read(Path("analysis/sql/statements.json"))["count"] == 0
-    assert _read(Path("analysis/sql/table-references.json"))["count"] == 0
-    assert _read(Path("analysis/sql/parse-errors.json"))["count"] == 0
-    assert _read(Path("analysis/lineage/table-lineage.json"))["count"] == 0
-    assert _read(Path("analysis/errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/sql/statements.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/sql/table-references.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/sql/parse-errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/lineage/table-lineage.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/errors.json"))["count"] == 0
 
 
 @pytest.mark.parametrize("node_id", ["", "   "])
@@ -110,10 +110,10 @@ def test_blank_node_id_is_excluded(
     assert files["count"] == 1
     assert files["files"][0]["node_id"] is None
 
-    assert _read(Path("analysis/sql/statements.json"))["count"] == 0
-    assert _read(Path("analysis/sql/table-references.json"))["count"] == 0
-    assert _read(Path("analysis/lineage/table-lineage.json"))["count"] == 0
-    assert _read(Path("analysis/errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/sql/statements.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/sql/table-references.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/lineage/table-lineage.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/errors.json"))["count"] == 0
 
 
 def test_snapshot_keeps_files_without_node_id(
@@ -188,19 +188,19 @@ def test_excluded_file_produces_no_evidence(
 
     assert run_cli("analyze") == 0
 
-    statements = _read(Path("analysis/sql/statements.json"))["statements"]
+    statements = _read(Path("analysis/evidence/sql/statements.json"))["statements"]
     assert statements
     assert {item["file_id"] for item in statements} == {"101"}
     assert all(item["node_id"] for item in statements)
 
-    references = _read(Path("analysis/sql/table-references.json"))["references"]
+    references = _read(Path("analysis/evidence/sql/table-references.json"))["references"]
     assert references
     assert {item["file_id"] for item in references} == {"101"}
     assert all(item["node_id"] for item in references)
 
-    lineage = _read(Path("analysis/lineage/table-lineage.json"))["edges"]
+    lineage = _read(Path("analysis/evidence/lineage/table-lineage.json"))["edges"]
     assert lineage
     assert {item["target_key"] for item in lineage} == {"ws_a.dwd_order"}
     assert all(evidence["file_id"] == "101" for item in lineage for evidence in item["evidence"])
 
-    assert _read(Path("analysis/errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/errors.json"))["count"] == 0

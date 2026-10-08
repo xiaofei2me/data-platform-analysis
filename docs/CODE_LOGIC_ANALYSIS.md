@@ -10,11 +10,11 @@
 
 ```
 DataWorks Workspace + MaxCompute Project
-        ↓  Collection（CLI: export / dataworks / maxcompute）
+         ↓  Collection（CLI: export / dataworks / maxcompute）
 source/  Raw Snapshot（时点快照，只读真相源）
-        ↓  Analysis（CLI: analyze / analyze-layer / analyze-business / analyze-business-quality / analyze-business-objects / analyze-business-processes / analyze-business-grain / analyze-business-model / analyze-current-state-model）
+         ↓  Analysis（CLI: analyze / analyze --stage inventory/evidence/understanding/review）
 analysis/  Evidence Chain（证据链：事实 + 候选 + 证据，不含业务结论）
-        ↓  （本项目边界在此）
+         ↓  （本项目边界在此）
 Convention Assessment → 目标分层设计 → DWS / Semantic Layer  → 数仓改造
 ```
 
@@ -45,12 +45,11 @@ Convention Assessment → 目标分层设计 → DWS / Semantic Layer  → 数�
 | `export` | DataWorks + MaxCompute 一次性全量采集 |
 | `dataworks` / `maxcompute` | 分别采集 |
 | `summary` | 由 Snapshot 重新生成 `source/Summary.md` |
-| `analyze` | 基于已有 Snapshot 生成 `analysis/` 证据链（全流程） |
-| `analyze-layer` | 基于已有 `analysis/inventory` 单独执行 M2.2 |
-| `analyze-business` | 基于已有 M2 产物单独执行 M3 Business Understanding（候选 + 证据） |
-| `analyze-business-quality` | 基于已有 M2 / M3 产物单独执行 M3.1 质量评估（只评估，不识别） |
-| `analyze-business-objects` | 基于已有 M2 / M3 / M3.1 产物单独执行 M3.2 Object & Relationship 证据结构（只建结构，不重新分类） |
-| `analyze-business-processes` | 基于已有 M2 / M3 / M3.1 / M3.2 产物单独执行 M3.3 Business Process Candidate Analysis（只产出 process candidate 与信号，不命名、不判 Grain） |
+| `analyze` | 基于已有 Snapshot 生成 `analysis/` Evidence Chain（Stage 01–14 完整链） |
+| `analyze --stage inventory` | 只执行 Stage 01（Inventory），支持 `--workspace` |
+| `analyze --stage evidence` | 只执行 Stage 02–05（Evidence），不支持 `--workspace` |
+| `analyze --stage understanding` | 只执行 Stage 06–11（Understanding），不支持 `--workspace` |
+| `analyze --stage review` | 只执行 Stage 12–14（Review），不支持 `--workspace` |
 | `config` | 打印生效的非敏感配置 |
 
 ### 2.2 DataWorks 采集（`dataworks.py` + `export.py`）
@@ -100,12 +99,14 @@ source/
 读 Workspace identity（失败即 Fatal）
   → 清空 analysis/ 自有产物
   → M2.1 Inventory            写 inventory/*.json
-  → M2.2 Layer Assessment     写 layer/*          （只依赖 M2.1 + 规则配置）
-  → M2.3 SQL Analysis         写 sql/*            （只吃 NodeId 有效 File）
-  → M2.4 Reference / Lineage  写 lineage/*        （层级标注取 M2.2）
-  → M2.5 Metadata Profiling   写 profiling/*
-  → 写 Summary.md + errors.json
+  → M2.2 Layer Assessment     写 evidence/layer/*   （只依赖 M2.1 + 规则配置）
+  → M2.3 SQL Analysis         写 evidence/sql/*     （只吃 NodeId 有效 File）
+  → M2.4 Reference / Lineage  写 evidence/lineage/* （层级标注取 M2.2）
+  → M2.5 Metadata Profiling   写 evidence/profiling/*
+  → 写 summary.md（入口报告） + evidence/errors.json（跨阶段账本）
 ```
+
+**四阶段入口**：`analyze --stage inventory` 只走到 `inventory/*.json` + 两份 summary；`analyze --stage evidence` 走完 M2.1–M2.5 后调用同一个 `_write_reports()`，因此 `evidence/{lineage,profiling}/summary.md` 与根 `summary.md` 的血缘段用的是刚算出来的真实结果，与全量 `analyze` 的 Evidence 产物逐文件字节一致（见 `docs/COMMANDS.md` 的 Evidence Stage Contract）。
 
 执行顺序 `M2.1 → M2.2 → M2.3 → M2.4 → M2.5` 是刻意的：M2.2 只依赖表清单与规则配置，必须先于 M2.4 完成，血缘才能直接引用 `candidate_layer`（见 ADR-0003）。
 
@@ -122,7 +123,7 @@ source/
 
 **产出字段（tables.json）**：`workspace_id / workspace_name / project / schema / table / table_key / comment / column_count / partition_count / size / is_virtual_view / lifecycle / creation_time / last_modified_time / raw_file`。
 
-### 3.2 M2.2 Layer Assessment（`layer/layer_assessment.py`）——唯一的层级判定
+### 3.2 M2.2 Layer Assessment（M2 层级判定，代码已实现）（`layer/layer_assessment.py`）——唯一的层级判定
 
 **输入**：`analysis/inventory/tables.json` + `config/layer-rules.yaml`（外部配置，改规则不用改代码）。
 
@@ -148,9 +149,9 @@ matching: {case_sensitive: false}
 | CDM 无命中 | `None` | UNKNOWN | 仅 workspace |
 | CDM 跨子层多命中 | `None` | CONFLICT | 保留全部命中，不擅自选择 |
 
-- **跨层命名提示**：ODS/ADS 表命中 `dwd_/dws_/dim_` 等其他层前缀时，candidate 仍按 workspace 事实判定，命中写入 evidence 并通过 `cross_layer_hits` 暴露 → WARNING 日志 + `layer/summary.md`「跨层命名提示」节。这是"表放错层"的信号，留给后续 Convention Assessment。
+- **跨层命名提示**：ODS/ADS 表命中 `dwd_/dws_/dim_` 等其他层前缀时，candidate 仍按 workspace 事实判定，命中写入 evidence 并通过 `cross_layer_hits` 暴露 → WARNING 日志 + `evidence/layer/summary.md`「跨层命名提示」节。这是"表放错层"的信号，留给后续 Convention Assessment。
 - **状态语义**：UNKNOWN = 证据不足，**不是**违规；CONFLICT = 需人工判定。
-- 双入口：`analyze-layer` 子命令与 pipeline 内步骤共用 `run_layer_assessment()`，行为一致；配置缺失/非法是 Fatal Error，不静默跳过。
+- 唯一入口：`analyze --stage evidence` → `AnalysisPipeline.run_stage_evidence()` → `run_layer_assessment()`；配置缺失/非法是 Fatal Error，不静默跳过。
 - 排序：`(workspace_id, project, table_name)`；JSON 信封 `{count, assessments[]}`。
 - **历史决策**：取代 M2.1 的 `naming.layer_candidate`（纯表名前缀、不看 workspace，对本项目 69% 表失效且有 35 条错判），见 `docs/adr/0003-layer-candidate-single-source.md`。
 
@@ -171,7 +172,7 @@ content（只取 NodeId 有效 File）
 
 - **三层原则**：raw SQL = 真相源；normalized SQL = 只给 parser 的副本；分析输出 = 派生证据。`StatementRecord.sql` 永远是原文，归一化明细在 `normalizations` 里可追溯，**不允许为了 errors=0 吞错**。
 - **CTAS Fallback**：AST 解析为 `unsupported`（Command）且具备 CTAS 特征时，交给 token scanner（`sql/fallback.py`，单向前扫描、游标必须严格前进）提取引用；提取成功记 `extraction_method=fallback`，失败保持 unsupported。与 Normalization 是两个独立阶段，互不混用。
-- **失败处理**：单条语句失败只影响该条，写入 `sql/parse-errors.json` 与 `errors.json`，文件级与分析级继续。
+- **失败处理**：单条语句失败只影响该条，写入 `evidence/sql/parse-errors.json`，并记入跨阶段账本 `evidence/errors.json`，文件级与分析级继续。
 
 **当前实测**：1963 条语句全部 `success`（ast=1962、fallback=1），归一化生效 1 条，unsupported=0、error=0。
 
@@ -203,17 +204,17 @@ content（只取 NodeId 有效 File）
 | 类型 | 触发条件 | 处理 |
 | --- | --- | --- |
 | Fatal Error | `source/` 不存在；无法确定 Workspace identity；`--workspace` 不在 Snapshot 中；M2.2 规则配置非法 | 立即非零退出 |
-| Recoverable Error | 单个 index/raw 损坏、单条 SQL 解析失败、content 缺失、单表 metadata 缺失 | 记录后继续，最终进 `errors.json`（SQL 同时进 `parse-errors.json`） |
+| Recoverable Error | 单个 index/raw 损坏、单条 SQL 解析失败、content 缺失、单表 metadata 缺失 | 记录后继续，最终进跨阶段账本 `evidence/errors.json`（SQL 同时进 `parse-errors.json`） |
 
 当前实测可恢复错误 = 0。
 
 ### 3.7 M3 Business Understanding（`business/understanding.py`，独立命令）
 
-**入口**：`cli.analyze-business` → `run_business_understanding()`。**不在 `AnalysisPipeline.run()` 里**：`analyze` 不产出 `analysis/business/`，M3 也不会顺带跑 M2；M2 产物更新后需重新执行 `analyze-business`（否则 `analysis/business/` 停留在旧输入上）。
+**入口**：`analyze --stage understanding` → `AnalysisPipeline.run_stage_understanding()` → `run_business_understanding()`。**模块自身不回退**：只读 M2 产物，M2 产物更新后需重新执行 `analyze --stage understanding`（否则 `analysis/understanding/business/` 停留在旧输入上）。
 
-**输入（全部只读，不调 API、不读 `source/`）**：M2.1 `inventory/{tables,columns}.json`、M2.3 `sql/{statements,table-references}.json`、M2.4 `lineage/{table-lineage,core-table-candidates}.json`、M2.2 `layer/assessments.json`，加外部词典 `config/business-rules.yaml`。任一输入缺失直接报错退出，**不回退去跑 M2**。
+**输入（全部只读，不调 API、不读 `source/`）**：M2.1 `inventory/{tables,columns}.json`、M2.3 `evidence/sql/{statements,table-references}.json`、M2.4 `evidence/lineage/{table-lineage,core-table-candidates}.json`、M2.2 `evidence/layer/assessments.json`，加外部词典 `config/business-rules.yaml`。任一输入缺失直接报错退出，**不回退去跑 M2**。
 
-**产出**：`analysis/business/{terms.json, tables.json, domains.json, objects.json, summary.md}`，只含 Candidate + Evidence：不产出业务结论，不生成「这是××表」这类描述（无 LLM）。
+**产出**：`analysis/understanding/business/{terms.json, tables.json, domains.json, objects.json, summary.md}`，只含 Candidate + Evidence：不产出业务结论，不生成「这是××表」这类描述（无 LLM）。
 
 **逻辑**：
 
@@ -230,11 +231,11 @@ content（只取 NodeId 有效 File）
 
 ### 3.8 M3.1 Business Understanding Quality Assessment（`business/quality.py`，独立命令）
 
-**入口**：`cli.analyze-business-quality` → `run_business_quality_assessment()`。**同样不在 `AnalysisPipeline.run()` 里**：只评估已有结果，不回退跑 M2 / `analyze-business`。
+**入口**：`analyze --stage understanding` → `run_business_quality_assessment()`。**模块自身不回退**：只评估已有结果，不回退跑 M2 / M3。
 
-**输入（全部只读）**：M3 的 `business/{tables,domains,objects,terms}.json` + M2 的 `inventory/{tables,columns}.json`、`sql/table-references.json`、`lineage/{table-lineage,core-table-candidates}.json`。任一缺失 / 非法 JSON 直接报错退出（不自动补齐）；**不修改任何已有 M3 产物**，只新增三个文件。
+**输入（全部只读）**：M3 的 `understanding/business/{tables,domains,objects,terms}.json` + M2 的 `inventory/{tables,columns}.json`、`evidence/sql/table-references.json`、`evidence/lineage/{table-lineage,core-table-candidates}.json`。任一缺失 / 非法 JSON 直接报错退出（不自动补齐）；**不修改任何已有 M3 产物**，只新增三个文件。
 
-**产出**：`analysis/business/{quality-assessment.json, quality-assessment.md, review-checklist.md}`。
+**产出**：`analysis/understanding/business/{quality-assessment.json, quality-assessment.md, review-checklist.md}`。
 
 **逻辑（只评估不识别，不选 winner、不产生业务结论）**：
 
@@ -251,11 +252,11 @@ content（只取 NodeId 有效 File）
 
 ### 3.9 M3.2 Business Object & Relationship Analysis（`business/objects.py`，独立命令）
 
-**入口**：`cli.analyze-business-objects` → `run_business_object_analysis()`。**不在 `AnalysisPipeline.run()` 里**：只把已有的 M2 / M3 / M3.1 产物整理成「Object → Table → Relationship → Evidence」的证据结构，不回退跑 `analyze` / `analyze-business` / `analyze-business-quality`，也不改写它们。
+**入口**：`analyze --stage understanding` → `run_business_object_analysis()`。**模块自身不回退**：只把已有的 M2 / M3 / M3.1 产物整理成「Object → Table → Relationship → Evidence」的证据结构，不回退跑前置阶段，也不改写它们。
 
-**输入（12 个，全部只读）**：M3 的 `business/{objects,tables,domains}.json`、M3.1 的 `business/{quality-assessment.json, review-checklist.md}`、M2 的 `inventory/{tables,columns}.json`、`sql/{statements,table-references}.json`、`lineage/{table-lineage,core-table-candidates}.json`、`layer/assessments.json`。任一缺失 / 非法 JSON → `BusinessObjectsError` + 退出码 1（明确点名缺失文件，不自动补齐）。
+**输入（12 个，全部只读）**：M3 的 `understanding/business/{objects,tables,domains}.json`、M3.1 的 `understanding/business/{quality-assessment.json, review-checklist.md}`、M2 的 `inventory/{tables,columns}.json`、`evidence/sql/{statements,table-references}.json`、`evidence/lineage/{table-lineage,core-table-candidates}.json`、`evidence/layer/assessments.json`。任一缺失 / 非法 JSON → `BusinessObjectsError` + 退出码 1（明确点名缺失文件，不自动补齐）。
 
-**产出（5 个，固定顺序）**：`analysis/business/{objects-registry.json, object-tables.json, object-relationships.json, object-evidence-matrix.json, object-graph.md}`；只新增这五个文件，M2 / M3 / M3.1 产物字节不变。
+**产出（5 个，固定顺序）**：`analysis/understanding/business/{objects-registry.json, object-tables.json, object-relationships.json, object-evidence-matrix.json, object-graph.md}`；只新增这五个文件，M2 / M3 / M3.1 产物字节不变。
 
 **逻辑（只建结构，不产生业务结论）**：
 
@@ -275,11 +276,11 @@ content（只取 NodeId 有效 File）
 
 ### 3.10 M3.3 Business Process Candidate Analysis（`business/processes.py`，独立命令）
 
-**入口**：`cli.analyze-business-processes` → `run_business_process_analysis()`。**不在 `AnalysisPipeline.run()` 里**：只把已有 M2 / M3 / M3.1 / M3.2 产物与 `config/process-rules.yaml` 组合成 process candidate，不回退跑前置阶段，也不改写它们。
+**入口**：`analyze --stage understanding` → `run_business_process_analysis()`。**模块自身不回退**：只把已有 M2 / M3 / M3.1 / M3.2 产物与 `config/process-rules.yaml` 组合成 process candidate，不回退跑前置阶段，也不改写它们。
 
-**输入（13 个必需 + 1 个可选，全部只读）**：M3.2 的 `business/{objects-registry,object-tables,object-relationships}.json`、M3 的 `business/{tables,terms}.json`、M3.1 的 `business/review-checklist.md`、M2 的 `inventory/{tables,columns}.json`、`sql/{statements,table-references}.json`、`lineage/{table-lineage,core-table-candidates}.json`，外加 `config/process-rules.yaml`；可选输入 `business/process-review-checklist.md`（人工回填，重跑时带回）。任一必需输入缺失 / 非法 JSON / 配置非法 → `BusinessProcessesError` + 退出码 1（点名缺失文件或配置段，不自动回退执行前置阶段）。
+**输入（13 个必需 + 1 个可选，全部只读）**：M3.2 的 `understanding/business/{objects-registry,object-tables,object-relationships}.json`、M3 的 `understanding/business/{tables,terms}.json`、M3.1 的 `understanding/business/review-checklist.md`、M2 的 `inventory/{tables,columns}.json`、`evidence/sql/{statements,table-references}.json`、`evidence/lineage/{table-lineage,core-table-candidates}.json`，外加 `config/process-rules.yaml`；可选输入 `understanding/business/process-review-checklist.md`（人工回填，重跑时带回）。任一必需输入缺失 / 非法 JSON / 配置非法 → `BusinessProcessesError` + 退出码 1（点名缺失文件或配置段，不自动回退执行前置阶段）。
 
-**产出（6 个，固定顺序）**：`analysis/business/{process-signals.json, processes.json, process-tables.json, process-objects.json, process-summary.md, process-review-checklist.md}`；只新增这六个文件，M2 / M3 / M3.1 / M3.2 产物字节不变。
+**产出（6 个，固定顺序）**：`analysis/understanding/business/{process-signals.json, processes.json, process-tables.json, process-objects.json, process-summary.md, process-review-checklist.md}`；只新增这六个文件，M2 / M3 / M3.1 / M3.2 产物字节不变。
 
 **逻辑（信号 + 分组 + 门槛，不产生业务结论）**：
 
@@ -295,17 +296,17 @@ content（只取 NodeId 有效 File）
 
 **当前实测（3719 表）**：signal 12712 条（transaction_id 214 / transaction_measure 4262 / event_time 5030 / status 618 / multi_object 2203 / lifecycle 385，覆盖 3009 张表），process candidate **17** 个（weak 1 / moderate 0 / strong 16；Level 分布 level_1=9、level_2=16、level_3=16），process table 2310 行、process object 47 行，human_validated 0 / 17（清单尚未人工回填）；4 个 Object 集合（customer 单独、product 单独、store 单独、employee 单独等）因没有 transaction 信号或够不到任何 Level 只保留 signal 不生成 candidate，2 个 candidate 缺 sql / lineage 证据、1 个缺关系证据（已写入 unresolved_questions）。
 
-**边界（必须记住）**：Signal ≠ Process（命中规则只是信号）；candidate ≠ confirmed（机器不产出 confirmed process，也不产出 process name）；不判定 Grain（只记录 grain signals）；不做 Object ↔ Process 简单映射；core_table_count 沿用 M2.4 / M3 的 lineage 结构指标，不是业务价值判断；`analyze` / `analyze-business` / `analyze-business-quality` / `analyze-business-objects` 都不刷新 M3.3 产物，上游变化后需重跑 `analyze-business-processes`。
+**边界（必须记住）**：Signal ≠ Process（命中规则只是信号）；candidate ≠ confirmed（机器不产出 confirmed process，也不产出 process name）；不判定 Grain（只记录 grain signals）；不做 Object ↔ Process 简单映射；core_table_count 沿用 M2.4 / M3 的 lineage 结构指标，不是业务价值判断；`analyze` / `analyze --stage understanding` / `analyze --stage understanding` / `analyze --stage understanding` 都不刷新 M3.3 产物，上游变化后需重跑 `analyze --stage understanding`。
 
 ---
 
 ### 3.11 M3.4 Grain Candidate Analysis（`business/grain.py`，独立命令）
 
-**入口**：`cli.analyze-business-grain` → `run_business_grain_analysis()`。**不在 `AnalysisPipeline.run()` 里**：只读已有 M2 / M3 / M3.1 / M3.2 / M3.3 产物，组合成 grain candidate，不回退跑前置阶段，也不改写它们；**不新增任何配置**。
+**入口**：`analyze --stage understanding` → `run_business_grain_analysis()`。**模块自身不回退**：只读已有 M2 / M3 / M3.1 / M3.2 / M3.3 产物，组合成 grain candidate，不回退跑前置阶段，也不改写它们；**不新增任何配置**。
 
-**输入（15 个必需 + 2 个可选，全部只读）**：M3.3 的 `business/{process-signals,processes,process-tables,process-objects}.json`、M3.2 的 `business/{objects-registry,object-tables,object-relationships}.json`、M2 的 `inventory/{tables,columns}.json`、`sql/{statements,table-references}.json`、`lineage/{table-lineage,core-table-candidates}.json`、`profiling/{tables,columns}.json`；可选输入 `business/process-review-checklist.md`（只记录 Process 是否人工确认）与 `business/grain-review-checklist.md`（本阶段清单的人工回填，重跑带回）。任一必需输入缺失 / 非法 JSON → `BusinessGrainError` + 退出码 1（点名缺失文件，不调 API、不读 `source/`、不回退执行前置阶段）。
+**输入（15 个必需 + 2 个可选，全部只读）**：M3.3 的 `understanding/business/{process-signals,processes,process-tables,process-objects}.json`、M3.2 的 `understanding/business/{objects-registry,object-tables,object-relationships}.json`、M2 的 `inventory/{tables,columns}.json`、`evidence/sql/{statements,table-references}.json`、`evidence/lineage/{table-lineage,core-table-candidates}.json`、`evidence/profiling/{tables,columns}.json`；可选输入 `understanding/business/process-review-checklist.md`（只记录 Process 是否人工确认）与 `understanding/business/grain-review-checklist.md`（本阶段清单的人工回填，重跑带回）。任一必需输入缺失 / 非法 JSON → `BusinessGrainError` + 退出码 1（点名缺失文件，不调 API、不读 `source/`、不回退执行前置阶段）。
 
-**产出（5 个，固定顺序）**：`analysis/business/{grain-signals.json, grain-candidates.json, grain-tables.json, grain-summary.md, grain-review-checklist.md}`；只新增这五个文件，M2 ~ M3.3 产物字节不变。
+**产出（5 个，固定顺序）**：`analysis/understanding/business/{grain-signals.json, grain-candidates.json, grain-tables.json, grain-summary.md, grain-review-checklist.md}`；只新增这五个文件，M2 ~ M3.3 产物字节不变。
 
 **逻辑（形态级联 + 证据 + 未决，不产生业务结论）**：
 
@@ -323,15 +324,15 @@ content（只取 NodeId 有效 File）
 
 **当前实测（3719 表 / 17 个 process candidate / 2310 张 process 表）**：Grain Signal **22436** 条（identifier 7647、time 7928、measure 3484、periodic 2473、aggregation 844、snapshot 43、event 17，覆盖 2262 张表）；Grain Candidate **5679** 个（pattern：aggregation 2534、periodic 1978、transaction 476、unknown 648、snapshot 43、event 0；strength：strong 4745 / moderate 257 / weak 677；空候选键 648）；grain → table **25011** 行（anchor 5679、supporting 19332）；未决：multiple_possible_keys 4371、missing_lineage 2529、missing_sql 2522、time_semantics_unclear 1948、aggregation_level_unclear 1911、no_identifier_signal 1591、insufficient_evidence 677；`process_human_validated` 0 / 5679（Process 侧 0 / 17 已确认）。
 
-**边界（必须记住）**：Grain Signal ≠ Grain Candidate；Grain Candidate ≠ Confirmed Grain（status 恒 candidate）；空 `candidate_keys` ≠ 没有 grain；不伪造唯一性（Profiling 无样本，strength 只是证据源数量）；role 只用 `anchor / supporting`，不产出 DWD / DWS / Fact / Dimension 命名；`analyze` 及所有前置阶段都不刷新 M3.4 产物，上游变化后需重跑 `analyze-business-grain`。
+**边界（必须记住）**：Grain Signal ≠ Grain Candidate；Grain Candidate ≠ Confirmed Grain（status 恒 candidate）；空 `candidate_keys` ≠ 没有 grain；不伪造唯一性（Profiling 无样本，strength 只是证据源数量）；role 只用 `anchor / supporting`，不产出 DWD / DWS / Fact / Dimension 命名；`analyze` 及所有前置阶段都不刷新 M3.4 产物，上游变化后需重跑 `analyze --stage understanding`。
 
 ### 3.12 M3.5 Fact / Dimension Candidate Analysis（`model/business_model.py`，独立命令）
 
-**入口**：`cli.analyze-business-model` → `run_business_model_analysis()`。**不在 `AnalysisPipeline.run()` 里**：只读已有 M2 / M3 / M3.1 / M3.2 / M3.3 / M3.4 产物，组合成 fact / dimension / relationship candidate，不回退跑前置阶段，也不改写它们；**不新增任何配置**。
+**入口**：`analyze --stage understanding` → `run_business_model_analysis()`。**模块自身不回退**：只读已有 M2 / M3 / M3.1 / M3.2 / M3.3 / M3.4 产物，组合成 fact / dimension / relationship candidate，不回退跑前置阶段，也不改写它们；**不新增任何配置**。
 
-**输入（15 个必需 + 3 个可选，全部只读）**：M3.4 的 `business/{grain-candidates,grain-tables}.json`、M3.3 的 `business/{processes,process-objects}.json`、M3.2 的 `business/{objects-registry,object-tables,object-relationships}.json`、M2 的 `inventory/{tables,columns}.json`、`sql/table-references.json`、`lineage/{table-lineage,core-table-candidates}.json`、`profiling/{tables,columns}.json`、M2.2 的 `layer/assessments.json`（任务书口径写作 M2.5，仓库内实为 M2.2 Layer Assessment，只作 `candidate_layer` 结构证据）；可选输入 `business/process-review-checklist.md` / `business/grain-review-checklist.md`（只刷新 Process / Grain 的人工确认记录）与 `model/model-review-checklist.md`（本阶段清单回填，重跑带回）。**刻意不读** `grain-signals / process-signals / process-tables`、`business/{tables,terms,domains}.json`、`quality-assessment.json`、`sql/statements.json`（避免重做 Object / Process / Grain 判定与 SQL 解析）。任一必需输入缺失 / 非法 JSON / 根节点非对象 / 跨文件引用未知 process candidate 或 Object → `BusinessModelError` + 退出码 1（点名缺失文件，不调 API、不读 `source/`、不回退执行前置阶段）。
+**输入（15 个必需 + 3 个可选，全部只读）**：M3.4 的 `understanding/business/{grain-candidates,grain-tables}.json`、M3.3 的 `understanding/business/{processes,process-objects}.json`、M3.2 的 `understanding/business/{objects-registry,object-tables,object-relationships}.json`、M2 的 `inventory/{tables,columns}.json`、`evidence/sql/table-references.json`、`evidence/lineage/{table-lineage,core-table-candidates}.json`、`evidence/profiling/{tables,columns}.json`、M2.2 的 `evidence/layer/assessments.json`（任务书口径写作 M2.5，仓库内实为 M2.2 Layer Assessment，只作 `candidate_layer` 结构证据）；可选输入 `understanding/business/process-review-checklist.md` / `understanding/business/grain-review-checklist.md`（只刷新 Process / Grain 的人工确认记录）与 `understanding/modeling/model-review-checklist.md`（本阶段清单回填，重跑带回）。**刻意不读** `grain-signals / process-signals / process-tables`、`understanding/business/{tables,terms,domains}.json`、`quality-assessment.json`、`evidence/sql/statements.json`（避免重做 Object / Process / Grain 判定与 SQL 解析）。任一必需输入缺失 / 非法 JSON / 根节点非对象 / 跨文件引用未知 process candidate 或 Object → `BusinessModelError` + 退出码 1（点名缺失文件，不调 API、不读 `source/`、不回退执行前置阶段）。
 
-**产出（8 个，固定顺序）**：`analysis/model/{fact-candidates.json, dimension-candidates.json, fact-dimension-relationships.json, fact-tables.json, dimension-tables.json, model-evidence-matrix.json, model-summary.md, model-review-checklist.md}`；只新增这八个文件，M2 ~ M3.4 产物字节不变。
+**产出（8 个，固定顺序）**：`analysis/understanding/modeling/{fact-candidates.json, dimension-candidates.json, fact-dimension-relationships.json, fact-tables.json, dimension-tables.json, model-evidence-matrix.json, model-summary.md, model-review-checklist.md}`；只新增这八个文件，M2 ~ M3.4 产物字节不变。
 
 **逻辑（候选 + 证据 + 未决，不产生业务结论）**：
 
@@ -350,15 +351,15 @@ content（只取 NodeId 有效 File）
 
 **当前实测（3719 表 / 5679 grain candidate / 5 Object / 17 process）**：Fact Gate 通过 **3364**、未通过 **2315**（全部 `no_measure_evidence`）；fact candidate **3364**（pattern：aggregation 1730、periodic 934、transaction 476、unknown 181、snapshot 43、event 0；strength 全 strong；覆盖 15 个 process / 3364 个 grain / 1282 张表 / 4 个 Object）；dimension candidate **5**（role_status：ambiguous 4、candidate 1，涉及 3182 张关联表）；relationship **15979**（strong 8517 / moderate 3641 / weak 3821）；fact → table **15697** 行（anchor 3364、supporting 12333）、dimension → table **7195** 行（anchor 695、supporting 6500）；evidence matrix **3369** 行；未决：fact 侧 `ambiguous_grain` 3107、`missing_sql_evidence` / `missing_lineage_evidence` 各 1857、`missing_object_evidence` 525、`insufficient_grain_evidence` 181、`missing_measure_evidence` 50，dimension 侧 `fact_and_dimension_ambiguous` 4、`missing_fact_reference` 1，relationship 侧 `sql_evidence_missing` 9375、`lineage_evidence_missing` 6638、`insufficient_evidence` 3821、`missing_object_link` 358；清单分区 P1 563 / P2 2672 / P3 5 / P4 3821。
 
-**边界（必须记住）**：fact / dimension / relationship candidate ≠ confirmed 模型（机器阶段不写 confirmed，只有人工回填才会变 confirmed）；strength 只是证据源数量，Profiling 是 metadata-only、不伪造唯一性；`layer` 只作 `candidate_layer`，`core_candidate` 只作证据覆盖与复核优先级；多角色与 UNKNOWN / AMBIGUOUS 一律保留，不合并、不拆分、不删表、不挑 winner；不读 `source/`、不重解析原始数据、不重做 Object / Process / Grain classifier、不调用 LLM / 外部 API；**不产出 DWD / DWS / Semantic Layer / DDL**（那是后续 Target DWD Design 阶段）；上游变化后需重跑 `analyze-business-model` 才刷新本阶段产物。
+**边界（必须记住）**：fact / dimension / relationship candidate ≠ confirmed 模型（机器阶段不写 confirmed，只有人工回填才会变 confirmed）；strength 只是证据源数量，Profiling 是 metadata-only、不伪造唯一性；`layer` 只作 `candidate_layer`，`core_candidate` 只作证据覆盖与复核优先级；多角色与 UNKNOWN / AMBIGUOUS 一律保留，不合并、不拆分、不删表、不挑 winner；不读 `source/`、不重解析原始数据、不重做 Object / Process / Grain classifier、不调用 LLM / 外部 API；**不产出 DWD / DWS / Semantic Layer / DDL**（那是后续 Target DWD Design 阶段）；上游变化后需重跑 `analyze --stage understanding` 才刷新本阶段产物。
 
 ### 3.13 M3.6 Current-State Model Review（`review/findings.py`，独立命令）
 
-**入口**：`cli.analyze-current-state-model` → `run_current_state_model_analysis()`；同时支持 `uv run python -m data_platform_analysis.cli analyze-current-state-model`（`cli.py` 末尾的 `if __name__ == "__main__": main()` 守卫）。**不在 `AnalysisPipeline.run()` 里**：只读已有 M2 / M3 / M3.5 产物做评审，不回退跑前置阶段，也不改写它们；**不新增任何配置**。
+**入口**：`analyze --stage review` → `AnalysisPipeline.run_stage_review()` → `run_current_state_model_analysis()`；同时支持 `uv run python -m data_platform_analysis.cli analyze --stage review`（`cli.py` 末尾的 `if __name__ == "__main__": main()` 守卫）。**模块自身不回退**：只读已有 M2 / M3 / M3.5 产物做评审，不回退跑前置阶段，也不改写它们；**不新增任何配置**。
 
-**输入（13 个必需 + 1 个可选，全部只读）**：M3.5 的 `model/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables}.json`、M3.4 的 `business/grain-candidates.json`、M3.3 的 `business/processes.json`、M3.2 的 `business/objects-registry.json`、M2 的 `inventory/{tables,columns}.json`、`lineage/{table-lineage,core-table-candidates}.json`、M2.2 的 `layer/assessments.json`（任务书口径写作 M2.5）；可选 `review/current-state-review-checklist.md`（本阶段清单回填，重跑带回）。**刻意不读** `profiling/`、`sql/table-references.json`、`source/`。任一必需输入缺失 / 非法 JSON / 根节点非对象 / 跨文件引用未知 process·grain·fact·dimension·Object → `CurrentStateModelError` + 退出码 1（点名缺失文件，不调 API、不回退执行前置阶段）。
+**输入（13 个必需 + 1 个可选，全部只读）**：M3.5 的 `understanding/modeling/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables}.json`、M3.4 的 `understanding/business/grain-candidates.json`、M3.3 的 `understanding/business/processes.json`、M3.2 的 `understanding/business/objects-registry.json`、M2 的 `inventory/{tables,columns}.json`、`evidence/lineage/{table-lineage,core-table-candidates}.json`、M2.2 的 `evidence/layer/assessments.json`（任务书口径写作 M2.5）；可选 `review/current-state-review-checklist.md`（本阶段清单回填，重跑带回）。**刻意不读** `evidence/profiling/`、`evidence/sql/table-references.json`、`source/`。任一必需输入缺失 / 非法 JSON / 根节点非对象 / 跨文件引用未知 process·grain·fact·dimension·Object → `CurrentStateModelError` + 退出码 1（点名缺失文件，不调 API、不回退执行前置阶段）。
 
-**产出（5 个，固定顺序）**：`analysis/review/{current-state-model.json, current-state-model-tables.json, current-state-findings.json, current-state-model-summary.md, current-state-review-checklist.md}`；只新增这五个文件，M2 ~ M3.5 产物字节不变。同一次运行里还会接着跑 M3.6 v2 Problem Assessment（§3.14），再写出 4 个 problem 产物，合计 9 个 M3.6 产物。
+**产出（5 个，固定顺序）**：`analysis/understanding/modeling/{current-state-model.json, current-state-model-tables.json, current-state-model-summary.md}`（`MODELLING_OUTPUT_FILES`）+ `analysis/review/{findings.json, current-state-review-checklist.md}`（`REVIEW_OUTPUT_FILES`）；只新增这五个文件，M2 ~ M3.5 产物字节不变。同一次运行里还会接着跑 M3.6 v2 Problem Assessment（§3.14），再写出 4 个 problem 产物，合计 9 个 M3.6 产物。
 
 **逻辑（Evidence First，只评审不改模）**：
 
@@ -374,7 +375,7 @@ content（只取 NodeId 有效 File）
 
 **当前实测（3719 表 / 3364 fact / 5 dimension / 15979 relationship）**：finding **4439**（P0 696、P1 3147、P2 581、P3 15；18 类命中 15 类，`fact_gate_pattern / snapshot_periodic_ambiguous / multi_process_table` 为 0）；review group：model_issue_review 3170、grain_review 704、fact_review 558、dimension_review 5、relationship_review 2；scope：table_pair 2605、table 1269、fact_group 489、fact 50、process 15、stage 7、dimension 4。`current_role`：FACT 997、DIMENSION 627、WIDE_ANALYTICAL 52、RESULT_TABLE 2、UNKNOWN 2041、AMBIGUOUS 0；`model_shape`：AGGREGATE 374、PERIODIC 152、TRANSACTION 144、MIXED 130、SNAPSHOT 16、UNKNOWN 2903。Fact Gate 复算：通过 **3364**、未通过 **2315**（全部 `no_measure_evidence`，按形态 periodic 1044 / aggregation 804 / unknown 467），`matches_m35=True`；fact strength 全 strong（证据源 presence：process / grain / column 3364、object 2839、table 1244、sql / lineage 1507）；dimension 5（role candidate 1 / ambiguous 4）；relationship 15979（strong 8517 / moderate 3641 / weak 3821；单证据 3821、仅技术引用 358、仅共现 5880、无共享表 6238）；清单 **157 行**（每区 ≤50：Fact 50 / Dimension 5 / Grain 50 / Relationship 2 / Model Issue 50），全部 `pending`。两次连续运行 5 个产物 SHA256 一致、13 个输入文件字节不变，单次约 2s。
 
-**边界（必须记住）**：finding ≠ 已确认问题（状态恒 candidate，只有清单回填才变）；异常只标记 Review，不判定 Wrong；不设计 Target DWD、不建 DWD / DWS、不出 DDL、不合并 / 不拆分 / 不删表 / 不改表、不自动决定最终事实与维度、不把 candidate 改 confirmed；不调 LLM / 外部 API、不引入人工业务知识、不按表名断言业务事实、不把 SQL JOIN 等同业务关系；`current_role / model_shape` 只描述当前平台已存在的形态，**不是 Target DWD Design**；上游变化后需重跑 `analyze-current-state-model` 才刷新本阶段产物。
+**边界（必须记住）**：finding ≠ 已确认问题（状态恒 candidate，只有清单回填才变）；异常只标记 Review，不判定 Wrong；不设计 Target DWD、不建 DWD / DWS、不出 DDL、不合并 / 不拆分 / 不删表 / 不改表、不自动决定最终事实与维度、不把 candidate 改 confirmed；不调 LLM / 外部 API、不引入人工业务知识、不按表名断言业务事实、不把 SQL JOIN 等同业务关系；`current_role / model_shape` 只描述当前平台已存在的形态，**不是 Target DWD Design**；上游变化后需重跑 `analyze --stage review` 才刷新本阶段产物。
 
 ---
 
@@ -382,11 +383,11 @@ content（只取 NodeId 有效 File）
 
 **方法论长文**：[docs/M36_PROBLEM_ASSESSMENT.md](M36_PROBLEM_ASSESSMENT.md) 覆盖阶段链路、Finding ≠ Problem、13 类 taxonomy 每类 7 项说明、四条原则（Overlap ≠ Duplication、UNKNOWN ≠ BAD MODEL、Aggregate Fact ≠ Problem、Fact Gate Failure ≠ Fact Invalid）、M3.6 → M4 决策边界、人工裁决生命周期与优先级、重构证据模板与矩阵、真实数据摘要、完成标准与禁用表达清单；本节只记录代码事实，两者冲突以代码与实测数据为准。
 
-**入口**：仍是 `cli.analyze-current-state-model` → `run_current_state_model_analysis()`，**不新增子命令**：写完 5 个 M3.6 产物后在同一次运行里把 finding 聚合成 problem candidate，结果挂到 `CurrentStateModelResult.problem`。循环依赖处理：`review/problems.py` 顶层 import `findings`，`findings` 在函数体内 lazy import `problems`。**不新增配置**，阈值全部是常量。
+**入口**：仍是 `cli.analyze --stage review` → `run_current_state_model_analysis()`，**不新增子命令**：写完 5 个 M3.6 产物后在同一次运行里把 finding 聚合成 problem candidate，结果挂到 `CurrentStateModelResult.problem`。循环依赖处理：`review/problems.py` 顶层 import `findings`，`findings` 在函数体内 lazy import `problems`。**不新增配置**，阈值全部是常量。
 
 **输入（只读）**：本次运行的 M3.6 finding 与表级行 + 同一批 13 个上游产物 + 可选 `review/current-state-problem-review-checklist.md`（v2 清单回填，重跑带回）。
 
-**产出（4 个，固定顺序）**：`analysis/review/{current-state-problems.json, current-state-problem-evidence.json, current-state-problem-summary.md, current-state-problem-review-checklist.md}`（`PROBLEM_OUTPUT_FILES`）；只新增这四个文件，M3.6 已有 5 个产物与 M2 ~ M3.5 产物字节不变。
+**产出（4 个，固定顺序）**：`analysis/review/{problems.json, problem-evidence.json, summary.md, current-state-problem-review-checklist.md}`（`PROBLEM_OUTPUT_FILES`）；只新增这四个文件，M3.6 已有的 5 个产物与 M2 ~ M3.5 产物字节不变。
 
 **13 类 taxonomy（`PROBLEM_TYPE_ORDER` 固定顺序，没有证据支撑的类型不产生问题）**：`GRAIN_PROBLEM / MODEL_OVERLAP / MODEL_DUPLICATION / MIXED_RESPONSIBILITY / MODEL_ROLE_AMBIGUITY / PROCESS_MODEL_ALIGNMENT / AGGREGATION_MODEL_PROBLEM / FACT_IDENTIFICATION_PROBLEM / DIMENSION_IDENTIFICATION_PROBLEM / MODEL_SELECTION_AMBIGUITY / SEMANTIC_AMBIGUITY / MODEL_COVERAGE_GAP / UNKNOWN_MODEL`。
 
@@ -398,7 +399,7 @@ content（只取 NodeId 有效 File）
 4. **Evidence First**：每条 problem ≥1 条证据且 finding 可追溯，没有可用证据直接抛 `CurrentStateModelError`；证据类型固定 9 类（FINDING / TABLE / COLUMN / PROCESS / GRAIN / OBJECT / SQL / LINEAGE / RELATIONSHIP）；问题级 strength 按证据类型数算（≥4 strong、3 moderate、≤2 weak），比关系证据口径更严。
 5. **status 机器规则**：机器只写 `candidate` / `review_required`（weak，或 GRAIN / AGGREGATION 判为 `review_required` 时置 review_required）；`confirmed` / `rejected` 只由清单回填产生（`needs_discussion → review_required`，未识别取值按未回填处理）；`human_validated` 只在 `confirmed` 时为 true（与 finding 口径一致）。
 6. **priority / 编号 / 排序**：priority 取关联 finding 的最靠前值，否则用 `PROBLEM_TYPE_PRIORITY` 默认；problem_id 按 canonical signature 排序编号（`problem_%04d`），展示按 priority → problem_type → scope → scope_key。
-7. **报告与清单**：`current-state-problem-summary.md` 6 节（Scope / Problem Distribution / Impact & Root Cause / Priority & Evidence / Top Problems ≤20 行 / Human Review & M4 Input）；`current-state-problem-review-checklist.md` 按 13 类分区、10 列固定（`PROBLEM_CHECKLIST_HEADERS`）、每区 ≤50 行并注明总数，human 三列重跑保留。
+7. **报告与清单**：`summary.md` 7 节（Scope / Problem Distribution / Impact & Root Cause / Priority & Evidence / Top Problems ≤20 行 / Human Review & M4 Input / Review Counts & Focus，含 `confirmed=0`）；`current-state-problem-review-checklist.md` 按 13 类分区、10 列固定（`PROBLEM_CHECKLIST_HEADERS`）、每区 ≤50 行并注明总数，human 三列重跑保留。
 8. **确定性**：全部稳定排序、无时间戳 / UUID / 随机抽样；单 problem 证据行 ≤50 行（超出截断并保留 `evidence_total` / `evidence_truncated`），problems.json 只放 5 条样例。
 
 **当前实测（3719 表 / 4439 finding）**：problem **1190** = candidate 1148 + review_required 42 + confirmed 0 + rejected 0；priority P0 698 / P1 378 / P2 99 / P3 15；strength strong 1137 / moderate 20 / weak 33。13 类全部命中：GRAIN_PROBLEM 559、MODEL_DUPLICATION 317、MIXED_RESPONSIBILITY 204、MODEL_OVERLAP 27、FACT_IDENTIFICATION_PROBLEM 26、AGGREGATION_MODEL_PROBLEM 22、PROCESS_MODEL_ALIGNMENT 15、MODEL_SELECTION_AMBIGUITY 8、MODEL_ROLE_AMBIGUITY 4、SEMANTIC_AMBIGUITY 3、MODEL_COVERAGE_GAP 2、UNKNOWN_MODEL 2、DIMENSION_IDENTIFICATION_PROBLEM 1。classification：confirmed_conflict 548、grain_identical_structure_divergent 122、duplication_candidate 108、technical_copy_candidate 97、structural_overlap 17、model_problem 13、possible_conflict 11、review_required 9、NO_ANCHOR 1、NO_EVIDENCE 1、unclassified 263。finding 覆盖 **4427 / 4439**（12 条 `aggregate_fact` 评估为合法聚合、有意不成问题）；证据行 30201（TABLE 9177、GRAIN 8059、FINDING 6313、COLUMN 4219、PROCESS 1210、LINEAGE 1202、OBJECT 9、RELATIONSHIP 12、SQL 0），53 条 problem 证据被截断；受影响表 3345。两次连续运行 9 个产物 SHA256 一致，13 个输入与 5 个旧 M3.6 产物字节不变。
@@ -415,58 +416,58 @@ content（只取 NodeId 有效 File）
 | `inventory/files.json` | 4651 个 DataWorks File | node_id、category、content_format、`is_analysis_eligible` | 任务目录、范围过滤依据 |
 | `inventory/tables.json` | 3719 张表 | 身份 + 注释 + 分区/大小/生命周期 | 一切分析的输入 |
 | `inventory/columns.json` | 102603 字段 | 类型、注释、分区标记 | 字段级分析输入 |
-| `layer/assessments.json` | 3719 条层级判定 | workspace_layer / candidate_layer / status / evidence | **分层现状的唯一口径** |
-| `layer/summary.md` | 层级报告 | 状态分布、UNKNOWN 明细、跨层提示、CONFLICT 明细 | 现状分层评审 |
-| `sql/statements.json` | 1963 条语句 | sql 原文、parse_status、extraction_method | 业务逻辑反读的语料 |
-| `sql/table-references.json` | 1273 条引用 | source_tables / target_tables / content_file | 血缘的证据层 |
-| `sql/parse-errors.json` | 0 条 | — | 解析质量监控 |
-| `lineage/table-lineage.json` | 3442 条去重边 | 两端 key、workspace、layer_candidate、evidence[] | **加工链路的核心产物** |
-| `lineage/core-table-candidates.json` | 1789 个核心表候选 | upstream/downstream/evidence 计数 | 改造优先级参考 |
-| `profiling/tables.json`、`columns.json` | 元数据画像 | metadata_only | 结构体检 |
-| `business/terms.json` | 6032 个业务术语候选 | term / normalized_term / count / sources[] | 业务词典评审、同义词归并 |
-| `business/tables.json` | 3719 张表的业务理解 | warehouse_layer / business_terms / domain_candidates / business_object_candidates / evidence | **业务候选的主产物** |
-| `business/domains.json`、`objects.json` | 4 个 Domain、5 个业务对象汇总 | table_count / confidence_counts / evidence_type_counts / tables[] | 主题域现状盘点 |
-| `business/summary.md` | M3 报告（7 节） | Overview → 候选 → 术语 → 证据构成 → Ambiguous/Unknown → Limitations | 人工评审入口 |
-| `business/quality-assessment.json` | M3.1 质量评估（6 小节） | summary / unknown / ambiguous / evidence_quality / confidence_review / core_table_review | **M3.2 的质量基线（机器可读）** |
-| `business/quality-assessment.md` | M3.1 报告（7 节） | UNKNOWN/AMBIGUOUS 主因 → 证据质量 → confidence 复核 → 核心表复核 → Limitations | 质量评审入口 |
-| `business/review-checklist.md` | 人工复核清单 | P1 核心+UNKNOWN / P2 核心+AMBIGUOUS / P3 非核心+AMBIGUOUS（每区 ≤50 行，注明总数） | 人工确认台账 |
-| `business/objects-registry.json` | M3.2 Object 清单（顶层 count / note / status_counts / objects） | object / name / table_count / core_table_count / status_counts / status / evidence_summary / tables | **M3.3 的 Object 主数据（candidate 口径）** |
-| `business/object-tables.json` | M3.2 Object ↔ Table association | object × table_key、candidate_layer、core_candidate、confidence、evidence（按 M3 类型分组）、status、human | 人工确认台账的机器侧 |
-| `business/object-relationships.json` | M3.2 关系证据候选 | object_a/object_b、relationship_type=candidate、evidence_types/diversity/strength、evidence_count、core_related、evidence（三类分桶） | M3.3 关系输入 |
-| `business/object-evidence-matrix.json` | M3.2 Object 证据矩阵 | table_count / candidate_layers / domains / evidence_types / unknown / ambiguous / relationship_count | 事实口径汇总 |
-| `business/object-graph.md` | M3.2 报告（8 节） | Overview → Object count → Object table count → Relationship count → Evidence distribution → Core relationships → Status → Limitations | 人工评审入口 |
-| `business/process-signals.json` | M3.3 六类 Process Signal | count / rules_version / table_count / type_counts / signals[]（table_key、signal_type、signal、column_name、source、evidence、core_candidate） | **M3.4 Grain 候选的字段级输入** |
-| `business/processes.json` | M3.3 process candidate（顶层 count / note / status_counts / strength_counts / level_counts） | process_key、canonical_signature、objects、tables、signals、candidate_terms、evidence、levels、grain_signals、unresolved_questions（**无 process_name**） | **M3.4 的候选主体（candidate 口径）** |
-| `business/process-tables.json` | M3.3 process ↔ table 证据行 | process_key × table_key、objects、signals、evidence、core_candidate、status | 过程范围的人工核对 |
-| `business/process-objects.json` | M3.3 process ↔ object 参与行 | process_key × object、role=participant、table_count、relationship_count | 参与关系台账（非 fact/dimension/owner） |
-| `business/process-summary.md` | M3.3 报告（8 节） | Overview → Process Signals → Candidates → Core → Evidence Sources → Unresolved → Limitations → **M3.4 Input Readiness** | 人工评审入口 |
-| `business/process-review-checklist.md` | M3.3 人工确认清单 | process_key / objects / tables / signals / evidence / human_process_name / confirmed / note（后三列重跑保留） | **Process 命名与确认的唯一台账** |
-| `business/grain-signals.json` | M3.4 七类 Grain Signal | count / rules_version / table_count / type_counts / signals[]（table_key、signal_type、signal、column_name、source、evidence、core_candidate） | Grain 候选的字段级输入 |
-| `business/grain-candidates.json` | M3.4 grain candidate（顶层 count / note / status_counts / pattern_counts / strength_counts / process_count / table_count） | grain_candidate_id、canonical_signature、process_key、table_key、candidate_keys、strength、grain_pattern、evidence（7 类计数）、evidence_sources、unresolved_reasons、status=candidate、process_human_validated（**无 confirmed grain、无命名**） | **M3.4 的候选主体** |
-| `business/grain-tables.json` | M3.4 grain ↔ table 证据行 | grain_candidate_id × table_key、role=anchor/supporting、is_anchor、supporting_table_count、evidence、core_candidate | Grain 覆盖范围的人工核对 |
-| `business/grain-summary.md` | M3.4 报告（9 节） | Overview → Grain Signals → Candidates → Process → Grain → Evidence Sources → Evidence Gaps → Human Review → Limitations → Next: Fact-Dimension Readiness | 人工评审入口 |
-| `business/grain-review-checklist.md` | M3.4 人工确认清单 | 按 process 分组（每组 ≤50 行）：grain_candidate_id / table_key / grain_pattern / candidate_keys / strength / unresolved_reasons / human_grain_name / confirmed / note（后三列重跑保留） | **Grain 命名与确认的唯一台账** |
-| `model/fact-candidates.json` | M3.5 fact candidate（顶层 count / note / status_counts / strength_counts / pattern_counts / unresolved_counts / gate / process_count / table_count / object_count） | fact_key、canonical_signature、process/grain id、table_keys、object_keys、grain_pattern、candidate_keys、measures、evidence（7 类）、evidence_sources、unresolved_reasons、status=candidate（**无 confirmed 模型、无命名**） | **M3.5 的 fact 候选主体** |
-| `model/dimension-candidates.json` | M3.5 dimension candidate（顶层 count / note / status_counts / strength_counts / role_status_counts / unresolved_counts / table_count） | dimension_key、canonical_signature、object_key/name、table_keys、attributes（≤50）/attribute_count、referenced_by_processes/facts、modeling_roles、role_status、evidence（6 类）、unresolved_reasons、status=candidate | **M3.5 的 dimension 候选主体** |
-| `model/fact-dimension-relationships.json` | M3.5 关系候选（顶层 count / note / status_counts / strength_counts / unresolved_counts / evidence_source_counts） | relationship_key、canonical_signature、fact_key、dimension_key、evidence（5 类，每类至多一条）、evidence_sources、strength、unresolved_reasons、status | 事实↔维度关系的人工核对 |
-| `model/fact-tables.json` | M3.5 fact → table 证据行 | table_key × fact_key、role=anchor/supporting、candidate_layer、core_candidate、evidence 计数 | 技术角色台账（非 Fact 表命名） |
-| `model/dimension-tables.json` | M3.5 dimension → table 证据行 | table_key × dimension_key、role=anchor/supporting（anchor 排除 fact 表）、candidate_layer、core_candidate | 技术角色台账（非 Dimension 表命名） |
-| `model/model-evidence-matrix.json` | M3.5 证据矩阵（只含 fact + dimension） | candidate_type / candidate_key / status / evidence_strength / evidence_sources / evidence_counts / table·process·grain·object·relationship·unresolved count | 证据覆盖汇总 |
-| `model/model-summary.md` | M3.5 报告（8 节） | Overview → Fact → Dimension → Relationships → Evidence Coverage → Evidence Gaps → Human Review → Limitations | 人工评审入口 |
-| `model/model-review-checklist.md` | M3.5 人工回填清单（P1 → P4，每区 ≤50 行） | candidate_key / candidate_type / priority / current_status / evidence_strength / unresolved_reasons / human_status / human_name / note（后三列重跑保留） | **fact / dimension / relationship 确认的唯一台账** |
-| `review/current-state-model.json` | M3.6 当前模型形态总览（count / role_counts / shape_counts / priority_counts / finding_type_counts / review_group_counts / status_counts / model_quality / fact_gate_review / evidence_strength_review / dimension_review / relationship_review） | 18 类质量指标、gate 复算与 `matches_m35`、strength ≠ confidence 解读 | **M4 Target DWD Design 的机器可读输入** |
-| `review/current-state-model-tables.json` | M3.6 表级形态分类（3719 行） | table_key / current_roles / current_role / model_shape / fact_·dimension_anchor·supporting / is_view / in·out_degree / finding_ids / status=candidate | 表角色与形态的评审台账 |
-| `review/current-state-findings.json` | M3.6 结构化评审发现（4439 条） | finding_id / finding_type / priority / severity / review_group / scope / scope_key / related_keys / description / impact / unresolved_reason / human_question / evidence[] / status / human_validated / human_review_required | **Finding 的唯一机器出口（M3.6 v2 聚合成 problem）** |
-| `review/current-state-model-summary.md` | M3.6 报告（6 节） | Scope → Current Model Overview → Model Quality → Priority Findings → Human Review → M4 Input（明细 ≤50 行并注明总数） | 人工评审入口 |
+| `evidence/layer/assessments.json` | 3719 条层级判定 | workspace_layer / candidate_layer / status / evidence | **分层现状的唯一口径** |
+| `evidence/layer/summary.md` | 层级报告 | 状态分布、UNKNOWN 明细、跨层提示、CONFLICT 明细 | 现状分层评审 |
+| `evidence/sql/statements.json` | 1963 条语句 | sql 原文、parse_status、extraction_method | 业务逻辑反读的语料 |
+| `evidence/sql/table-references.json` | 1273 条引用 | source_tables / target_tables / content_file | 血缘的证据层 |
+| `evidence/sql/parse-errors.json` | 0 条 | — | 解析质量监控 |
+| `evidence/lineage/table-lineage.json` | 3442 条去重边 | 两端 key、workspace、layer_candidate、evidence[] | **加工链路的核心产物** |
+| `evidence/lineage/core-table-candidates.json` | 1789 个核心表候选 | upstream/downstream/evidence 计数 | 改造优先级参考 |
+| `evidence/profiling/tables.json`、`columns.json` | 元数据画像 | metadata_only | 结构体检 |
+| `understanding/business/terms.json` | 6032 个业务术语候选 | term / normalized_term / count / sources[] | 业务词典评审、同义词归并 |
+| `understanding/business/tables.json` | 3719 张表的业务理解 | warehouse_layer / business_terms / domain_candidates / business_object_candidates / evidence | **业务候选的主产物** |
+| `understanding/business/domains.json`、`objects.json` | 4 个 Domain、5 个业务对象汇总 | table_count / confidence_counts / evidence_type_counts / tables[] | 主题域现状盘点 |
+| `understanding/business/summary.md` | M3 报告（7 节） | Overview → 候选 → 术语 → 证据构成 → Ambiguous/Unknown → Limitations | 人工评审入口 |
+| `understanding/business/quality-assessment.json` | M3.1 质量评估（6 小节） | summary / unknown / ambiguous / evidence_quality / confidence_review / core_table_review | **M3.2 的质量基线（机器可读）** |
+| `understanding/business/quality-assessment.md` | M3.1 报告（7 节） | UNKNOWN/AMBIGUOUS 主因 → 证据质量 → confidence 复核 → 核心表复核 → Limitations | 质量评审入口 |
+| `understanding/business/review-checklist.md` | 人工复核清单 | P1 核心+UNKNOWN / P2 核心+AMBIGUOUS / P3 非核心+AMBIGUOUS（每区 ≤50 行，注明总数） | 人工确认台账 |
+| `understanding/business/objects-registry.json` | M3.2 Object 清单（顶层 count / note / status_counts / objects） | object / name / table_count / core_table_count / status_counts / status / evidence_summary / tables | **M3.3 的 Object 主数据（candidate 口径）** |
+| `understanding/business/object-tables.json` | M3.2 Object ↔ Table association | object × table_key、candidate_layer、core_candidate、confidence、evidence（按 M3 类型分组）、status、human | 人工确认台账的机器侧 |
+| `understanding/business/object-relationships.json` | M3.2 关系证据候选 | object_a/object_b、relationship_type=candidate、evidence_types/diversity/strength、evidence_count、core_related、evidence（三类分桶） | M3.3 关系输入 |
+| `understanding/business/object-evidence-matrix.json` | M3.2 Object 证据矩阵 | table_count / candidate_layers / domains / evidence_types / unknown / ambiguous / relationship_count | 事实口径汇总 |
+| `understanding/business/object-graph.md` | M3.2 报告（8 节） | Overview → Object count → Object table count → Relationship count → Evidence distribution → Core relationships → Status → Limitations | 人工评审入口 |
+| `understanding/business/process-signals.json` | M3.3 六类 Process Signal | count / rules_version / table_count / type_counts / signals[]（table_key、signal_type、signal、column_name、source、evidence、core_candidate） | **M3.4 Grain 候选的字段级输入** |
+| `understanding/business/processes.json` | M3.3 process candidate（顶层 count / note / status_counts / strength_counts / level_counts） | process_key、canonical_signature、objects、tables、signals、candidate_terms、evidence、levels、grain_signals、unresolved_questions（**无 process_name**） | **M3.4 的候选主体（candidate 口径）** |
+| `understanding/business/process-tables.json` | M3.3 process ↔ table 证据行 | process_key × table_key、objects、signals、evidence、core_candidate、status | 过程范围的人工核对 |
+| `understanding/business/process-objects.json` | M3.3 process ↔ object 参与行 | process_key × object、role=participant、table_count、relationship_count | 参与关系台账（非 fact/dimension/owner） |
+| `understanding/business/process-summary.md` | M3.3 报告（8 节） | Overview → Process Signals → Candidates → Core → Evidence Sources → Unresolved → Limitations → **M3.4 Input Readiness** | 人工评审入口 |
+| `understanding/business/process-review-checklist.md` | M3.3 人工确认清单 | process_key / objects / tables / signals / evidence / human_process_name / confirmed / note（后三列重跑保留） | **Process 命名与确认的唯一台账** |
+| `understanding/business/grain-signals.json` | M3.4 七类 Grain Signal | count / rules_version / table_count / type_counts / signals[]（table_key、signal_type、signal、column_name、source、evidence、core_candidate） | Grain 候选的字段级输入 |
+| `understanding/business/grain-candidates.json` | M3.4 grain candidate（顶层 count / note / status_counts / pattern_counts / strength_counts / process_count / table_count） | grain_candidate_id、canonical_signature、process_key、table_key、candidate_keys、strength、grain_pattern、evidence（7 类计数）、evidence_sources、unresolved_reasons、status=candidate、process_human_validated（**无 confirmed grain、无命名**） | **M3.4 的候选主体** |
+| `understanding/business/grain-tables.json` | M3.4 grain ↔ table 证据行 | grain_candidate_id × table_key、role=anchor/supporting、is_anchor、supporting_table_count、evidence、core_candidate | Grain 覆盖范围的人工核对 |
+| `understanding/business/grain-summary.md` | M3.4 报告（9 节） | Overview → Grain Signals → Candidates → Process → Grain → Evidence Sources → Evidence Gaps → Human Review → Limitations → Next: Fact-Dimension Readiness | 人工评审入口 |
+| `understanding/business/grain-review-checklist.md` | M3.4 人工确认清单 | 按 process 分组（每组 ≤50 行）：grain_candidate_id / table_key / grain_pattern / candidate_keys / strength / unresolved_reasons / human_grain_name / confirmed / note（后三列重跑保留） | **Grain 命名与确认的唯一台账** |
+| `understanding/modeling/fact-candidates.json` | M3.5 fact candidate（顶层 count / note / status_counts / strength_counts / pattern_counts / unresolved_counts / gate / process_count / table_count / object_count） | fact_key、canonical_signature、process/grain id、table_keys、object_keys、grain_pattern、candidate_keys、measures、evidence（7 类）、evidence_sources、unresolved_reasons、status=candidate（**无 confirmed 模型、无命名**） | **M3.5 的 fact 候选主体** |
+| `understanding/modeling/dimension-candidates.json` | M3.5 dimension candidate（顶层 count / note / status_counts / strength_counts / role_status_counts / unresolved_counts / table_count） | dimension_key、canonical_signature、object_key/name、table_keys、attributes（≤50）/attribute_count、referenced_by_processes/facts、modeling_roles、role_status、evidence（6 类）、unresolved_reasons、status=candidate | **M3.5 的 dimension 候选主体** |
+| `understanding/modeling/fact-dimension-relationships.json` | M3.5 关系候选（顶层 count / note / status_counts / strength_counts / unresolved_counts / evidence_source_counts） | relationship_key、canonical_signature、fact_key、dimension_key、evidence（5 类，每类至多一条）、evidence_sources、strength、unresolved_reasons、status | 事实↔维度关系的人工核对 |
+| `understanding/modeling/fact-tables.json` | M3.5 fact → table 证据行 | table_key × fact_key、role=anchor/supporting、candidate_layer、core_candidate、evidence 计数 | 技术角色台账（非 Fact 表命名） |
+| `understanding/modeling/dimension-tables.json` | M3.5 dimension → table 证据行 | table_key × dimension_key、role=anchor/supporting（anchor 排除 fact 表）、candidate_layer、core_candidate | 技术角色台账（非 Dimension 表命名） |
+| `understanding/modeling/model-evidence-matrix.json` | M3.5 证据矩阵（只含 fact + dimension） | candidate_type / candidate_key / status / evidence_strength / evidence_sources / evidence_counts / table·process·grain·object·relationship·unresolved count | 证据覆盖汇总 |
+| `understanding/modeling/model-summary.md` | M3.5 报告（8 节） | Overview → Fact → Dimension → Relationships → Evidence Coverage → Evidence Gaps → Human Review → Limitations | 人工评审入口 |
+| `understanding/modeling/model-review-checklist.md` | M3.5 人工回填清单（P1 → P4，每区 ≤50 行） | candidate_key / candidate_type / priority / current_status / evidence_strength / unresolved_reasons / human_status / human_name / note（后三列重跑保留） | **fact / dimension / relationship 确认的唯一台账** |
+| `understanding/modeling/current-state-model.json` | M3.6 当前模型形态总览（count / role_counts / shape_counts / priority_counts / finding_type_counts / review_group_counts / status_counts / model_quality / fact_gate_review / evidence_strength_review / dimension_review / relationship_review） | 18 类质量指标、gate 复算与 `matches_m35`、strength ≠ confidence 解读 | **M4 Target DWD Design 的机器可读输入** |
+| `understanding/modeling/current-state-model-tables.json` | M3.6 表级形态分类（3719 行） | table_key / current_roles / current_role / model_shape / fact_·dimension_anchor·supporting / is_view / in·out_degree / finding_ids / status=candidate | 表角色与形态的评审台账 |
+| `review/findings.json` | M3.6 结构化评审发现（4439 条） | finding_id / finding_type / priority / severity / review_group / scope / scope_key / related_keys / description / impact / unresolved_reason / human_question / evidence[] / status / human_validated / human_review_required | **Finding 的唯一机器出口（M3.6 v2 聚合成 problem）** |
+| `understanding/modeling/current-state-model-summary.md` | M3.6 报告（6 节） | Scope → Current Model Overview → Model Quality → Priority Findings → Human Review → M4 Input（明细 ≤50 行并注明总数） | 人工评审入口 |
 | `review/current-state-review-checklist.md` | M3.6 人工回填清单（5 个 review group，每区 ≤50 行） | finding_id / finding_type / priority / scope_key / evidence / system_interpretation / human_question / human_status / human_name / note（后三列重跑保留） | **Finding 裁决的唯一台账** |
-| `review/current-state-problems.json` | M3.6 v2 problem candidate（1190 条，顶层 count / note / finding_count / problem_type·status·priority·classification·impact·root_cause·evidence_strength_counts / distinct_affected_table_count / finding_coverage / problems[]） | problem_id / canonical_signature / problem_type / classification / priority / severity / status / human_validated / scope·scope_key / table_keys / finding_ids / evidence_strength / evidence_total / impact_types / root_cause / description / human_question / rationale{current_state, problem, evidence, impact, why_change} | **M4 的问题输入（候选口径，Finding≠Problem≠Confirmed）** |
-| `review/current-state-problem-evidence.json` | M3.6 v2 全量证据行（30201 条；单 problem ≤50 行） | problem_id / evidence_type_counts / evidence_total / evidence_truncated / evidence_row_limit / evidence[]（9 类固定键） | Problem 证据可追溯层 |
-| `review/current-state-problem-summary.md` | M3.6 v2 报告（6 节） | Scope → Problem Distribution → Impact & Root Cause → Priority & Evidence → Top Problems（≤20 行并注明总数）→ Human Review & M4 Input | 人工评审入口 |
+| `review/problems.json` | M3.6 v2 problem candidate（1190 条，顶层 count / note / finding_count / problem_type·status·priority·classification·impact·root_cause·evidence_strength_counts / distinct_affected_table_count / finding_coverage / problems[]） | problem_id / canonical_signature / problem_type / classification / priority / severity / status / human_validated / scope·scope_key / table_keys / finding_ids / evidence_strength / evidence_total / impact_types / root_cause / description / human_question / rationale{current_state, problem, evidence, impact, why_change} | **M4 的问题输入（候选口径，Finding≠Problem≠Confirmed）** |
+| `review/problem-evidence.json` | M3.6 v2 全量证据行（30201 条；单 problem ≤50 行） | problem_id / evidence_type_counts / evidence_total / evidence_truncated / evidence_row_limit / evidence[]（9 类固定键） | Problem 证据可追溯层 |
+| `review/summary.md` | M3.6 v2 报告（7 节） | Scope → Problem Distribution → Impact & Root Cause → Priority & Evidence → Top Problems（≤20 行并注明总数）→ Human Review & M4 Input → Review Counts & Focus（含 confirmed=0） | 人工评审入口 |
 | `review/current-state-problem-review-checklist.md` | M3.6 v2 人工回填清单（13 类分区，每区 ≤50 行） | problem_id / problem_type / priority / scope_key / evidence / system_interpretation / human_question / human_status / human_name / note（后三列重跑保留，也是 v2 回填输入） | **Problem 裁决的唯一台账** |
-| `errors.json` | 可恢复错误账本（0） | stage / error_type | 可信度证明 |
-| `Summary.md` | 总报告（12 节） | 见下 | 一屏看全貌 |
+| `evidence/errors.json` | 跨阶段技术错误账本（0；inventory / sql / lineage / profiling） | stage / error_type | 可信度证明 |
+| `summary.md` | 根入口报告（8 节，磁盘重建） | 见下 | 一屏看全貌 |
 
-**Summary.md 章节**：1 概览 → 2 Workspace → 3 File Inventory → 4 Table Inventory → 5 SQL Analysis → 6 Table References → 7 Table Lineage → 8 Core Table Candidates → 9 Data Profiling → 10 Layer Assessment（M2.2）→ 11 错误摘要 → 12 Analysis Limitations。
+**summary.md 章节（`render_analysis_summary` 纯磁盘重建，只渲染不计算）**：1 Scope & Asset Baseline → 2 Technical Evidence（Layer Assessment / SQL Analysis / Table References / Table Lineage / Metadata Profiling / Errors）→ 3 Business Understanding → 4 Data Modeling Understanding → 5 Current-State Review → 6 Key Findings → 7 Evidence Limitations → 8 Next Steps。上游阶段尚未运行时对应小节用空输入渲染（例如只跑 `--stage inventory` 时血缘边为 0）；`analyze --stage evidence` 与全量 `analyze` 传入同一份真实 Layer / SQL / Lineage / Profiling 结果，两者 `evidence/**`、`inventory/**` 与 `summary.md` 逐字节一致（见 `docs/COMMANDS.md` 的 Evidence Stage Contract）。
 
 ---
 
@@ -484,27 +485,23 @@ content（只取 NodeId 有效 File）
 
 - 配置中心：`config.py`（pydantic-settings + `.env`）。关键项：`WORKSPACES`（workspace_id/name/project 映射）、阿里云 AK、`DATAWORKS_*`、`MAXCOMPUTE_*`、`SOURCE_DIR=source`、`ANALYSIS_DIR=analysis`、`LAYER_RULES_PATH=config/layer-rules.yaml`、`BUSINESS_RULES_PATH=config/business-rules.yaml`、`PROCESS_RULES_PATH=config/process-rules.yaml`。
 - 层级规则：`config/layer-rules.yaml`（**唯一**层级规则来源，历史硬编码前缀已删除）。
-- 业务词典：`config/business-rules.yaml`（stopwords / domains / objects；**只被 `analyze-business` 读取**，关键词与 stopwords 冲突直接报错）。
-- 过程信号规则：`config/process-rules.yaml`（transaction_identifiers / transaction_measures / event_time / status；**只被 `analyze-business-processes` 读取**，段缺失、空列表、跨段冲突直接报错，配置里不得出现业务过程命名）。
-- Grain 规则：**无专用配置**，`analyze-business-grain` 只读上一阶段产物；候选键来自形态级联与 `inventory/columns.json` 实际字段。
-- Fact / Dimension 候选：**无专用配置**，`analyze-business-model` 只读上一阶段产物（含 `layer/assessments.json` 的 `candidate_layer`），不读规则文件、不新增配置项。
-- Current-State Model Review：**无专用配置**，`analyze-current-state-model` 只读 M2 / M3 / M3.5 产物，阈值全部是 `review/findings.py` 里的常量（宽表 ≥100 字段、重合 ≥10 字段且 Jaccard ≥0.5、结果表入边 ≥1、报告 / 清单每区 ≤50 行）。
+- 业务词典：`config/business-rules.yaml`（stopwords / domains / objects；**只被 `analyze --stage understanding` 读取**，关键词与 stopwords 冲突直接报错）。
+- 过程信号规则：`config/process-rules.yaml`（transaction_identifiers / transaction_measures / event_time / status；**只被 `analyze --stage understanding` 读取**，段缺失、空列表、跨段冲突直接报错，配置里不得出现业务过程命名）。
+- Grain 规则：**无专用配置**，`analyze --stage understanding` 只读上一阶段产物；候选键来自形态级联与 `inventory/columns.json` 实际字段。
+- Fact / Dimension 候选：**无专用配置**，`analyze --stage understanding` 只读上一阶段产物（含 `evidence/layer/assessments.json` 的 `candidate_layer`），不读规则文件、不新增配置项。
+- Current-State Model Review：**无专用配置**，`analyze --stage review` 只读 M2 / M3 / M3.5 产物，阈值全部是 `review/findings.py` 里的常量（宽表 ≥100 字段、重合 ≥10 字段且 Jaccard ≥0.5、结果表入边 ≥1、报告 / 清单每区 ≤50 行）。
 - Problem Assessment（M3.6 v2）：**无专用配置**，与 M3.6 同一命令一次跑完，阈值全部是 `review/problems.py` / `models.py` 的常量（问题级证据 ≥4 strong、3 moderate、≤2 weak；选择歧义 ≥10 个重复组；单 problem 证据行 ≤50、报告 Top Problems ≤20、清单每区 ≤50）。
 - 常用命令：
 
 ```bash
 uv run data-platform-analysis export           # 采集（需外部 API）
 uv run data-platform-analysis analyze          # 全量分析（只读 source/）
-uv run data-platform-analysis analyze-layer    # 仅重跑 M2.2
-uv run data-platform-analysis analyze-business # 仅重跑 M3（只读 M2 产物）
-uv run data-platform-analysis analyze-business-quality  # 仅重跑 M3.1（只读 M2 / M3 产物）
-uv run data-platform-analysis analyze-business-objects  # 仅重跑 M3.2（只读 M2 / M3 / M3.1 产物）
-uv run data-platform-analysis analyze-business-processes  # 仅重跑 M3.3（只读 M2 / M3 / M3.1 / M3.2 产物）
-uv run data-platform-analysis analyze-business-grain  # 仅重跑 M3.4（只读 M2 / M3 / M3.1 / M3.2 / M3.3 产物）
-uv run data-platform-analysis analyze-business-model  # 仅重跑 M3.5（只读 M2 ~ M3.4 产物）
-uv run data-platform-analysis analyze-current-state-model  # 仅重跑 M3.6 + v2 Problem Assessment（只读 M2 ~ M3.5 产物，写出 9 个产物）
-uv run python -m data_platform_analysis.cli analyze-current-state-model  # M3.6 的等价入口
-uv run pytest -q && uv run ruff check . && uv run mypy   # 368 tests / lint / types
+uv run data-platform-analysis analyze --stage inventory     # 仅重跑 Stage 01 Inventory
+uv run data-platform-analysis analyze --stage evidence      # 仅重跑 Stage 02-05（M2，只读 source/）
+uv run data-platform-analysis analyze --stage understanding # 仅重跑 Stage 06-11（M3 ~ M3.5，只读 M2 产物）
+uv run data-platform-analysis analyze --stage review        # 仅重跑 Stage 12-14（M3.6 + v2 Problem Assessment，写出 9 个产物）
+uv run python -m data_platform_analysis.cli analyze --stage review  # M3.6 的等价入口
+uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 ```
 
 ---
@@ -557,13 +554,13 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # 368 tests / lint / ty
 5. **层级是配置事实**：新增/改名 workspace 必须同步 `layer-rules.yaml`，否则整表落入 UNKNOWN（有显式告警，不会静默）。
 6. **文档漂移**：`README.md` 仍写"当前阶段只负责 Collection"，`临时想法.md` 的 P0–P10 排期已滞后于实际进度，引用时以本文档与 `docs/` 为准。
 7. **冻结状态**：`docs/EVIDENCE_LAYER_FREEZE_REPORT.md` 收尾/冻结范围为现 M2.1～M2.4（Inventory / Layer / SQL / Lineage，2026-10-02 重编号后对齐），其中 Inventory / Lineage 曾因 ADR-0003 部分解冻并重新审计；M2.5 Profiling 不在本轮收尾范围。
-8. **M3 是候选不是结论**：Domain / Object 候选完全由 `config/business-rules.yaml` 词典驱动，词典外语义落在 UNKNOWN（352 张表）；AMBIGUOUS 2460 张表只做标记不收敛；血缘证据在当前数据上为 0（邻居关键词总已被名称 / SQL 覆盖）；`analyze` 不刷新 `analysis/business/`，M2 产物变化后必须重跑 `analyze-business`。
-9. **M3.1 只评估不识别**：UNKNOWN 主因只判断信号存在性（注释 / SQL / 词 / 血缘），不解析其业务含义；AMBIGUOUS 主因是规则分类不是结论，五类里 `multi_domain_likely` / `unresolved` 必须人工判定；confidence 是证据类型数算出的规则等级，词典误命中同样会抬高它（`high_single_keyword` 17 个 high 候选只由一个词支撑）；`analyze` 同样不刷新质量产物，M3 变化后需重跑 `analyze-business-quality`；`review-checklist.md` 每区只列 50 行（全量见 JSON），human 列与 status 等人工回填。
-10. **M3.2 只建结构不解释**：Object 只有 5 个（candidate gap：词典外语义仍落 M3 的 UNKNOWN），机器候选默认 `candidate`、`review-checklist.md` 未回填前 `confirmed` 恒为 0；关系只允许 co_occurrence / sql_reference / lineage 三级表级证据，`relationship_type` 恒为 `candidate`，**不能当业务关系用**，也不推导 Business Process 与 Grain；`rejected` 的 association 不参与关系推导；`analyze` / `analyze-business` / `analyze-business-quality` 都不刷新 M3.2 产物，上游变化后需重跑 `analyze-business-objects`。
-11. **M3.3 只出候选不命名不判 Grain**：17 个 process candidate 全部是 `candidate`、`human_validated` 恒为 0（`process-review-checklist.md` 未回填）；信号全部来自 `config/process-rules.yaml` 的字段名匹配（词法规则，不是语义识别），信号缺失时只保留 signal 不生成 candidate；按精确 Object 集合分组意味着**同一个 Object 会出现在多个 candidate 里**，不能当唯一业务过程；`grain_signals` 只是 grain 相关信号的聚合，任何位置都是 `grain not determined`；`core_table_count` 是 lineage 结构指标；`analyze` 及所有前置阶段都不刷新 M3.3 产物，上游变化后需重跑 `analyze-business-processes`。
-12. **M3.4 只出候选不确认不命名**：5679 个 grain candidate 全部 `status=candidate`（`grain-review-checklist.md` 未回填前 `confirmed` 恒为 0）；候选键由**字段名形态**级联推出（无语义解析、无行级样本，Profiling 全是 `metadata_only`），648 个空候选键是「证据不足」而不是「没有 grain」；`strength` 是证据源数量不是正确率（`multiple_possible_keys` 4371 条同时保留全部键，机器不挑 winner）；`role=anchor/supporting` 只是键归属的技术含义，**不产出 Fact / Dimension / DWD / DWS 判断**；`grain_pattern` 只看键上的形态证据，`event` 形态当前为 0；`process_human_validated` 只是上游确认状态的搬运；`analyze` 及所有前置阶段都不刷新 M3.4 产物，上游变化后需重跑 `analyze-business-grain`。
-13. **M3.6 只评审不改模**：4439 条 finding 全部 `status=candidate`（`current-state-review-checklist.md` 未回填前 `confirmed` 恒为 0），finding 是候选问题、不是 Wrong 结论；`overlapping_fact` 2605 条几乎全部来自大宽表的字段高重合（阈值固定，不区分是否同源复制），`grain_conflict` 559 / `duplicate_fact` 489 只说明候选键与落表不一致，不能直接当重复表删除依据；Fact Gate 复算未通过的 2315 条是「无度量证据」而不是「没有事实」；`current_role` 的 FACT 997 / DIMENSION 627 只由 anchor 关系推导，2041 张 UNKNOWN 与 0 张 AMBIGUOUS 表示多数表还没有 fact / dimension anchor 覆盖，不等于它们不属于模型；`strength` 全 strong 是因为 process / grain 证据由候选构造自带；报告与清单每区只列 50 行（全量见 `current-state-findings.json`）；`analyze` 及所有前置阶段都不刷新 M3.6 产物，上游变化后需重跑 `analyze-current-state-model`。
-14. **M3.6 v2 同样只评审不改模**：1190 条 problem 全部 `candidate` / `review_required`（`current-state-problem-review-checklist.md` 未回填前 `confirmed` 恒为 0），problem 是 finding 聚合后的候选问题，Finding Count ≠ Problem Count ≠ Confirmed Problem Count；`grain_conflict` 559 条聚合成 559 个表级 GRAIN_PROBLEM 只说明候选键不唯一，不等于 559 张表都要改；`MODEL_DUPLICATION` 317 与 `MODEL_OVERLAP` 27 只证明字段 / 结构重合，权威表与收敛顺序必须人工裁决；`MODEL_COVERAGE_GAP` 2、`UNKNOWN_MODEL` 2、只有 33 条 weak 证据说明证据不足，不是「表 / process 不该存在」；4439 条 finding 里 12 条 `aggregate_fact` 评估为合法聚合、有意不成 problem（这就是 4427 / 4439 的覆盖差）；单 problem 证据 ≤50 行（53 条被截断，全量看 `current-state-problem-evidence.json`），报告 Top Problems 只列 20 行、清单每区 50 行（全量看 `current-state-problems.json`）；`analyze` 与其它前置阶段同样不刷新这 4 个产物。
+8. **M3 是候选不是结论**：Domain / Object 候选完全由 `config/business-rules.yaml` 词典驱动，词典外语义落在 UNKNOWN（352 张表）；AMBIGUOUS 2460 张表只做标记不收敛；血缘证据在当前数据上为 0（邻居关键词总已被名称 / SQL 覆盖）；`analyze` 不刷新 `analysis/understanding/business/`，M2 产物变化后必须重跑 `analyze --stage understanding`。
+9. **M3.1 只评估不识别**：UNKNOWN 主因只判断信号存在性（注释 / SQL / 词 / 血缘），不解析其业务含义；AMBIGUOUS 主因是规则分类不是结论，五类里 `multi_domain_likely` / `unresolved` 必须人工判定；confidence 是证据类型数算出的规则等级，词典误命中同样会抬高它（`high_single_keyword` 17 个 high 候选只由一个词支撑）；`analyze` 同样不刷新质量产物，M3 变化后需重跑 `analyze --stage understanding`；`review-checklist.md` 每区只列 50 行（全量见 JSON），human 列与 status 等人工回填。
+10. **M3.2 只建结构不解释**：Object 只有 5 个（candidate gap：词典外语义仍落 M3 的 UNKNOWN），机器候选默认 `candidate`、`review-checklist.md` 未回填前 `confirmed` 恒为 0；关系只允许 co_occurrence / sql_reference / lineage 三级表级证据，`relationship_type` 恒为 `candidate`，**不能当业务关系用**，也不推导 Business Process 与 Grain；`rejected` 的 association 不参与关系推导；`analyze` / `analyze --stage understanding` / `analyze --stage understanding` 都不刷新 M3.2 产物，上游变化后需重跑 `analyze --stage understanding`。
+11. **M3.3 只出候选不命名不判 Grain**：17 个 process candidate 全部是 `candidate`、`human_validated` 恒为 0（`process-review-checklist.md` 未回填）；信号全部来自 `config/process-rules.yaml` 的字段名匹配（词法规则，不是语义识别），信号缺失时只保留 signal 不生成 candidate；按精确 Object 集合分组意味着**同一个 Object 会出现在多个 candidate 里**，不能当唯一业务过程；`grain_signals` 只是 grain 相关信号的聚合，任何位置都是 `grain not determined`；`core_table_count` 是 lineage 结构指标；`analyze` 及所有前置阶段都不刷新 M3.3 产物，上游变化后需重跑 `analyze --stage understanding`。
+12. **M3.4 只出候选不确认不命名**：5679 个 grain candidate 全部 `status=candidate`（`grain-review-checklist.md` 未回填前 `confirmed` 恒为 0）；候选键由**字段名形态**级联推出（无语义解析、无行级样本，Profiling 全是 `metadata_only`），648 个空候选键是「证据不足」而不是「没有 grain」；`strength` 是证据源数量不是正确率（`multiple_possible_keys` 4371 条同时保留全部键，机器不挑 winner）；`role=anchor/supporting` 只是键归属的技术含义，**不产出 Fact / Dimension / DWD / DWS 判断**；`grain_pattern` 只看键上的形态证据，`event` 形态当前为 0；`process_human_validated` 只是上游确认状态的搬运；`analyze` 及所有前置阶段都不刷新 M3.4 产物，上游变化后需重跑 `analyze --stage understanding`。
+13. **M3.6 只评审不改模**：4439 条 finding 全部 `status=candidate`（`current-state-review-checklist.md` 未回填前 `confirmed` 恒为 0），finding 是候选问题、不是 Wrong 结论；`overlapping_fact` 2605 条几乎全部来自大宽表的字段高重合（阈值固定，不区分是否同源复制），`grain_conflict` 559 / `duplicate_fact` 489 只说明候选键与落表不一致，不能直接当重复表删除依据；Fact Gate 复算未通过的 2315 条是「无度量证据」而不是「没有事实」；`current_role` 的 FACT 997 / DIMENSION 627 只由 anchor 关系推导，2041 张 UNKNOWN 与 0 张 AMBIGUOUS 表示多数表还没有 fact / dimension anchor 覆盖，不等于它们不属于模型；`strength` 全 strong 是因为 process / grain 证据由候选构造自带；报告与清单每区只列 50 行（全量见 `findings.json`）；`analyze` 及所有前置阶段都不刷新 M3.6 产物，上游变化后需重跑 `analyze --stage review`。
+14. **M3.6 v2 同样只评审不改模**：1190 条 problem 全部 `candidate` / `review_required`（`current-state-problem-review-checklist.md` 未回填前 `confirmed` 恒为 0），problem 是 finding 聚合后的候选问题，Finding Count ≠ Problem Count ≠ Confirmed Problem Count；`grain_conflict` 559 条聚合成 559 个表级 GRAIN_PROBLEM 只说明候选键不唯一，不等于 559 张表都要改；`MODEL_DUPLICATION` 317 与 `MODEL_OVERLAP` 27 只证明字段 / 结构重合，权威表与收敛顺序必须人工裁决；`MODEL_COVERAGE_GAP` 2、`UNKNOWN_MODEL` 2、只有 33 条 weak 证据说明证据不足，不是「表 / process 不该存在」；4439 条 finding 里 12 条 `aggregate_fact` 评估为合法聚合、有意不成 problem（这就是 4427 / 4439 的覆盖差）；单 problem 证据 ≤50 行（53 条被截断，全量看 `problem-evidence.json`），报告 Top Problems 只列 20 行、清单每区 50 行（全量看 `problems.json`）；`analyze` 与其它前置阶段同样不刷新这 4 个产物。
 
 ---
 
@@ -574,19 +571,19 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # 368 tests / lint / ty
 | 改造中的问题 | 可用产物 |
 | --- | --- |
 | 仓库里到底有什么资产 | `inventory/*`（含注释、分区、生命周期） |
-| 数据是怎么加工流转的 | `lineage/table-lineage.json`（3442 边 + 证据链） |
+| 数据是怎么加工流转的 | `evidence/lineage/table-lineage.json`（3442 边 + 证据链） |
 | 哪些表是枢纽（改造优先级） | `core-table-candidates.json`（downstream 排序） |
-| 现在的分层是否名副其实 | `layer/assessments.json`（事实 vs 候选 vs 证据） |
-| 有没有放错层的表 | `layer/summary.md` 跨层命名提示（35 条） |
-| SQL 里用了哪些业务概念 | `sql/statements.json`（1963 条 raw SQL 语料） |
-| 这张表可能属于什么业务主题 | `business/tables.json`（Domain / Object 候选 + 证据链）、`business/terms.json`（6032 个术语候选） |
-| 哪些业务判断可以信任、哪些必须人工确认 | `business/quality-assessment.json`（UNKNOWN/AMBIGUOUS 主因、证据与 confidence 复核）、`business/review-checklist.md`（P1–P3 人工台账） |
-| Object 之间有哪些表级证据关联 | `business/objects-registry.json`（5 个 Object 口径）、`business/object-relationships.json`（10 对 candidate 关系 × 三类证据）、`business/object-graph.md`（8 节评审入口） |
-| 哪些表组成了可能的业务过程候选 | `business/processes.json`（17 个 candidate）、`business/process-signals.json`（12712 条信号）、`business/process-summary.md`（8 节，含 M3.4 Input Readiness） |
-| 每个过程候选下各表的 grain 形态与候选键 | `business/grain-candidates.json`（5679 个候选、空键 648）、`business/grain-signals.json`（22436 条）、`business/grain-tables.json`（25011 行）、`business/grain-summary.md`（9 节）、`business/grain-review-checklist.md`（命名与确认台账） |
-| 当前模型是什么形态、有哪些结构问题 | `review/current-state-model.json`（角色 / 形态 / 质量指标 / gate 复算）、`review/current-state-model-tables.json`（3719 表分类）、`review/current-state-findings.json`（4439 条 finding）、`review/current-state-model-summary.md`（6 节）、`review/current-state-review-checklist.md`（5 区人工台账） |
-| 哪些问题值得改、证据够不够、先改什么 | `review/current-state-problems.json`（1190 条 problem candidate，含 priority / severity / root_cause / impact / rationale）、`review/current-state-problem-evidence.json`（30201 条证据行，可追溯到 finding / 表 / 字段 / process / 血缘）、`review/current-state-problem-summary.md`（6 节报告）、`review/current-state-problem-review-checklist.md`（13 区人工台账） |
-| 结构体检（分区/注释覆盖） | `profiling/*` |
+| 现在的分层是否名副其实 | `evidence/layer/assessments.json`（事实 vs 候选 vs 证据） |
+| 有没有放错层的表 | `evidence/layer/summary.md` 跨层命名提示（35 条） |
+| SQL 里用了哪些业务概念 | `evidence/sql/statements.json`（1963 条 raw SQL 语料） |
+| 这张表可能属于什么业务主题 | `understanding/business/tables.json`（Domain / Object 候选 + 证据链）、`understanding/business/terms.json`（6032 个术语候选） |
+| 哪些业务判断可以信任、哪些必须人工确认 | `understanding/business/quality-assessment.json`（UNKNOWN/AMBIGUOUS 主因、证据与 confidence 复核）、`understanding/business/review-checklist.md`（P1–P3 人工台账） |
+| Object 之间有哪些表级证据关联 | `understanding/business/objects-registry.json`（5 个 Object 口径）、`understanding/business/object-relationships.json`（10 对 candidate 关系 × 三类证据）、`understanding/business/object-graph.md`（8 节评审入口） |
+| 哪些表组成了可能的业务过程候选 | `understanding/business/processes.json`（17 个 candidate）、`understanding/business/process-signals.json`（12712 条信号）、`understanding/business/process-summary.md`（8 节，含 M3.4 Input Readiness） |
+| 每个过程候选下各表的 grain 形态与候选键 | `understanding/business/grain-candidates.json`（5679 个候选、空键 648）、`understanding/business/grain-signals.json`（22436 条）、`understanding/business/grain-tables.json`（25011 行）、`understanding/business/grain-summary.md`（9 节）、`understanding/business/grain-review-checklist.md`（命名与确认台账） |
+| 当前模型是什么形态、有哪些结构问题 | `understanding/modeling/current-state-model.json`（角色 / 形态 / 质量指标 / gate 复算）、`understanding/modeling/current-state-model-tables.json`（3719 表分类）、`review/findings.json`（4439 条 finding）、`understanding/modeling/current-state-model-summary.md`（6 节）、`review/current-state-review-checklist.md`（5 区人工台账） |
+| 哪些问题值得改、证据够不够、先改什么 | `review/problems.json`（1190 条 problem candidate，含 priority / severity / root_cause / impact / rationale）、`review/problem-evidence.json`（30201 条证据行，可追溯到 finding / 表 / 字段 / process / 血缘）、`review/summary.md`（7 节报告）、`review/current-state-problem-review-checklist.md`（13 区人工台账） |
+| 结构体检（分区/注释覆盖） | `evidence/profiling/*` |
 
 ### 9.2 尚未覆盖、需后续分析阶段补齐
 
@@ -600,7 +597,7 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # 368 tests / lint / ty
 ```
 现有 analysis/ 证据链（已完成）
   → ① 命名/层级现状评估：assessments + 跨层 35 条 + UNKNOWN 61 条 → Convention 规则草案
-  → ② 业务域识别：M3 候选（business/domains|objects|summary.md）+ terms 术语表 + M3.1 质量清单（review-checklist.md，P1→P3）+ M3.2 Object↔表↔关系证据（objects-registry|object-relationships|object-graph.md）+ M3.3 过程候选与信号（processes|process-signals|process-summary.md|process-review-checklist.md）+ M3.4 Grain 候选与形态（grain-candidates|grain-signals|grain-summary.md|grain-review-checklist.md）+ M3.5 Fact / Dimension 候选与证据（model/fact-candidates|dimension-candidates|fact-dimension-relationships|model-summary.md|model-review-checklist.md）+ M3.6 Current-State Model Review（review/current-state-model|current-state-model-tables|current-state-findings|current-state-model-summary.md|current-state-review-checklist.md）+ M3.6 v2 Problem Assessment（current-state-problems|current-state-problem-evidence|current-state-problem-summary.md|current-state-problem-review-checklist.md）→ 人工评审与主题域收敛（含 process 命名、grain 确认、fact / dimension 角色裁决、finding 裁决、problem 裁决）
+  → ② 业务域识别：M3 候选（understanding/business/domains|objects|summary.md）+ terms 术语表 + M3.1 质量清单（understanding/business/review-checklist.md，P1→P3）+ M3.2 Object↔表↔关系证据（objects-registry|object-relationships|object-graph.md）+ M3.3 过程候选与信号（processes|process-signals|process-summary.md|process-review-checklist.md）+ M3.4 Grain 候选与形态（grain-candidates|grain-signals|grain-summary.md|grain-review-checklist.md）+ M3.5 Fact / Dimension 候选与证据（understanding/modeling/fact-candidates|dimension-candidates|fact-dimension-relationships|model-summary.md|model-review-checklist.md）+ M3.6 Current-State Model Review（understanding/modeling/current-state-model|current-state-model-tables|current-state-model-summary.md 与 review/findings.json|current-state-review-checklist.md）+ M3.6 v2 Problem Assessment（review/problems.json|problem-evidence.json|summary.md|current-state-problem-review-checklist.md）→ 人工评审与主题域收敛（含 process 命名、grain 确认、fact / dimension 角色裁决、finding 裁决、problem 裁决）
   → ③ 目标分层映射：现状 candidate_layer + 核心表候选 → 目标 ODS/DWD/DWS/ADS 差距清单
   → ④ 血缘驱动的迁移排序：跨层边、核心表优先
   → ⑤ DWS / Semantic Layer 设计
@@ -615,16 +612,16 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # 368 tests / lint / ty
 | 编排与执行顺序 | `src/data_platform_analysis/analysis/pipeline.py` |
 | 快照只读访问 | `analysis/snapshot.py` |
 | 资产清单 | `analysis/inventory/inventory.py` |
-| **层级判定（唯一口径）** | `analysis/layer/layer_assessment.py` + `config/layer-rules.yaml` |
-| SQL 解析 / 归一化 / 方言 / CTAS 兜底 | `analysis/sql/sql_analysis.py`、`analysis/sql/normalization.py`、`analysis/sql/dialect.py`、`analysis/sql/fallback.py` |
-| 引用与血缘 | `analysis/lineage/references.py`、`analysis/lineage/lineage.py` |
-| 元数据画像 | `analysis/profiling/profiling.py` |
-| **业务候选（M3）** | `analysis/business/understanding.py` + `config/business-rules.yaml` |
-| **质量评估（M3.1）** | `analysis/business/quality.py` |
-| **Object / Relationship 证据结构（M3.2）** | `analysis/business/objects.py`（+ `reports.py::render_object_graph`） |
-| **Process 候选与信号（M3.3）** | `analysis/business/processes.py` + `config/process-rules.yaml`（+ `reports.py::render_process_summary` / `render_process_review_checklist`） |
-| **Grain 候选与形态（M3.4）** | `analysis/business/grain.py`（无专用配置；+ `reports.py::render_grain_summary` / `render_grain_review_checklist`） |
-| **Fact / Dimension 候选（M3.5）** | `analysis/model/business_model.py`（无专用配置；+ `reports.py::render_model_summary` / `render_model_review_checklist`） |
+| **层级判定（唯一口径）** | `analysis/evidence/layer/layer_assessment.py` + `config/layer-rules.yaml` |
+| SQL 解析 / 归一化 / 方言 / CTAS 兜底 | `analysis/evidence/sql/sql_analysis.py`、`analysis/evidence/sql/normalization.py`、`analysis/evidence/sql/dialect.py`、`analysis/evidence/sql/fallback.py` |
+| 引用与血缘 | `analysis/evidence/lineage/references.py`、`analysis/evidence/lineage/lineage.py` |
+| 元数据画像 | `analysis/evidence/profiling/profiling.py` |
+| **业务候选（M3）** | `analysis/understanding/business/understanding.py` + `config/business-rules.yaml` |
+| **质量评估（M3.1）** | `analysis/understanding/business/quality.py` |
+| **Object / Relationship 证据结构（M3.2）** | `analysis/understanding/business/objects.py`（+ `reports.py::render_object_graph`） |
+| **Process 候选与信号（M3.3）** | `analysis/understanding/business/processes.py` + `config/process-rules.yaml`（+ `reports.py::render_process_summary` / `render_process_review_checklist`） |
+| **Grain 候选与形态（M3.4）** | `analysis/understanding/business/grain.py`（无专用配置；+ `reports.py::render_grain_summary` / `render_grain_review_checklist`） |
+| **Fact / Dimension 候选（M3.5）** | `analysis/understanding/modeling/business_model.py`（无专用配置；+ `reports.py::render_model_summary` / `render_model_review_checklist`） |
 | **Current-State Model Review（M3.6）** | `analysis/review/findings.py`（无专用配置；+ `reports.py::render_current_state_summary` / `render_current_state_review_checklist`） |
 | **Problem Assessment（M3.6 v2）** | `analysis/review/problems.py`（无专用配置，与 M3.6 同一命令；+ `reports.py::render_current_state_problem_summary` / `render_current_state_problem_review_checklist`） |
 | 数据模型 / 排序契约 | `analysis/models.py` |
@@ -640,8 +637,8 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # 368 tests / lint / ty
 
 | 测试文件 | 数量 | 覆盖对象 |
 | --- | --- | --- |
-| `tests/test_problem_assessment.py` | 23 | M3.6 v2：4 个新产物与「不越界」、两跑字节一致 + 13 输入与 5 个旧产物不变、计数自洽、finding 覆盖账目、多 finding→1 problem 与不误合并、grain 三态、overlap 四分类（structural / technical copy / 结构分歧）、职责信号、process 对齐与选择歧义阈值、UNKNOWN 分组与证据截断、覆盖缺口、Evidence First 与四态 status 回填、报告 6 节与 Top ≤20、清单 13 分区与每区 ≤50、CLI 打印 problem 计数 |
-| `tests/test_model_review.py` | 37 | M3.6：读入缺失 / 非法 / 只读、Fact Gate 复算与强度口径、粒度与事实评审、维度与关系评审、9 类反模式、current-state 分类、5 个 M3.6 产物结构与报告 6 节、清单分区与行数上限、回填（含转义竖线）、确定性、CLI 黑盒 |
+| `tests/test_problem_assessment.py` | 23 | M3.6 v2：4 个新产物与「不越界」、两跑字节一致 + 13 输入与 5 个旧产物不变、计数自洽、finding 覆盖账目、多 finding→1 problem 与不误合并、grain 三态、overlap 四分类（structural / technical copy / 结构分歧）、职责信号、process 对齐与选择歧义阈值、UNKNOWN 分组与证据截断、覆盖缺口、Evidence First 与四态 status 回填、报告 7 节与 Top ≤20、清单 13 分区与每区 ≤50、CLI 打印 problem 计数 |
+| `tests/test_model_review.py` | 38 | M3.6：读入缺失 / 非法 / 只读、Fact Gate 复算与强度口径、粒度与事实评审、维度与关系评审、9 类反模式、current-state 分类、5 个 M3.6 产物结构与报告 6 节、清单分区与行数上限、回填（含转义竖线）、确定性、CLI 黑盒 |
 | `tests/test_business_model.py` | 46 | M3.5：读入校验与跨文件引用、Fact Gate、证据与未决词表、候选键 / 签名确定性、role 非层级、状态回填映射、产物结构与报告、清单 P1–P4、确定性、CLI 黑盒 |
 | `tests/test_business_grain.py` | 43 | M3.4：读入校验、7 类信号、候选键级联与「键必须真实存在」、多候选全保留、strength / grain_pattern / unresolved、grain-tables 角色、报告 9 节、清单分组与人工回填保留、确定性 |
 | `tests/test_business_objects.py` | 27 | M3.2：Object / 关系 / 证据矩阵 / 报告与清单 |

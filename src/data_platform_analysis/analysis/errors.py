@@ -11,8 +11,8 @@ Fatal Error
 
 Recoverable Error
     单个对象级别的失败，记录后继续分析，最终写入
-    analysis/errors.json（SQL 解析错误同时写入
-    analysis/sql/parse-errors.json）。当前覆盖：
+    analysis/evidence/errors.json（SQL 解析错误同时写入
+    analysis/evidence/sql/parse-errors.json）。当前覆盖：
 
     1. 单个 index / raw JSON 损坏或缺失。
     2. 单条 SQL 语句解析失败或语法不受支持。
@@ -142,3 +142,11 @@ class ErrorLedger:
         """返回可直接写出的 JSON 记录。"""
 
         return [error.to_dict() for error in self.errors]
+
+
+# 常量
+ERROR_LEDGER_RELATIVE_PATH = "evidence/errors.json"
+"""错误账本的相对路径（相对于 analysis_dir）。"""
+
+ERROR_LEDGER_SCOPE = "evidence"
+"""错误账本所属的阶段范围。"""

@@ -134,20 +134,20 @@ Evidence Layer（M2.1～M2.4）当前已达到：
 
 **冻结范围（M2.1～M2.4）：**
 - src/data_platform_analysis/analysis/inventory/inventory.py
-- src/data_platform_analysis/analysis/layer/layer_assessment.py
-- src/data_platform_analysis/analysis/sql/sql_analysis.py
-- src/data_platform_analysis/analysis/lineage/references.py
-- src/data_platform_analysis/analysis/lineage/lineage.py
+- src/data_platform_analysis/analysis/evidence/layer/layer_assessment.py
+- src/data_platform_analysis/analysis/evidence/sql/sql_analysis.py
+- src/data_platform_analysis/analysis/evidence/lineage/references.py
+- src/data_platform_analysis/analysis/evidence/lineage/lineage.py
 - src/data_platform_analysis/analysis/pipeline.py
 
 > `profiling/profiling.py`（M2.5）不列入本轮范围；首轮已审状态见 §2 ⏭ 小节。
 
 **冻结产物（M2.1～M2.4）：**
 - analysis/inventory/{workspaces,files,tables,columns}.json
-- analysis/layer/{assessments,summary}
-- analysis/sql/{statements,table-references,parse-errors}.json
-- analysis/lineage/{table-lineage,core-table-candidates}.json
-- analysis/Summary.md
+- analysis/evidence/layer/{assessments,summary}
+- analysis/evidence/sql/{statements,table-references,parse-errors}.json
+- analysis/evidence/lineage/{table-lineage,core-table-candidates}.json
+- analysis/summary.md
 
 ---
 

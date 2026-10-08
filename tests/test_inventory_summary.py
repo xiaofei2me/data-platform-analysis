@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from helpers import write_snapshot
+from helpers import assert_sandbox, write_snapshot
 
 SECTION_HEADINGS = (
     "## 1. Executive Summary",
@@ -51,6 +51,7 @@ def _read(path: Path) -> Any:
 
 
 def _write_json(path: Path, data: Any) -> None:
+    assert_sandbox(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -225,7 +226,7 @@ def test_summary_empty_workspace_and_missing_snapshot(
     # 只删 DataWorks 侧快照，保留 workspaces-index.json 中的 identity。
     import shutil
 
-    shutil.rmtree(Path("source/dataworks/workspaces/9002"))
+    shutil.rmtree(assert_sandbox(Path("source/dataworks/workspaces/9002")))
 
     assert run_cli("analyze") == 0
 
@@ -326,7 +327,7 @@ def test_content_file_missing_is_exception(
         ],
     )
 
-    Path("source/dataworks/workspaces/9001/content/101__etl_a.sql").unlink()
+    assert_sandbox(Path("source/dataworks/workspaces/9001/content/101__etl_a.sql")).unlink()
 
     assert run_cli("analyze") == 0
 
@@ -421,7 +422,7 @@ def test_collection_exceptions_reflect_failed_files(
     assert "| High | GetFile 采集失败（files-index.failed_files） | 1 |" in summary
     # 失败条目不进 files-index.files，不影响清单总数。
     assert "| DataWorks Files | 1 |" in summary
-    assert "明细见 `analysis/errors.json`" in summary
+    assert "明细见 `analysis/evidence/errors.json`" in summary
 
 
 def test_inventory_stage_errors_reported_as_exceptions(
@@ -442,7 +443,7 @@ def test_inventory_stage_errors_reported_as_exceptions(
         ],
     )
 
-    Path("source/maxcompute/workspaces/9001/tables/dwd_order.json").unlink()
+    assert_sandbox(Path("source/maxcompute/workspaces/9001/tables/dwd_order.json")).unlink()
 
     assert run_cli("analyze") == 0
 
@@ -451,7 +452,7 @@ def test_inventory_stage_errors_reported_as_exceptions(
     assert "| Medium | Table raw 元数据缺失或解析失败 | 1 |" in summary
     assert "Inventory 阶段可恢复错误合计：1 条" in summary
 
-    errors = _read(Path("analysis/errors.json"))
+    errors = _read(Path("analysis/evidence/errors.json"))
     assert errors["count"] == 1
     assert errors["errors"][0]["stage"] == "inventory"
     assert errors["errors"][0]["error_type"] == "TABLE_RAW_MISSING"

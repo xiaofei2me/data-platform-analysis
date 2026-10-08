@@ -25,19 +25,19 @@
 
 输入（只读 M2 / M3 / M3.5 产物，不读 source/，不调 API，不改写上游）：
 
-    analysis/model/fact-candidates.json
-    analysis/model/dimension-candidates.json
-    analysis/model/fact-dimension-relationships.json
-    analysis/model/fact-tables.json
-    analysis/model/dimension-tables.json
-    analysis/business/grain-candidates.json       （重新走 Fact Gate，不改闸门）
-    analysis/business/processes.json
-    analysis/business/objects-registry.json
+    analysis/understanding/modeling/fact-candidates.json
+    analysis/understanding/modeling/dimension-candidates.json
+    analysis/understanding/modeling/fact-dimension-relationships.json
+    analysis/understanding/modeling/fact-tables.json
+    analysis/understanding/modeling/dimension-tables.json
+    analysis/understanding/business/grain-candidates.json       （重新走 Fact Gate，不改闸门）
+    analysis/understanding/business/processes.json
+    analysis/understanding/business/objects-registry.json
     analysis/inventory/tables.json
     analysis/inventory/columns.json
-    analysis/lineage/table-lineage.json
-    analysis/lineage/core-table-candidates.json
-    analysis/layer/assessments.json
+    analysis/evidence/lineage/table-lineage.json
+    analysis/evidence/lineage/core-table-candidates.json
+    analysis/evidence/layer/assessments.json
     analysis/review/current-state-review-checklist.md   （可选：本阶段清单回填）
 
 输出（Stage 12 ～ 14，M3.6 产物统一写在 analysis/review/）：
@@ -76,27 +76,6 @@ from ...io_utils import (
     relocate_legacy_artifacts,
     write_json,
     write_text,
-)
-from ..business.grain import (
-    BusinessGrainError,
-    _dict_values,
-    _display_path,
-    _evidence_entry,
-    _parse_checklist_rows,
-    _rank,
-    _status_counts,
-    _table_column_sort_key,
-)
-from ..business.objects import _table_sort_key, _text
-from ..model.business_model import (
-    FACT_GATE_DIRECT_PATTERNS,
-    FACT_GATE_REASON_MEASURE,
-    FACT_GATE_REASON_PATTERN,
-    _apply_carryover,
-    _examples,
-    _sort_evidence,
-    _sources,
-    fact_gate,
 )
 from ..models import (
     CURRENT_MODEL_ROLE_AMBIGUOUS,
@@ -178,6 +157,27 @@ from ..reports import (
     render_current_state_review_checklist,
     render_current_state_summary,
 )
+from ..understanding.business.grain import (
+    BusinessGrainError,
+    _dict_values,
+    _display_path,
+    _evidence_entry,
+    _parse_checklist_rows,
+    _rank,
+    _status_counts,
+    _table_column_sort_key,
+)
+from ..understanding.business.objects import _table_sort_key, _text
+from ..understanding.modeling.business_model import (
+    FACT_GATE_DIRECT_PATTERNS,
+    FACT_GATE_REASON_MEASURE,
+    FACT_GATE_REASON_PATTERN,
+    _apply_carryover,
+    _examples,
+    _sort_evidence,
+    _sources,
+    fact_gate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -186,19 +186,19 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 ARRAY_INPUT_FILES: tuple[tuple[str, str, str], ...] = (
-    ("model/fact-candidates.json", "candidates", "fact_candidates"),
-    ("model/dimension-candidates.json", "candidates", "dimension_candidates"),
-    ("model/fact-dimension-relationships.json", "relationships", "relationships"),
-    ("model/fact-tables.json", "tables", "fact_tables"),
-    ("model/dimension-tables.json", "tables", "dimension_tables"),
-    ("business/grain-candidates.json", "candidates", "grain_candidates"),
-    ("business/processes.json", "processes", "processes"),
-    ("business/objects-registry.json", "objects", "registry_objects"),
+    ("understanding/modeling/fact-candidates.json", "candidates", "fact_candidates"),
+    ("understanding/modeling/dimension-candidates.json", "candidates", "dimension_candidates"),
+    ("understanding/modeling/fact-dimension-relationships.json", "relationships", "relationships"),
+    ("understanding/modeling/fact-tables.json", "tables", "fact_tables"),
+    ("understanding/modeling/dimension-tables.json", "tables", "dimension_tables"),
+    ("understanding/business/grain-candidates.json", "candidates", "grain_candidates"),
+    ("understanding/business/processes.json", "processes", "processes"),
+    ("understanding/business/objects-registry.json", "objects", "registry_objects"),
     ("inventory/tables.json", "tables", "inventory_tables"),
     ("inventory/columns.json", "columns", "columns"),
-    ("lineage/table-lineage.json", "edges", "edges"),
-    ("lineage/core-table-candidates.json", "candidates", "core_candidates"),
-    ("layer/assessments.json", "assessments", "assessments"),
+    ("evidence/lineage/table-lineage.json", "edges", "edges"),
+    ("evidence/lineage/core-table-candidates.json", "candidates", "core_candidates"),
+    ("evidence/layer/assessments.json", "assessments", "assessments"),
 )
 """M3.6 依赖的数组型产物（相对 analysis/ 路径 → JSON 数组字段名 → 属性名）。"""
 
@@ -337,7 +337,7 @@ def read_review_inputs(analysis_dir: Path) -> ReviewInputs:
     """读取 M3.6 依赖的全部 M2 / M3 / M3.5 产物。
 
     任何必需输入缺失或 JSON 非法都明确报错，
-    不自动回退执行 analyze-business-model 或更早的阶段。
+    不自动回退执行 analyze / analyze --stage。
     """
 
     missing = [relative for relative in INPUT_FILES if not (analysis_dir / relative).exists()]
@@ -347,10 +347,8 @@ def read_review_inputs(analysis_dir: Path) -> ReviewInputs:
             "M2 / M3 / M3.5 产物缺失，无法执行 M3.6 Current-State Model "
             f"Review：{'、'.join(missing)}"
             f"（目录：{_display_path(analysis_dir)}）；"
-            "请先执行 analyze 生成 M2 产物、analyze-business / "
-            "analyze-business-quality / analyze-business-objects / "
-            "analyze-business-processes / analyze-business-grain 生成 M3 产物、"
-            "analyze-business-model 生成 M3.5 产物"
+            "请先执行 analyze --stage evidence 生成 M2 产物、"
+            "analyze --stage understanding 生成 M3 ~ M3.5 产物"
         )
 
     def load(relative: str, key: str, attr: str) -> list[dict[str, Any]]:
@@ -371,9 +369,7 @@ def read_review_inputs(analysis_dir: Path) -> ReviewInputs:
         except BusinessGrainError as exc:
             raise CurrentStateModelError(str(exc)) from exc
 
-        inputs.payload_meta[attr] = {
-            name: value for name, value in raw.items() if name != key
-        }
+        inputs.payload_meta[attr] = {name: value for name, value in raw.items() if name != key}
 
         return items
 
@@ -434,7 +430,7 @@ def _validate_inputs(inputs: ReviewInputs) -> None:
         if not process_key or process_key not in process_keys:
             raise CurrentStateModelError(
                 f"grain candidate {grain_id} 引用未知 process candidate："
-                f"{process_key or '（空）'}；请先执行 analyze-business-model"
+                f"{process_key or '（空）'}；请先执行 analyze --stage understanding"
             )
 
     fact_keys: set[str] = set()
@@ -457,14 +453,12 @@ def _validate_inputs(inputs: ReviewInputs) -> None:
 
         if not process_key or process_key not in process_keys:
             raise CurrentStateModelError(
-                f"fact candidate {fact_key} 引用未知 process candidate："
-                f"{process_key or '（空）'}"
+                f"fact candidate {fact_key} 引用未知 process candidate：{process_key or '（空）'}"
             )
 
         if not grain_id or grain_id not in grain_ids:
             raise CurrentStateModelError(
-                f"fact candidate {fact_key} 引用未知 grain candidate："
-                f"{grain_id or '（空）'}"
+                f"fact candidate {fact_key} 引用未知 grain candidate：{grain_id or '（空）'}"
             )
 
     dimension_keys: set[str] = set()
@@ -488,7 +482,7 @@ def _validate_inputs(inputs: ReviewInputs) -> None:
         if not object_key or object_key not in registry_objects:
             raise CurrentStateModelError(
                 f"dimension candidate {dimension_key} 引用未知 Object："
-                f"{object_key or '（空）'}；请先执行 analyze-business-objects"
+                f"{object_key or '（空）'}；请先执行 analyze --stage understanding"
             )
 
     for position, record in enumerate(inputs.relationships):
@@ -579,9 +573,7 @@ def build_review_indexes(inputs: ReviewInputs) -> ReviewIndexes:
             key.casefold(),
             {
                 "table_key": key,
-                "table_name": _text(record.get("table_name"))
-                or _text(record.get("table"))
-                or key,
+                "table_name": _text(record.get("table_name")) or _text(record.get("table")) or key,
                 "workspace_id": record.get("workspace_id"),
                 "project": _text(record.get("project")) or "",
                 "comment": _text(record.get("comment")),
@@ -660,9 +652,7 @@ def build_review_indexes(inputs: ReviewInputs) -> ReviewIndexes:
         core_keys=core_keys,
         lineage_in={key: tuple(sorted(values)) for key, values in incoming.items()},
         lineage_out={key: tuple(sorted(values)) for key, values in outgoing.items()},
-        processes_by_table={
-            key: tuple(sorted(values)) for key, values in process_map.items()
-        },
+        processes_by_table={key: tuple(sorted(values)) for key, values in process_map.items()},
         facts_by_anchor={key: tuple(sorted(values)) for key, values in anchor_map.items()},
     )
 
@@ -797,9 +787,7 @@ def _fact_gate_review(
         rejected_by_pattern[pattern] = rejected_by_pattern.get(pattern, 0) + 1
 
         if label == FACT_GATE_REASON_MEASURE:
-            measure_rejected_by_pattern[pattern] = (
-                measure_rejected_by_pattern.get(pattern, 0) + 1
-            )
+            measure_rejected_by_pattern[pattern] = measure_rejected_by_pattern.get(pattern, 0) + 1
 
         bucket = samples.setdefault((label, pattern), [])
 
@@ -824,9 +812,7 @@ def _fact_gate_review(
     block: dict[str, Any] = {
         "qualified_count": qualified,
         "rejected_count": rejected,
-        "rejected_reason_counts": dict(
-            sorted(reason_counts.items(), key=lambda item: item[0])
-        ),
+        "rejected_reason_counts": dict(sorted(reason_counts.items(), key=lambda item: item[0])),
         "passed_by_pattern": dict(sorted(passed_by_pattern.items())),
         "rejected_by_pattern": dict(sorted(rejected_by_pattern.items())),
         "measure_rejected_by_pattern": dict(sorted(measure_rejected_by_pattern.items())),
@@ -928,8 +914,7 @@ def _fact_gate_review(
                         REVIEW_EVIDENCE_GRAIN,
                         f"grain_candidates:{FACT_GATE_REASON_PATTERN}",
                         reason=(
-                            f"{pattern_reason_count} 个 grain candidate 的形态不在 "
-                            "Fact Gate 词表内"
+                            f"{pattern_reason_count} 个 grain candidate 的形态不在 Fact Gate 词表内"
                         ),
                     )
                 ],
@@ -1012,9 +997,7 @@ def _strength_review(
                     "若把 strong 读成「该表确定是事实表」，会高估当前模型的可信度；"
                     "M4 需要区分 Evidence Strength 与 Candidate Confidence"
                 ),
-                unresolved_reason=(
-                    "机器不引入业务知识，无法在证据源之外给出候选可信度"
-                ),
+                unresolved_reason=("机器不引入业务知识，无法在证据源之外给出候选可信度"),
                 human_question=(
                     "M4 是否需要独立的 Candidate Confidence 口径？"
                     "在不看 strength 的情况下如何认定事实表成立？"
@@ -1052,9 +1035,7 @@ def _grain_findings(inputs: ReviewInputs) -> list[dict[str, Any]]:
         fact_keys = [str(row.get("fact_key") or "") for row in rows]
         patterns = sorted({str(row.get("grain_pattern") or "") for row in rows})
         key_sets = sorted(
-            {
-                tuple(sorted(str(key) for key in row.get("candidate_keys") or []))
-                for row in rows }
+            {tuple(sorted(str(key) for key in row.get("candidate_keys") or [])) for row in rows}
         )
         pattern_text = _examples(patterns)
 
@@ -1159,13 +1140,9 @@ def _grain_findings(inputs: ReviewInputs) -> list[dict[str, Any]]:
                     scope_key=table_key,
                     signature=f"{FINDING_TYPE_MIXED_GRAIN}|table|{folded}",
                     description=(
-                        f"同一张表同时被判断为 {len(patterns)} 种 grain 形态："
-                        f"{pattern_text}"
+                        f"同一张表同时被判断为 {len(patterns)} 种 grain 形态：{pattern_text}"
                     ),
-                    impact=(
-                        "表内可能同时存在不同粒度的行 / 字段；"
-                        "按任一形态单独建模都会失真"
-                    ),
+                    impact=("表内可能同时存在不同粒度的行 / 字段；按任一形态单独建模都会失真"),
                     unresolved_reason=(
                         "机器只依据字段形态证据分类，无法判断表内数据实际落在哪个粒度"
                     ),
@@ -1234,9 +1211,7 @@ def _meta_for(inputs: ReviewInputs, folded: str) -> dict[str, Any]:
         if key and key.casefold() == folded:
             return {
                 "table_key": key,
-                "table_name": _text(record.get("table_name"))
-                or _text(record.get("table"))
-                or key,
+                "table_name": _text(record.get("table_name")) or _text(record.get("table")) or key,
                 "workspace_id": record.get("workspace_id"),
                 "project": _text(record.get("project")) or "",
             }
@@ -1260,9 +1235,12 @@ def _fact_findings(inputs: ReviewInputs) -> list[dict[str, Any]]:
         workspace_id = fact.get("workspace_id")
         pattern = str(fact.get("grain_pattern") or "")
         identifier_columns = [str(item) for item in fact.get("identifier_columns") or []]
-        field_examples = _examples(
-            [*identifier_columns, *[str(item) for item in fact.get("time_attributes") or []]]
-        ) or "（无字段示例）"
+        field_examples = (
+            _examples(
+                [*identifier_columns, *[str(item) for item in fact.get("time_attributes") or []]]
+            )
+            or "（无字段示例）"
+        )
 
         findings.append(
             _finding(
@@ -1274,13 +1252,9 @@ def _fact_findings(inputs: ReviewInputs) -> list[dict[str, Any]]:
                     f"fact candidate 通过 grain_pattern={pattern} 进入候选，"
                     "但 measure_columns 为空（没有任何度量字段）"
                 ),
-                impact=(
-                    "缺度量的事实候选无法支撑指标计算；"
-                    "也可能是度量字段未被 M3.4 识别"
-                ),
+                impact=("缺度量的事实候选无法支撑指标计算；也可能是度量字段未被 M3.4 识别"),
                 unresolved_reason=(
-                    "机器只判断 measure_columns 是否存在，"
-                    "无法判断哪些数值字段应当算度量"
+                    "机器只判断 measure_columns 是否存在，无法判断哪些数值字段应当算度量"
                 ),
                 human_question=(
                     f"表 {table_key} 是否存在业务度量？{field_examples} 中哪些应当作为度量？"
@@ -1315,8 +1289,7 @@ def _fact_findings(inputs: ReviewInputs) -> list[dict[str, Any]]:
                         workspace_id=workspace_id,
                         table_key=table_key,
                         reason=(
-                            "identifier_columns="
-                            f"{_examples(identifier_columns)}，度量字段缺失"
+                            f"identifier_columns={_examples(identifier_columns)}，度量字段缺失"
                         ),
                     ),
                 ],
@@ -1347,9 +1320,7 @@ def _fact_findings(inputs: ReviewInputs) -> list[dict[str, Any]]:
         )
         meta = _meta_for(inputs, folded)
         table_key = str(meta.get("table_key") or folded)
-        measures = sorted(
-            {str(item) for row in rows for item in row.get("measures") or []}
-        )
+        measures = sorted({str(item) for row in rows for item in row.get("measures") or []})
         findings.append(
             _finding(
                 FINDING_TYPE_AGGREGATE_FACT,
@@ -1361,15 +1332,11 @@ def _fact_findings(inputs: ReviewInputs) -> list[dict[str, Any]]:
                     f"（度量字段 {len(measures)} 个）"
                 ),
                 impact=(
-                    "聚合事实本身可以是有效模型；"
-                    "但若缺少原子事实与稳定粒度，M4 可能把汇总当成明细"
+                    "聚合事实本身可以是有效模型；但若缺少原子事实与稳定粒度，M4 可能把汇总当成明细"
                 ),
-                unresolved_reason=(
-                    "机器无法区分「设计上的聚合事实」与「被误判成事实的汇总结果」"
-                ),
+                unresolved_reason=("机器无法区分「设计上的聚合事实」与「被误判成事实的汇总结果」"),
                 human_question=(
-                    f"表 {table_key} 是原子事实、周期汇总，还是报表结果？"
-                    "是否已有对应的明细事实？"
+                    f"表 {table_key} 是原子事实、周期汇总，还是报表结果？是否已有对应的明细事实？"
                 ),
                 evidence=[
                     _evidence(
@@ -1385,8 +1352,7 @@ def _fact_findings(inputs: ReviewInputs) -> list[dict[str, Any]]:
                         workspace_id=meta.get("workspace_id"),
                         table_key=table_key,
                         reason=(
-                            "candidate_keys="
-                            f"{_key_slug(list(rows[0].get('candidate_keys') or []))}"
+                            f"candidate_keys={_key_slug(list(rows[0].get('candidate_keys') or []))}"
                         ),
                     ),
                     _evidence(
@@ -1469,12 +1435,9 @@ def _dimension_review(
                     "M3.2 Object 一一对应，未经独立的 Dimension Suitability 判断"
                 ),
                 impact=(
-                    "当前维度覆盖度等于 Object 识别覆盖度；"
-                    "未被识别为 Object 的维度在 M3.5 中不存在"
+                    "当前维度覆盖度等于 Object 识别覆盖度；未被识别为 Object 的维度在 M3.5 中不存在"
                 ),
-                unresolved_reason=(
-                    "机器不引入业务知识，无法在 Object 之外判断哪些表应成为维度"
-                ),
+                unresolved_reason=("机器不引入业务知识，无法在 Object 之外判断哪些表应成为维度"),
                 human_question=(
                     f"这 {len(object_keys)} 类 Object 是否覆盖了真实的维度集合？"
                     "哪些缺失的维度（如时间、渠道、活动）需要补识别？"
@@ -1526,16 +1489,12 @@ def _dimension_review(
                     "fact_related_object，角色不唯一"
                 ),
                 impact=(
-                    "同一对象既被当作维度又被当作事实相关对象；"
-                    "M4 若不裁决会出现维度 / 事实职责混杂"
+                    "同一对象既被当作维度又被当作事实相关对象；M4 若不裁决会出现维度 / 事实职责混杂"
                 ),
                 unresolved_reason=(
-                    "机器不自动决定最终事实 / 维度角色，"
-                    "角色裁决需要业务与建模共同确认"
+                    "机器不自动决定最终事实 / 维度角色，角色裁决需要业务与建模共同确认"
                 ),
-                human_question=(
-                    f"Object {object_key} 究竟是维度、退化维度，还是事实的一部分？"
-                ),
+                human_question=(f"Object {object_key} 究竟是维度、退化维度，还是事实的一部分？"),
                 evidence=[
                     _evidence(
                         REVIEW_EVIDENCE_DIMENSION,
@@ -1543,9 +1502,7 @@ def _dimension_review(
                         table_key=table_keys[0] if table_keys else "",
                         reason=(
                             "modeling_roles="
-                            + _examples(
-                                [str(item) for item in row.get("modeling_roles") or []]
-                            )
+                            + _examples([str(item) for item in row.get("modeling_roles") or []])
                             + "，role_status=ambiguous"
                         ),
                     ),
@@ -1583,13 +1540,16 @@ def _relationship_review(
     technical_only = 0
     co_occurrence_only = 0
     no_shared_table = 0
-    source_counts: dict[str, int] = {source: 0 for source in [
-        "process_object",
-        "object_relationship",
-        "table_reference",
-        "sql_reference",
-        "lineage",
-    ]}
+    source_counts: dict[str, int] = {
+        source: 0
+        for source in [
+            "process_object",
+            "object_relationship",
+            "table_reference",
+            "sql_reference",
+            "lineage",
+        ]
+    }
     technical_samples: list[str] = []
     co_occurrence_samples: list[str] = []
 
@@ -1652,12 +1612,9 @@ def _relationship_review(
                     "没有任何 Object 或 Process 直接链接"
                 ),
                 impact=(
-                    "把这些行当成 Fact → Dimension 业务关系会凭空放大维度覆盖；"
-                    "M4 不能据此确认维度"
+                    "把这些行当成 Fact → Dimension 业务关系会凭空放大维度覆盖；M4 不能据此确认维度"
                 ),
-                unresolved_reason=(
-                    "机器不把 SQL JOIN / 血缘 / 共现升级为业务关系"
-                ),
+                unresolved_reason=("机器不把 SQL JOIN / 血缘 / 共现升级为业务关系"),
                 human_question=(
                     "只有技术引用的关系是否需要保留为业务关系候选？"
                     f"示例：{_examples(technical_samples) or '（无）'}"
@@ -1694,9 +1651,7 @@ def _relationship_review(
                     f"{co_occurrence_only} / {len(rows)} 行关系的 Object 链接只来自 "
                     "M3.2 的共现 / SQL / 血缘证据，没有 process participant 证据"
                 ),
-                impact=(
-                    "共现只能说明表被一起使用，不等于该 Object 是此事实的正式维度"
-                ),
+                impact=("共现只能说明表被一起使用，不等于该 Object 是此事实的正式维度"),
                 unresolved_reason="机器不引入业务知识判断维度归属",
                 human_question=(
                     "这些 Object 是否是对应事实的正式业务维度？"
@@ -1707,8 +1662,7 @@ def _relationship_review(
                         REVIEW_EVIDENCE_RELATIONSHIP,
                         "relationship:object_co_occurrence",
                         reason=(
-                            f"{co_occurrence_only} 行含 object_relationship 但不含 "
-                            "process_object"
+                            f"{co_occurrence_only} 行含 object_relationship 但不含 process_object"
                         ),
                     ),
                     *[
@@ -1794,10 +1748,7 @@ def _duplicate_fact_findings(inputs: ReviewInputs) -> list[dict[str, Any]]:
                 ),
                 impact="同一逻辑模型可能被复制多份，M4 若全部建模会重复计数",
                 unresolved_reason="机器不判断哪张表是权威版本，也不删除任何候选",
-                human_question=(
-                    f"{_examples(tables)} 是否是同一逻辑模型的副本？"
-                    "权威表是哪一张？"
-                ),
+                human_question=(f"{_examples(tables)} 是否是同一逻辑模型的副本？权威表是哪一张？"),
                 evidence=evidence,
                 table_key=tables[0],
                 process_candidate_id=process_key,
@@ -1832,9 +1783,7 @@ def _overlapping_fact_findings(
             bucket.append(table_key)
 
     wanted = {
-        folded
-        for values in groups.values()
-        for folded in (table.casefold() for table in values)
+        folded for values in groups.values() for folded in (table.casefold() for table in values)
     }
     column_sets = {
         folded: {name.casefold() for name in indexes.column_names.get(folded, ())}
@@ -1882,9 +1831,7 @@ def _overlapping_fact_findings(
                             f"（Jaccard {ratio:.2f}）"
                         ),
                         impact="疑似同一逻辑模型的副本 / 临时表，M4 可能重复建模",
-                        unresolved_reason=(
-                            "机器只能比较字段重合度，无法判断哪张表是权威版本"
-                        ),
+                        unresolved_reason=("机器只能比较字段重合度，无法判断哪张表是权威版本"),
                         human_question=(
                             f"{left} 与 {right} 是否是同一张表的副本？权威表是哪一张？"
                         ),
@@ -1935,8 +1882,7 @@ def _table_issue_findings(
     )
     anchor_facts: dict[str, list[dict[str, Any]]] = {
         folded: [
-            inputs.fact_candidates[position]
-            for position in indexes.facts_by_anchor.get(folded, ())
+            inputs.fact_candidates[position] for position in indexes.facts_by_anchor.get(folded, ())
         ]
         for folded in anchor_tables
     }
@@ -1955,15 +1901,10 @@ def _table_issue_findings(
                 scope=FINDING_SCOPE_TABLE,
                 scope_key=table_key,
                 signature=f"{FINDING_TYPE_MULTI_PROCESS_TABLE}|table|{folded}",
-                description=(
-                    f"该表出现在 {len(process_keys)} 个不同的 process candidate 中"
-                ),
+                description=(f"该表出现在 {len(process_keys)} 个不同的 process candidate 中"),
                 impact="一张表服务多个业务过程时，职责可能混杂（不一定是错误）",
                 unresolved_reason="机器不判断过程边界是否划分正确",
-                human_question=(
-                    f"表 {table_key} 是否确实服务于多个业务过程？"
-                    "还是过程划分过细？"
-                ),
+                human_question=(f"表 {table_key} 是否确实服务于多个业务过程？还是过程划分过细？"),
                 evidence=[
                     _evidence(
                         REVIEW_EVIDENCE_TABLE,
@@ -1997,9 +1938,7 @@ def _table_issue_findings(
         rows = anchor_facts.get(folded, [])
         measure_count = max((len(row.get("measures") or []) for row in rows), default=0)
         measure_examples = (
-            _examples([str(item) for item in rows[0].get("measures") or []])
-            if rows
-            else ""
+            _examples([str(item) for item in rows[0].get("measures") or []]) if rows else ""
         )
 
         if column_count >= WIDE_COLUMN_THRESHOLD or measure_count >= WIDE_MEASURE_THRESHOLD:
@@ -2015,13 +1954,11 @@ def _table_issue_findings(
                         f"{WIDE_COLUMN_THRESHOLD} 或度量 ≥ {WIDE_MEASURE_THRESHOLD}）"
                     ),
                     impact=(
-                        "明显是宽的分析型表，可能把多个过程的指标与维度属性放在一起"
-                        "（本阶段不拆分）"
+                        "明显是宽的分析型表，可能把多个过程的指标与维度属性放在一起（本阶段不拆分）"
                     ),
                     unresolved_reason="机器不判断是否应当拆分，也不产出目标分层",
                     human_question=(
-                        f"表 {table_key} 是否混合了多个业务过程的字段？"
-                        "M4 需要如何处理这张表？"
+                        f"表 {table_key} 是否混合了多个业务过程的字段？M4 需要如何处理这张表？"
                     ),
                     evidence=[
                         _evidence(
@@ -2033,14 +1970,11 @@ def _table_issue_findings(
                         ),
                         _evidence(
                             REVIEW_EVIDENCE_FACT,
-                            str(rows[0].get("fact_key") or "")
-                            if rows
-                            else f"measures:{folded}",
+                            str(rows[0].get("fact_key") or "") if rows else f"measures:{folded}",
                             workspace_id=meta.get("workspace_id"),
                             table_key=table_key,
                             reason=(
-                                f"度量字段最多 {measure_count} 个："
-                                f"{measure_examples or '（空）'}"
+                                f"度量字段最多 {measure_count} 个：{measure_examples or '（空）'}"
                             ),
                         ),
                     ],
@@ -2078,13 +2012,10 @@ def _table_issue_findings(
                     + ("虚拟视图（is_virtual_view）" if is_view else "血缘只有入边没有出边")
                     + f"（入边 {in_degree}，出边 {out_degree}）"
                 ),
-                impact=(
-                    "疑似结果 / 输出表：如果把结果表当事实，M4 会把派生数据当源数据"
-                ),
+                impact=("疑似结果 / 输出表：如果把结果表当事实，M4 会把派生数据当源数据"),
                 unresolved_reason="机器不判断该表是中间结果还是正式落地事实",
                 human_question=(
-                    f"表 {table_key} 是计算结果还是权威事实？"
-                    "它的上游是否已经有对应事实？"
+                    f"表 {table_key} 是计算结果还是权威事实？它的上游是否已经有对应事实？"
                 ),
                 evidence=[
                     _evidence(
@@ -2108,9 +2039,7 @@ def _table_issue_findings(
                 workspace_id=meta.get("workspace_id"),
                 table_key=table_key,
                 table_name=str(meta.get("table_name") or table_key),
-                process_candidate_id=_text(
-                    rows[0].get("process_candidate_id") if rows else None
-                ),
+                process_candidate_id=_text(rows[0].get("process_candidate_id") if rows else None),
                 related_keys=[str(row.get("fact_key") or "") for row in rows],
             )
         )
@@ -2150,13 +2079,11 @@ def _process_findings(inputs: ReviewInputs) -> list[dict[str, Any]]:
                     f" grain 形态：{_examples(values)}"
                 ),
                 impact=(
-                    "一个业务过程对应多个粒度是正常现象"
-                    "（订单 / 订单行 / 日汇总…），仅作信息记录"
+                    "一个业务过程对应多个粒度是正常现象（订单 / 订单行 / 日汇总…），仅作信息记录"
                 ),
                 unresolved_reason="机器不判断这些粒度是否都属于同一业务过程",
                 human_question=(
-                    "（信息性）这些粒度是否都属于同一业务过程？"
-                    "是否需要区分过程与子过程？"
+                    "（信息性）这些粒度是否都属于同一业务过程？是否需要区分过程与子过程？"
                 ),
                 evidence=[
                     _evidence(
@@ -2192,8 +2119,7 @@ def _table_rows(
 
     facts_by_anchor: dict[str, list[dict[str, Any]]] = {
         folded: [
-            inputs.fact_candidates[position]
-            for position in indexes.facts_by_anchor.get(folded, ())
+            inputs.fact_candidates[position] for position in indexes.facts_by_anchor.get(folded, ())
         ]
         for folded in indexes.facts_by_anchor
     }
@@ -2287,17 +2213,13 @@ def _table_rows(
         if len(column_names) >= WIDE_COLUMN_THRESHOLD or measure_count >= WIDE_MEASURE_THRESHOLD:
             roles.add(CURRENT_MODEL_ROLE_WIDE)
 
-        if is_view or (
-            anchor_facts and in_degree >= RESULT_MIN_INCOMING and out_degree == 0
-        ):
+        if is_view or (anchor_facts and in_degree >= RESULT_MIN_INCOMING and out_degree == 0):
             roles.add(CURRENT_MODEL_ROLE_RESULT)
 
         if not roles:
             roles.add(CURRENT_MODEL_ROLE_UNKNOWN)
 
-        ordered_roles = [
-            role for role in CURRENT_MODEL_ROLE_ORDER if role in roles
-        ]
+        ordered_roles = [role for role in CURRENT_MODEL_ROLE_ORDER if role in roles]
         current_role = ordered_roles[0]
         fact_dimension_roles = {
             CURRENT_MODEL_ROLE_FACT,
@@ -2308,9 +2230,7 @@ def _table_rows(
         rows.append(
             {
                 "table_key": key,
-                "table_name": _text(record.get("table_name"))
-                or _text(record.get("table"))
-                or key,
+                "table_name": _text(record.get("table_name")) or _text(record.get("table")) or key,
                 "workspace_id": record.get("workspace_id"),
                 "project": _text(record.get("project")) or "",
                 "schema": _text(record.get("schema")) or "",
@@ -2486,8 +2406,7 @@ def build_current_state_model(inputs: ReviewInputs) -> CurrentStateModelResult:
         "review_group_counts": dict(model_payload["review_group_counts"]),
         "status_counts": dict(model_payload["status_counts"]),
         "severity_by_priority": {
-            priority: REVIEW_SEVERITY_BY_PRIORITY[priority]
-            for priority in REVIEW_PRIORITY_ORDER
+            priority: REVIEW_SEVERITY_BY_PRIORITY[priority] for priority in REVIEW_PRIORITY_ORDER
         },
         "findings": findings,
     }
@@ -2599,9 +2518,7 @@ def run_current_state_model_analysis(
     write_current_state_problems(problem_result, output_dir)
     result.problem = problem_result
 
-    priority_text = "，".join(
-        f"{key}={value}" for key, value in result.priority_counts.items()
-    )
+    priority_text = "，".join(f"{key}={value}" for key, value in result.priority_counts.items())
     problem_status_text = "，".join(
         f"{key}={value}" for key, value in problem_result.status_counts.items()
     )

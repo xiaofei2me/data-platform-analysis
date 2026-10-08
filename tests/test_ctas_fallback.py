@@ -21,8 +21,11 @@ from typing import Any
 import pytest
 from helpers import write_snapshot
 
-from data_platform_analysis.analysis.sql.fallback import extract_ctas_references, is_ctas_statement
-from data_platform_analysis.analysis.sql.sql_analysis import split_statements
+from data_platform_analysis.analysis.evidence.sql.fallback import (
+    extract_ctas_references,
+    is_ctas_statement,
+)
+from data_platform_analysis.analysis.evidence.sql.sql_analysis import split_statements
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -216,7 +219,7 @@ def test_golden_file_is_analyzed_by_fallback(
 
     assert run_cli("analyze") == 0
 
-    statements = _read(Path("analysis/sql/statements.json"))
+    statements = _read(Path("analysis/evidence/sql/statements.json"))
     assert statements["count"] == 3
 
     by_statement = {item["statement_id"]: item for item in statements["statements"]}
@@ -225,7 +228,7 @@ def test_golden_file_is_analyzed_by_fallback(
     assert by_statement[1]["extraction_method"] == "ast"
     assert by_statement[3]["extraction_method"] == "ast"
 
-    references = _read(Path("analysis/sql/table-references.json"))["references"]
+    references = _read(Path("analysis/evidence/sql/table-references.json"))["references"]
     golden_reference = [item for item in references if item["statement_id"] == 2]
 
     assert len(golden_reference) == 1
@@ -233,10 +236,10 @@ def test_golden_file_is_analyzed_by_fallback(
     assert golden_reference[0]["target_tables"] == [GOLDEN_TARGET]
     assert golden_reference[0]["extraction_method"] == "fallback"
 
-    assert _read(Path("analysis/sql/parse-errors.json"))["count"] == 0
-    assert _read(Path("analysis/errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/sql/parse-errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/errors.json"))["count"] == 0
 
-    edges = _read(Path("analysis/lineage/table-lineage.json"))["edges"]
+    edges = _read(Path("analysis/evidence/lineage/table-lineage.json"))["edges"]
     fallback_edges = [
         edge
         for edge in edges

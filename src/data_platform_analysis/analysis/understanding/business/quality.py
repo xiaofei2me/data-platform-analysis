@@ -8,28 +8,28 @@
 
 输入（只读，不访问 DataWorks / MaxCompute API，不读取 source/）：
 
-    analysis/business/tables.json
-    analysis/business/domains.json
-    analysis/business/objects.json
-    analysis/business/terms.json
+    analysis/understanding/business/tables.json
+    analysis/understanding/business/domains.json
+    analysis/understanding/business/objects.json
+    analysis/understanding/business/terms.json
     analysis/inventory/tables.json
     analysis/inventory/columns.json
-    analysis/sql/table-references.json
-    analysis/lineage/table-lineage.json
-    analysis/lineage/core-table-candidates.json
+    analysis/evidence/sql/table-references.json
+    analysis/evidence/lineage/table-lineage.json
+    analysis/evidence/lineage/core-table-candidates.json
 
 输出：
 
-    analysis/business/quality-assessment.json
-    analysis/business/quality-assessment.md
-    analysis/business/review-checklist.md
+    analysis/understanding/business/quality-assessment.json
+    analysis/understanding/business/quality-assessment.md
+    analysis/understanding/business/review-checklist.md
 
 原则：
 
 1. 只评估不识别：不修改 M3 提取规则、不选 winner（不产生 best / primary /
    final domain）、不产生业务结论，不输出「某表属于销售域 / 应改成 DWD」这类判断。
 2. 不修改已有 M3 产物（terms / tables / domains / objects / summary.md 原样）。
-3. 输入缺失或结构非法 → 明确报错 + 非零退出，不自动回退执行 M2 / analyze-business。
+3. 输入缺失或结构非法 → 明确报错 + 非零退出，不自动回退执行 M2（analyze --stage evidence）。
 4. 输出 deterministic：无时间戳 / UUID / 随机抽样；
    样本按稳定排序截断到 QUALITY_SAMPLE_LIMIT，checklist 每区限行并注明总数。
 5. 不使用 LLM / Embedding / Vector DB / 外部 API。
@@ -45,9 +45,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ...config import PROJECT_ROOT
-from ...io_utils import ensure_dir, write_json, write_text
-from ..models import (
+from .... import config
+from ....io_utils import ensure_dir, write_json, write_text
+from ...models import (
     BUSINESS_CONFIDENCE_HIGH,
     BUSINESS_CONFIDENCE_ORDER,
     BUSINESS_CONFIDENCE_UNKNOWN,
@@ -83,8 +83,11 @@ from ..models import (
     numeric_id_sort_key,
     quality_diversity_bucket,
 )
-from ..naming import qualify_table_ref
-from ..reports import render_business_quality_report, render_review_checklist
+from ...naming import qualify_table_ref
+from ...reports import (
+    render_business_quality_report,
+    render_review_checklist,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,15 +96,15 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 QUALITY_INPUT_FILES: tuple[tuple[str, str, str], ...] = (
-    ("business/tables.json", "tables", "tables"),
-    ("business/domains.json", "domains", "domains"),
-    ("business/objects.json", "objects", "objects"),
-    ("business/terms.json", "terms", "terms"),
+    ("understanding/business/tables.json", "tables", "tables"),
+    ("understanding/business/domains.json", "domains", "domains"),
+    ("understanding/business/objects.json", "objects", "objects"),
+    ("understanding/business/terms.json", "terms", "terms"),
     ("inventory/tables.json", "tables", "inventory_tables"),
     ("inventory/columns.json", "columns", "inventory_columns"),
-    ("sql/table-references.json", "references", "references"),
-    ("lineage/table-lineage.json", "edges", "edges"),
-    ("lineage/core-table-candidates.json", "candidates", "candidates"),
+    ("evidence/sql/table-references.json", "references", "references"),
+    ("evidence/lineage/table-lineage.json", "edges", "edges"),
+    ("evidence/lineage/core-table-candidates.json", "candidates", "candidates"),
 )
 """M3.1 依赖的 M2 / M3 产物（相对 analysis/ 路径 → JSON 数组字段名 → 属性名）。"""
 
@@ -129,7 +132,7 @@ def _display_path(path: Path) -> str:
     """日志与报告中展示的路径：项目根内用相对路径，其余保持绝对。"""
 
     try:
-        return str(path.resolve().relative_to(PROJECT_ROOT))
+        return str(path.resolve().relative_to(config.PROJECT_ROOT))
 
     except ValueError:
         return str(path)
@@ -218,7 +221,7 @@ class QualityInputs:
 def read_quality_inputs(analysis_dir: Path) -> QualityInputs:
     """读取 M3.1 依赖的全部 M2 / M3 产物。
 
-    任何输入缺失都明确报错，不自动回退执行 M2 / analyze-business。
+    任何输入缺失都明确报错，不自动回退执行 M2（analyze --stage evidence）。
     """
 
     missing = [
@@ -231,7 +234,8 @@ def read_quality_inputs(analysis_dir: Path) -> QualityInputs:
         raise BusinessQualityError(
             "M2 / M3 产物缺失，无法执行 M3.1 Business Quality Assessment："
             f"{'、'.join(missing)}（目录：{_display_path(analysis_dir)}）；"
-            "请先执行 analyze 生成 M2 产物、analyze-business 生成 M3 产物"
+            "请先执行 analyze --stage evidence 生成 M2 产物、"
+            "analyze --stage understanding 生成 M3 ~ M3.5 产物"
         )
 
     def load(relative: str, key: str) -> list[dict[str, Any]]:
@@ -363,11 +367,7 @@ def _lineage_edge_keys(edges: Sequence[Mapping[str, Any]]) -> set[str]:
 def _core_file_keys(candidates: Sequence[Mapping[str, Any]]) -> set[str]:
     """M2.4 核心表候选文件里的 table_key（casefold）。"""
 
-    return {
-        key.casefold()
-        for record in candidates
-        if (key := _text(record.get("table_key")))
-    }
+    return {key.casefold() for record in candidates if (key := _text(record.get("table_key")))}
 
 
 # ============================================================
@@ -407,9 +407,7 @@ def _candidate_locations(candidate: Mapping[str, Any]) -> set[tuple[str, ...]]:
     """候选证据的去重位置集合。"""
 
     return {
-        _location_key(entry)
-        for entry in candidate.get("evidence") or []
-        if isinstance(entry, dict)
+        _location_key(entry) for entry in candidate.get("evidence") or [] if isinstance(entry, dict)
     }
 
 
@@ -590,13 +588,9 @@ def _build_checklist_row(
     return QualityChecklistRow(
         priority=priority,
         table=str(record.get("table_key") or ""),
-        domain_candidates=", ".join(
-            _format_candidate(item, "domain") for item in domain_candidates
-        )
+        domain_candidates=", ".join(_format_candidate(item, "domain") for item in domain_candidates)
         or "-",
-        object_candidates=", ".join(
-            _format_candidate(item, "object") for item in object_candidates
-        )
+        object_candidates=", ".join(_format_candidate(item, "object") for item in object_candidates)
         or "-",
         evidence=_evidence_digest(evidence, signals),
         note=f"{prefix}{reason}",
@@ -608,10 +602,7 @@ def _top_terms(counter: Counter[str]) -> list[dict[str, Any]]:
 
     ranked = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
 
-    return [
-        {"term": term, "table_count": count}
-        for term, count in ranked[:QUALITY_SAMPLE_LIMIT]
-    ]
+    return [{"term": term, "table_count": count} for term, count in ranked[:QUALITY_SAMPLE_LIMIT]]
 
 
 # ============================================================
@@ -745,9 +736,7 @@ def build_business_quality(inputs: QualityInputs) -> BusinessQualityResult:
                 confidence_counts[category][confidence or BUSINESS_CONFIDENCE_UNKNOWN] += 1
 
                 candidate_types = _candidate_types(candidate)
-                candidate_diversity[category][
-                    quality_diversity_bucket(len(candidate_types))
-                ] += 1
+                candidate_diversity[category][quality_diversity_bucket(len(candidate_types))] += 1
 
                 if confidence != BUSINESS_CONFIDENCE_HIGH:
                     continue
@@ -915,8 +904,7 @@ def build_business_quality(inputs: QualityInputs) -> BusinessQualityResult:
             "不计入 by_reason 合计。"
         ),
         "by_reason": {
-            reason: unknown_reason_counts.get(reason, 0)
-            for reason in QUALITY_UNKNOWN_REASON_ORDER
+            reason: unknown_reason_counts.get(reason, 0) for reason in QUALITY_UNKNOWN_REASON_ORDER
         },
         "core_unknown_count": core_unknown_count,
         "by_layer": dict(sorted(unknown_layer_counts.items())),
@@ -997,8 +985,7 @@ def build_business_quality(inputs: QualityInputs) -> BusinessQualityResult:
         },
         "high_total": high_total,
         "high_diversity": {
-            bucket: high_diversity_counts.get(bucket, 0)
-            for bucket in QUALITY_DIVERSITY_BUCKETS
+            bucket: high_diversity_counts.get(bucket, 0) for bucket in QUALITY_DIVERSITY_BUCKETS
         },
         "high_naming_only": high_naming_only,
         "high_with_sql": high_with_sql,
@@ -1009,7 +996,7 @@ def build_business_quality(inputs: QualityInputs) -> BusinessQualityResult:
 
     core_table_review_section: dict[str, Any] = {
         "note": (
-            "core 口径是 analysis/business/tables.json 的 is_core_candidate；"
+            "core 口径是 analysis/understanding/business/tables.json 的 is_core_candidate；"
             "core_low_evidence_count（diversity ≤ 1）与 core_unknown_count 有重叠："
             "UNKNOWN 的表证据必然为空。"
         ),
@@ -1091,7 +1078,7 @@ def run_business_quality_assessment(
 ) -> BusinessQualityResult:
     """执行 M3.1 Business Quality Assessment 并写出产物。
 
-    只读 M2 / M3 产物；输入缺失时直接报错，不自动回退去跑 M2 / analyze-business。
+    只读 M2 / M3 产物；输入缺失时直接报错，不自动回退去跑 M2（analyze --stage evidence）。
     """
 
     inputs = read_quality_inputs(analysis_dir)

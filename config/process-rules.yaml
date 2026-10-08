@@ -16,8 +16,8 @@
 # 4. 分词复用 business_understanding.tokenize_identifier（支持 camelCase 与下划线）。
 #
 # 约束：
-# - 只被 analyze-business-processes 读取；M2 / M3 / M3.1 / M3.2 不读取本文件。
-# - 配置缺失或非法时 analyze-business-processes 直接报错退出，不回退默认值。
+# - 只被 analyze --stage understanding 读取；M2 / M3 / M3.1 / M3.2 不读取本文件。
+# - 配置缺失或非法时 analyze --stage understanding 直接报错退出，不回退默认值。
 # - 同一 signal_type 内的规则重复、或不同 signal_type 之间的规则重复，视为配置错误。
 
 version: "1.0"
@@ -59,4 +59,4 @@ status:
 # ============================================================
 # multi_object：同一张表同时参与 ≥2 个 Business Object Candidate。
 # lifecycle：同一张表同时出现 status 与 event_time 两类列级信号。
-# 两者由 analyze-business-processes 直接推导，不在本文件配置。
+# 两者由 analyze --stage understanding 直接推导，不在本文件配置。

@@ -131,39 +131,6 @@ def write_json(
         )
 
 
-def write_jsonl(
-    path: Path,
-    records: list[dict[str, Any]],
-    *,
-    overwrite: bool = True,
-) -> None:
-    """
-    将多个对象保存成 JSON Lines 文件。
-
-    每一行对应一条独立 JSON 记录，
-    适合保存大量任务或关系数据。
-    """
-
-    if path.exists() and not overwrite:
-        return
-
-    ensure_dir(path.parent)
-
-    with path.open(
-        "w",
-        encoding="utf-8",
-    ) as file:
-        for record in records:
-            file.write(
-                json.dumps(
-                    record,
-                    ensure_ascii=False,
-                    default=str,
-                )
-            )
-            file.write("\n")
-
-
 def write_text(
     path: Path,
     content: str,

@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from helpers import write_snapshot
 
-from data_platform_analysis.analysis.layer.layer_assessment import (
+from data_platform_analysis.analysis.evidence.layer.layer_assessment import (
     LayerAssessmentError,
     _display_path,
     assess_tables,
@@ -365,9 +365,7 @@ def test_assessments_sorted_by_workspace_project_table(tmp_path: Path) -> None:
         (466337, "dme_cdm", "dwd_b"),
         (466338, "dme_ods", "ods_x"),
     ]
-    assert [item.table_name for item in reversed_ordered] == [
-        item.table_name for item in ordered
-    ]
+    assert [item.table_name for item in reversed_ordered] == [item.table_name for item in ordered]
 
 
 # ============================================================
@@ -414,59 +412,55 @@ def test_missing_inventory_file_raises(tmp_path: Path) -> None:
         run_layer_assessment(
             inventory_path=tmp_path / "analysis" / "inventory" / "tables.json",
             rules_path=rules_path,
-            output_dir=tmp_path / "analysis" / "layer",
+            output_dir=tmp_path / "analysis" / "evidence" / "layer",
         )
 
 
 # ============================================================
-# 7. CLI 黑盒：analyze-layer
+# 7. CLI 黑盒：analyze --stage evidence
 # ============================================================
 
 
-def _write_inventory(path: Path, tables: list[dict[str, Any]]) -> Path:
-    """写出 M2.1 的 tables.json。"""
+def _write_source_tables() -> None:
+    """写出 evidence stage 需要的 Snapshot（Inventory 由流水线重建）。"""
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {"count": len(tables), "tables": tables},
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
+    write_snapshot(
+        Path("source"),
+        workspaces=[
+            {"id": 466338, "name": "dme_ods"},
+            {"id": 466337, "name": "dme_cdm"},
+            {"id": 999999, "name": "dme_unconfigured"},
+        ],
+        tables=[
+            {"workspace_id": 466338, "table": "ods_order", "columns": []},
+            {"workspace_id": 466338, "table": "dwd_master_data", "columns": []},
+            {"workspace_id": 466337, "table": "dwd_sales", "columns": []},
+            {"workspace_id": 466337, "table": "sales_detail", "columns": []},
+            {"workspace_id": 466337, "table": "dwd_sales_dws", "columns": []},
+            {"workspace_id": 999999, "table": "whatever", "columns": []},
+        ],
     )
 
-    return path
 
-
-def test_analyze_layer_command_writes_outputs(
+def test_analyze_evidence_stage_command_writes_outputs(
     cli_env: Any,
     run_cli: Any,
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze-layer 产出 assessments.json / summary.md，且不修改 Inventory。"""
+    """analyze --stage evidence 产出 assessments.json / summary.md，且不改 Inventory。"""
 
     rules_path = _write_rules(tmp_path / "config" / "layer-rules.yaml")
     monkeypatch.setenv("LAYER_RULES_PATH", str(rules_path))
 
-    _write_inventory(
-        Path("analysis/inventory/tables.json"),
-        [
-            _table(466338, "dme_ods", "ods_order"),
-            _table(466338, "dme_ods", "dwd_master_data"),
-            _table(466337, "dme_cdm", "dwd_sales"),
-            _table(466337, "dme_cdm", "sales_detail"),
-            _table(466337, "dme_cdm", "dwd_sales_dws"),
-            _table(999999, "dme_unconfigured", "whatever"),
-        ],
-    )
+    _write_source_tables()
+
+    assert run_cli("analyze", "--stage", "evidence") == 0
 
     inventory_bytes = Path("analysis/inventory/tables.json").read_bytes()
+    assert _read(Path("analysis/inventory/tables.json"))["count"] == 6
 
-    assert run_cli("analyze-layer") == 0
-
-    data = _read(Path("analysis/layer/assessments.json"))
+    data = _read(Path("analysis/evidence/layer/assessments.json"))
     assert data["count"] == 6
 
     by_table = {item["table_name"]: item for item in data["assessments"]}
@@ -510,7 +504,7 @@ def test_analyze_layer_command_writes_outputs(
     assert unconfigured["status"] == LAYER_STATUS_UNKNOWN
     assert unconfigured["evidence"][0]["configured"] is False
 
-    summary = Path("analysis/layer/summary.md").read_text(encoding="utf-8")
+    summary = Path("analysis/evidence/layer/summary.md").read_text(encoding="utf-8")
     assert "# M2.2 Layer Assessment" in summary
     assert "999999" in summary
     assert "未配置 Workspace" in summary
@@ -523,33 +517,61 @@ def test_analyze_layer_command_writes_outputs(
 
     # 排序 deterministic。
     keys = [
-        (item["workspace_id"], item["project"], item["table_name"])
-        for item in data["assessments"]
+        (item["workspace_id"], item["project"], item["table_name"]) for item in data["assessments"]
     ]
     assert keys == sorted(keys)
 
-    first_run = Path("analysis/layer/assessments.json").read_bytes()
+    first_run = Path("analysis/evidence/layer/assessments.json").read_bytes()
 
-    # 不修改 Inventory。
+    # evidence stage 每轮从 Snapshot 重建 Inventory，Layer 只读不回写。
+    assert run_cli("analyze", "--stage", "evidence") == 0
     assert Path("analysis/inventory/tables.json").read_bytes() == inventory_bytes
-
-    assert run_cli("analyze-layer") == 0
-    assert Path("analysis/layer/assessments.json").read_bytes() == first_run
+    assert Path("analysis/evidence/layer/assessments.json").read_bytes() == first_run
 
 
-def test_analyze_layer_command_fails_without_inventory(
+def test_evidence_stage_runs_layer_assessment_once(
     cli_env: Any,
     run_cli: Any,
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """Inventory 输入缺失 → 退出码 1，不写产物。"""
+    """M2.2 在 evidence 阶段只执行一次，不重复计算、重复写出。"""
+
+    from data_platform_analysis.analysis import pipeline as pipeline_module
 
     rules_path = _write_rules(tmp_path / "config" / "layer-rules.yaml")
     monkeypatch.setenv("LAYER_RULES_PATH", str(rules_path))
 
-    assert run_cli("analyze-layer") == 1
-    assert not Path("analysis/layer/assessments.json").exists()
+    calls: list[Any] = []
+    original = pipeline_module.run_layer_assessment
+
+    def _counting(**kwargs: Any) -> Any:
+        calls.append(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(pipeline_module, "run_layer_assessment", _counting)
+
+    _write_source_tables()
+
+    assert run_cli("analyze", "--stage", "evidence") == 0
+
+    assert len(calls) == 1, calls
+    assert Path("analysis/evidence/layer/assessments.json").exists()
+
+
+def test_analyze_evidence_stage_command_fails_without_source(
+    cli_env: Any,
+    run_cli: Any,
+    tmp_path: Any,
+    monkeypatch: Any,
+) -> None:
+    """Snapshot 缺失 → 退出码 1，不写 layer 产物。"""
+
+    rules_path = _write_rules(tmp_path / "config" / "layer-rules.yaml")
+    monkeypatch.setenv("LAYER_RULES_PATH", str(rules_path))
+
+    assert run_cli("analyze", "--stage", "evidence") == 1
+    assert not Path("analysis/evidence/layer/assessments.json").exists()
 
 
 # ============================================================
@@ -563,7 +585,7 @@ def test_analyze_produces_layer_outputs(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze 一并产出 analysis/layer（M2.2 步骤已接入流水线）。"""
+    """analyze 一并产出 analysis/evidence/layer（M2.2 步骤已接入流水线）。"""
 
     rules_path = _write_rules(tmp_path / "config" / "layer-rules.yaml")
     monkeypatch.setenv("LAYER_RULES_PATH", str(rules_path))
@@ -582,12 +604,12 @@ def test_analyze_produces_layer_outputs(
 
     assert run_cli("analyze") == 0
 
-    data = _read(Path("analysis/layer/assessments.json"))
+    data = _read(Path("analysis/evidence/layer/assessments.json"))
     assert data["count"] == 1
     assert data["assessments"][0]["candidate_layer"] == "DWD"
     assert data["assessments"][0]["status"] == LAYER_STATUS_MATCH
 
-    assert Path("analysis/layer/summary.md").exists()
+    assert Path("analysis/evidence/layer/summary.md").exists()
 
     # 总 Summary 包含 M2.2 一节。
     summary = Path("analysis/Summary.md").read_text(encoding="utf-8")

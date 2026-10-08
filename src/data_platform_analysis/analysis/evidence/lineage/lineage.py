@@ -2,9 +2,9 @@
 
 输出：
 
-    analysis/lineage/table-lineage.json
-    analysis/lineage/core-table-candidates.json
-    analysis/lineage/summary.md
+    analysis/evidence/lineage/table-lineage.json
+    analysis/evidence/lineage/core-table-candidates.json
+    analysis/evidence/lineage/summary.md
 
 原则：
 
@@ -22,8 +22,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from ..inventory.inventory import Inventory
-from ..models import (
+from ...inventory.inventory import Inventory
+from ...models import (
     CoreTableCandidate,
     LayerAssessment,
     LineageEdge,
@@ -31,7 +31,7 @@ from ..models import (
     TableReference,
     numeric_id_sort_key,
 )
-from ..naming import project_of, qualify_table_ref
+from ...naming import project_of, qualify_table_ref
 
 logger = logging.getLogger(__name__)
 

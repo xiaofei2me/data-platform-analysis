@@ -67,7 +67,7 @@ AST 解析为 unsupported（`exp.Command`）且语句具备 CTAS 特征时，
 - 溯源：`statements.json` / `table-references.json` / `table-lineage.json` 的
   evidence 都带 `extraction_method` 字段，可区分 ast 与 fallback。
 
-实现位置：`src/data_platform_analysis/analysis/sql/fallback.py`，
+实现位置：`src/data_platform_analysis/analysis/evidence/sql/fallback.py`，
 测试：`tests/test_ctas_fallback.py`（含 Golden Case 与死循环看门狗）。
 
 **优点：**
@@ -101,4 +101,4 @@ AST 解析为 unsupported（`exp.Command`）且语句具备 CTAS 特征时，
 已实施 **方案 1（CTAS token scanner fallback）**：
 Golden Case `504340625` statement 2 不再记为 `SQL_UNSUPPORTED_STATEMENT`，
 按 `success` + `extraction_method=fallback` 产出 1 个 target 与 4 个 source，
-血缘多出 4 条边，`analysis/errors.json` 归零。
+血缘多出 4 条边，`analysis/evidence/errors.json` 归零。

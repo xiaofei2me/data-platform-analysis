@@ -14,26 +14,6 @@ from typing import Any
 import pytest
 from test_business_grain import _pipeline as _grain_pipeline
 
-from data_platform_analysis.analysis.business.grain import (
-    CARRYOVER_CHECKLIST_INPUT_FILE,
-    run_business_grain_analysis,
-)
-from data_platform_analysis.analysis.model.business_model import (
-    ARRAY_INPUT_FILES,
-    FACT_GATE_REASON_MEASURE,
-    FACT_GATE_REASON_PATTERN,
-    INPUT_FILES,
-    OUTPUT_FILES,
-    BusinessModelError,
-    ModelIndexes,
-    _attributes,
-    fact_gate,
-    read_model_inputs,
-    run_business_model_analysis,
-)
-from data_platform_analysis.analysis.model.business_model import (
-    CARRYOVER_CHECKLIST_INPUT_FILE as MODEL_CARRYOVER_FILE,
-)
 from data_platform_analysis.analysis.models import (
     DIMENSION_EVIDENCE_ORDER,
     EVIDENCE_STRENGTH_MODERATE,
@@ -67,6 +47,27 @@ from data_platform_analysis.analysis.models import (
     MODEL_STATUS_ORDER,
     evidence_strength,
 )
+from data_platform_analysis.analysis.understanding.business.grain import (
+    CARRYOVER_CHECKLIST_INPUT_FILE,
+    run_business_grain_analysis,
+)
+from data_platform_analysis.analysis.understanding.modeling.business_model import (
+    ARRAY_INPUT_FILES,
+    FACT_GATE_REASON_MEASURE,
+    FACT_GATE_REASON_PATTERN,
+    INPUT_FILES,
+    OUTPUT_FILES,
+    PROCESS_CHECKLIST_INPUT_FILE,
+    BusinessModelError,
+    ModelIndexes,
+    _attributes,
+    fact_gate,
+    read_model_inputs,
+    run_business_model_analysis,
+)
+from data_platform_analysis.analysis.understanding.modeling.business_model import (
+    CARRYOVER_CHECKLIST_INPUT_FILE as MODEL_CARRYOVER_FILE,
+)
 
 # ============================================================
 # 测试数据
@@ -88,7 +89,7 @@ def _pipeline(tmp_path: Path) -> Path:
     analysis_dir = _grain_pipeline(tmp_path)
     run_business_grain_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
     return analysis_dir
@@ -97,12 +98,14 @@ def _pipeline(tmp_path: Path) -> Path:
 def _run(analysis_dir: Path) -> Any:
     return run_business_model_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "model",
+        output_dir=analysis_dir / "understanding" / "modeling",
     )
 
 
 def _read(analysis_dir: Path, name: str) -> Any:
-    return json.loads((analysis_dir / "model" / name).read_text(encoding="utf-8"))
+    return json.loads(
+        (analysis_dir / "understanding" / "modeling" / name).read_text(encoding="utf-8")
+    )
 
 
 def _facts(analysis_dir: Path) -> list[dict[str, Any]]:
@@ -152,7 +155,7 @@ def test_missing_single_input_reports_path(tmp_path: Path) -> None:
     """缺 profiling/columns.json → 报错信息点名该文件。"""
 
     analysis_dir = _pipeline(tmp_path)
-    (analysis_dir / "profiling" / "columns.json").unlink()
+    (analysis_dir / "evidence" / "profiling" / "columns.json").unlink()
 
     with pytest.raises(BusinessModelError, match="profiling/columns.json"):
         read_model_inputs(analysis_dir)
@@ -162,7 +165,7 @@ def test_invalid_json_raises(tmp_path: Path) -> None:
     """产物不是合法 JSON → 报错，不回退、不静默跳过。"""
 
     analysis_dir = _pipeline(tmp_path)
-    (analysis_dir / "lineage" / "table-lineage.json").write_text("{", encoding="utf-8")
+    (analysis_dir / "evidence" / "lineage" / "table-lineage.json").write_text("{", encoding="utf-8")
 
     with pytest.raises(BusinessModelError, match="不是合法的 JSON"):
         read_model_inputs(analysis_dir)
@@ -172,7 +175,9 @@ def test_array_payload_with_non_object_root_raises(tmp_path: Path) -> None:
     """产物根节点不是对象 → 明确报错。"""
 
     analysis_dir = _pipeline(tmp_path)
-    (analysis_dir / "business" / "grain-candidates.json").write_text("[]", encoding="utf-8")
+    (analysis_dir / "understanding" / "business" / "grain-candidates.json").write_text(
+        "[]", encoding="utf-8"
+    )
 
     with pytest.raises(BusinessModelError, match="根节点不是对象"):
         read_model_inputs(analysis_dir)
@@ -182,7 +187,7 @@ def test_grain_with_unknown_process_reference_raises(tmp_path: Path) -> None:
     """grain candidate 引用未知 process candidate → 明确报错。"""
 
     analysis_dir = _pipeline(tmp_path)
-    path = analysis_dir / "business" / "grain-candidates.json"
+    path = analysis_dir / "understanding" / "business" / "grain-candidates.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["candidates"][0]["process_candidate_id"] = "process_candidate_999"
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -195,7 +200,7 @@ def test_grain_with_unknown_object_reference_raises(tmp_path: Path) -> None:
     """grain candidate 的 matched_objects 含未知 Object → 明确报错。"""
 
     analysis_dir = _pipeline(tmp_path)
-    path = analysis_dir / "business" / "grain-candidates.json"
+    path = analysis_dir / "understanding" / "business" / "grain-candidates.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["candidates"][0]["matched_objects"] = ["unknown_object"]
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -225,7 +230,11 @@ def test_optional_checklists_are_optional(tmp_path: Path) -> None:
 
     analysis_dir = _pipeline(tmp_path)
 
-    for relative in (CARRYOVER_CHECKLIST_INPUT_FILE, MODEL_CARRYOVER_FILE):
+    for relative in (
+        PROCESS_CHECKLIST_INPUT_FILE,
+        CARRYOVER_CHECKLIST_INPUT_FILE,
+        MODEL_CARRYOVER_FILE,
+    ):
         path = analysis_dir / relative
         if path.exists():
             path.unlink()
@@ -233,6 +242,52 @@ def test_optional_checklists_are_optional(tmp_path: Path) -> None:
     result = _run(analysis_dir)
 
     assert result.fact_count > 0
+
+
+def test_upstream_checklists_are_read_from_understanding_business(tmp_path: Path) -> None:
+    """M3.5 从 understanding/business/ 读取 M3.3 / M3.4 的人工回填并带入 confirmed。"""
+
+    analysis_dir = _pipeline(tmp_path)
+    _run(analysis_dir)
+
+    first_rows = _facts(analysis_dir)
+    target = next(
+        row
+        for row in first_rows
+        if row.get("process_candidate_id") and row.get("grain_candidate_id")
+    )
+    process_key = str(target["process_candidate_id"])
+    grain_id = str(target["grain_candidate_id"])
+
+    # 未回填时两个人工确认标记都是 false。
+    assert target["process_human_validated"] is False
+    assert target["grain_human_validated"] is False
+
+    business_dir = analysis_dir / "understanding" / "business"
+
+    (business_dir / "process-review-checklist.md").write_text(
+        f"| process_key | confirmed |\n| --- | --- |\n| {process_key} | true |\n",
+        encoding="utf-8",
+    )
+    (business_dir / "grain-review-checklist.md").write_text(
+        f"| grain_candidate_id | confirmed |\n| --- | --- |\n| {grain_id} | true |\n",
+        encoding="utf-8",
+    )
+
+    _run(analysis_dir)
+
+    rows = _facts(analysis_dir)
+
+    for row in rows:
+        if row.get("process_candidate_id") == process_key:
+            assert row["process_human_validated"] is True, row["process_candidate_id"]
+        elif row.get("process_candidate_id"):
+            assert row["process_human_validated"] is False, row["process_candidate_id"]
+
+        if row.get("grain_candidate_id") == grain_id:
+            assert row["grain_human_validated"] is True, row["grain_candidate_id"]
+        elif row.get("grain_candidate_id"):
+            assert row["grain_human_validated"] is False, row["grain_candidate_id"]
 
 
 def test_declared_files_and_output_names(tmp_path: Path) -> None:
@@ -329,7 +384,9 @@ def test_gate_payload_counts_and_zero_reasons_are_omitted(tmp_path: Path) -> Non
 
     grain_count = len(
         json.loads(
-            (analysis_dir / "business" / "grain-candidates.json").read_text(encoding="utf-8")
+            (analysis_dir / "understanding" / "business" / "grain-candidates.json").read_text(
+                encoding="utf-8"
+            )
         )["candidates"]
     )
 
@@ -778,7 +835,7 @@ def test_output_structure_and_payload_counts(tmp_path: Path) -> None:
     result = _run(analysis_dir)
 
     for name in OUTPUT_FILES:
-        assert (analysis_dir / "model" / name).exists(), name
+        assert (analysis_dir / "understanding" / "modeling" / name).exists(), name
 
     assert result.fact_candidates["count"] == len(result.fact_candidates["candidates"])
     assert result.dimension_candidates["count"] == len(result.dimension_candidates["candidates"])
@@ -792,7 +849,9 @@ def test_summary_has_required_sections(tmp_path: Path) -> None:
 
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
-    summary = (analysis_dir / "model" / "model-summary.md").read_text(encoding="utf-8")
+    summary = (analysis_dir / "understanding" / "modeling" / "model-summary.md").read_text(
+        encoding="utf-8"
+    )
 
     for index, title in enumerate(
         (
@@ -818,14 +877,16 @@ def test_summary_tables_are_truncated_with_note(tmp_path: Path) -> None:
 
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
-    summary = (analysis_dir / "model" / "model-summary.md").read_text(encoding="utf-8")
+    summary = (analysis_dir / "understanding" / "modeling" / "model-summary.md").read_text(
+        encoding="utf-8"
+    )
 
     fact_count = len(_facts(analysis_dir))
 
     if fact_count > MODEL_REPORT_ROW_LIMIT:
         assert f"只列出前 {MODEL_REPORT_ROW_LIMIT} 条，共 {fact_count} 条" in summary
     else:
-        assert "完整明细见 `analysis/model/fact-candidates.json`" in summary
+        assert "完整明细见 `analysis/understanding/modeling/fact-candidates.json`" in summary
 
 
 def test_checklist_sections_follow_priority_order_and_row_limit(
@@ -835,9 +896,9 @@ def test_checklist_sections_follow_priority_order_and_row_limit(
 
     analysis_dir = _pipeline(tmp_path)
     result = _run(analysis_dir)
-    checklist = (analysis_dir / "model" / "model-review-checklist.md").read_text(
-        encoding="utf-8"
-    )
+    checklist = (
+        analysis_dir / "understanding" / "modeling" / "model-review-checklist.md"
+    ).read_text(encoding="utf-8")
 
     positions = [checklist.index(f"## {priority}") for priority in MODEL_PRIORITY_ORDER]
     assert positions == sorted(positions)
@@ -867,9 +928,9 @@ def test_checklist_defaults_show_pending_for_new_rows(tmp_path: Path) -> None:
 
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
-    checklist = (analysis_dir / "model" / "model-review-checklist.md").read_text(
-        encoding="utf-8"
-    )
+    checklist = (
+        analysis_dir / "understanding" / "modeling" / "model-review-checklist.md"
+    ).read_text(encoding="utf-8")
 
     rows = [
         line
@@ -903,7 +964,7 @@ def test_deterministic_across_runs(tmp_path: Path) -> None:
     """两次运行字节一致（无时间戳 / UUID / 随机抽样）。"""
 
     analysis_dir = _pipeline(tmp_path)
-    model_dir = analysis_dir / "model"
+    model_dir = analysis_dir / "understanding" / "modeling"
 
     _run(analysis_dir)
     first = {name: (model_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)}
@@ -920,9 +981,8 @@ def test_analyze_business_model_command(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze-business-model 产出 8 个文件，两次运行一致且不改前置产物。"""
+    """analyze --stage understanding 产出 8 个 M3.5 文件，两次运行一致且不改 M2 输入。"""
 
-    from test_business_grain import _write_profiling  # noqa: PLC0415
     from test_business_objects import _write_m2 as write_m2  # noqa: PLC0415
     from test_business_processes import (  # noqa: PLC0415
         _m2_payloads,
@@ -934,31 +994,23 @@ def test_analyze_business_model_command(
 
     write_m2(Path("analysis"), **_m2_payloads())
 
-    assert run_cli("analyze-business") == 0
-    assert run_cli("analyze-business-quality") == 0
-    assert run_cli("analyze-business-objects") == 0
-    assert run_cli("analyze-business-processes") == 0
-    _write_profiling(Path("analysis"))
-    assert run_cli("analyze-business-grain") == 0
+    m2_inputs = {path: path.read_bytes() for path in sorted(Path("analysis").rglob("*.json"))}
 
-    business_dir = Path("analysis/business")
-    model_dir = Path("analysis/model")
-    assert not (model_dir / "fact-candidates.json").exists()
+    assert run_cli("analyze", "--stage", "understanding") == 0
 
-    before = {path.name: path.read_bytes() for path in sorted(business_dir.iterdir())}
-
-    assert run_cli("analyze-business-model") == 0
+    business_dir = Path("analysis/understanding/business")
+    model_dir = Path("analysis/understanding/modeling")
 
     for name in OUTPUT_FILES:
         assert (model_dir / name).exists(), name
         assert not (business_dir / name).exists(), name
 
-    for name, content in before.items():
-        assert (business_dir / name).read_bytes() == content, name
+    for path, content in m2_inputs.items():
+        assert path.read_bytes() == content, path
 
     first = {name: (model_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)}
 
-    assert run_cli("analyze-business-model") == 0
+    assert run_cli("analyze", "--stage", "understanding") == 0
     assert {name: (model_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)} == first
 
 
@@ -968,10 +1020,10 @@ def test_analyze_business_model_command_fails_without_inputs(
 ) -> None:
     """缺前置产物 → 退出码 1，不写任何 M3.5 产物。"""
 
-    assert run_cli("analyze-business-model") == 1
+    assert run_cli("analyze", "--stage", "understanding") == 1
 
     for name in OUTPUT_FILES:
-        assert not Path("analysis/model").joinpath(name).exists(), name
+        assert not Path("analysis/understanding/modeling").joinpath(name).exists(), name
 
 
 def test_legacy_artifacts_in_business_are_relocated(tmp_path: Path) -> None:
@@ -980,11 +1032,12 @@ def test_legacy_artifacts_in_business_are_relocated(tmp_path: Path) -> None:
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
 
-    model_dir = analysis_dir / "model"
+    model_dir = analysis_dir / "understanding" / "modeling"
     business_dir = analysis_dir / "business"
     checklist = (model_dir / "model-review-checklist.md").read_bytes()
 
     # 模拟旧布局：清单与机器产物都残留在 business/。
+    business_dir.mkdir(parents=True, exist_ok=True)
     (business_dir / "model-review-checklist.md").write_bytes(checklist)
     (business_dir / "fact-candidates.json").write_text("{stale}", encoding="utf-8")
     (model_dir / "model-review-checklist.md").unlink()

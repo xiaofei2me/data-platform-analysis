@@ -12,7 +12,7 @@
 失败处理：
 
     单条语句失败只影响该条语句，文件级与分析级继续执行；
-    失败语句写入 analysis/sql/parse-errors.json 与 analysis/errors.json。
+    失败语句写入 analysis/evidence/sql/parse-errors.json 与 analysis/evidence/errors.json。
     归一化不会把真正的 parse error 伪装成 success。
 
 CTAS Fallback：
@@ -40,9 +40,8 @@ from sqlglot import Dialect, exp
 from sqlglot.errors import ParseError, TokenError
 from sqlglot.tokens import TokenType
 
-from ..errors import ErrorLedger
-from ..lineage.references import extract_table_references
-from ..models import (
+from ...errors import ErrorLedger
+from ...models import (
     EXTRACTION_METHOD_AST,
     EXTRACTION_METHOD_FALLBACK,
     EXTRACTION_METHOD_NONE,
@@ -54,7 +53,8 @@ from ..models import (
     TableReference,
     is_analysis_eligible,
 )
-from ..snapshot import SnapshotReader
+from ...snapshot import SnapshotReader
+from ..lineage.references import extract_table_references
 from .dialect import DIALECT, register_dialect
 from .fallback import extract_ctas_references, is_ctas_statement
 from .normalization import normalize_for_parser
@@ -72,7 +72,7 @@ MAX_MESSAGE_LENGTH = 300
 
 @dataclass
 class ParseErrorRecord:
-    """写入 analysis/sql/parse-errors.json 的单条记录。"""
+    """写入 analysis/evidence/sql/parse-errors.json 的单条记录。"""
 
     workspace_id: int
     file_id: int | str

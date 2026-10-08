@@ -15,29 +15,29 @@
 
 输入（只读 analysis/ 与 config/，不读 source/，不调 API，不修改 M2 / M3 / M3.1 / M3.2）：
 
-    analysis/business/objects-registry.json
-    analysis/business/object-tables.json
-    analysis/business/object-relationships.json
-    analysis/business/tables.json
-    analysis/business/terms.json
-    analysis/business/review-checklist.md
+    analysis/understanding/business/objects-registry.json
+    analysis/understanding/business/object-tables.json
+    analysis/understanding/business/object-relationships.json
+    analysis/understanding/business/tables.json
+    analysis/understanding/business/terms.json
+    analysis/understanding/business/review-checklist.md
     analysis/inventory/tables.json
     analysis/inventory/columns.json
-    analysis/sql/statements.json
-    analysis/sql/table-references.json
-    analysis/lineage/table-lineage.json
-    analysis/lineage/core-table-candidates.json
+    analysis/evidence/sql/statements.json
+    analysis/evidence/sql/table-references.json
+    analysis/evidence/lineage/table-lineage.json
+    analysis/evidence/lineage/core-table-candidates.json
     config/process-rules.yaml
-    analysis/business/process-review-checklist.md   （可选：已回填的人工确认）
+    understanding/business/process-review-checklist.md   （可选：已回填的人工确认）
 
 输出：
 
-    analysis/business/process-signals.json
-    analysis/business/processes.json
-    analysis/business/process-tables.json
-    analysis/business/process-objects.json
-    analysis/business/process-summary.md
-    analysis/business/process-review-checklist.md
+    analysis/understanding/business/process-signals.json
+    analysis/understanding/business/processes.json
+    analysis/understanding/business/process-tables.json
+    analysis/understanding/business/process-objects.json
+    analysis/understanding/business/process-summary.md
+    understanding/business/process-review-checklist.md
 
 原则：
 
@@ -70,9 +70,14 @@ from typing import Any
 
 import yaml
 
-from ...config import PROJECT_ROOT
-from ...io_utils import ensure_dir, write_json, write_text
-from ..models import (
+from .... import config
+from ....io_utils import (
+    ensure_dir,
+    relocate_legacy_artifacts,
+    write_json,
+    write_text,
+)
+from ...models import (
     GRAIN_SIGNAL_AGGREGATION_COLUMNS,
     GRAIN_SIGNAL_ORDER,
     GRAIN_SIGNAL_TIME_GROUPING,
@@ -103,7 +108,10 @@ from ..models import (
     BusinessProcessResult,
     process_evidence_strength,
 )
-from ..reports import render_process_review_checklist, render_process_summary
+from ...reports import (
+    render_process_review_checklist,
+    render_process_summary,
+)
 from .objects import (
     HumanReview,
     _cell,
@@ -125,24 +133,24 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 ARRAY_INPUT_FILES: tuple[tuple[str, str, str], ...] = (
-    ("business/objects-registry.json", "objects", "registry_objects"),
-    ("business/object-tables.json", "associations", "associations"),
-    ("business/object-relationships.json", "relationships", "relationships"),
-    ("business/tables.json", "tables", "tables"),
-    ("business/terms.json", "terms", "terms"),
+    ("understanding/business/objects-registry.json", "objects", "registry_objects"),
+    ("understanding/business/object-tables.json", "associations", "associations"),
+    ("understanding/business/object-relationships.json", "relationships", "relationships"),
+    ("understanding/business/tables.json", "tables", "tables"),
+    ("understanding/business/terms.json", "terms", "terms"),
     ("inventory/tables.json", "tables", "inventory_tables"),
     ("inventory/columns.json", "columns", "columns"),
-    ("sql/statements.json", "statements", "statements"),
-    ("sql/table-references.json", "references", "references"),
-    ("lineage/table-lineage.json", "edges", "edges"),
-    ("lineage/core-table-candidates.json", "candidates", "candidates"),
+    ("evidence/sql/statements.json", "statements", "statements"),
+    ("evidence/sql/table-references.json", "references", "references"),
+    ("evidence/lineage/table-lineage.json", "edges", "edges"),
+    ("evidence/lineage/core-table-candidates.json", "candidates", "candidates"),
 )
 """M3.3 依赖的数组型 M2 / M3 / M3.2 产物（相对 analysis/ 路径 → JSON 数组字段名 → 属性名）。"""
 
-CHECKLIST_INPUT_FILE = "business/review-checklist.md"
+CHECKLIST_INPUT_FILE = "understanding/business/review-checklist.md"
 """M3.1 人工复核清单：表级人工确认的唯一来源。"""
 
-PROCESS_CHECKLIST_INPUT_FILE = "business/process-review-checklist.md"
+PROCESS_CHECKLIST_INPUT_FILE = "understanding/business/process-review-checklist.md"
 """M3.3 人工确认清单（可选输入）：回填过的人工确认在重跑时被带回去。"""
 
 INPUT_FILES: tuple[str, ...] = (
@@ -196,7 +204,7 @@ def _display_path(path: Path) -> str:
     """日志与报告中展示的路径：项目根内用相对路径，其余保持绝对。"""
 
     try:
-        return str(path.resolve().relative_to(PROJECT_ROOT))
+        return str(path.resolve().relative_to(config.PROJECT_ROOT))
 
     except ValueError:
         return str(path)
@@ -283,9 +291,7 @@ def _parse_rule_section(value: Any, label: str, path: Path) -> tuple[SignalRule,
     """解析一个规则段：必须是非空字符串列表，忽略大小写去重。"""
 
     if not isinstance(value, list) or not value:
-        raise BusinessProcessesError(
-            f"process-rules 配置段 {label} 必须是非空列表：{path}"
-        )
+        raise BusinessProcessesError(f"process-rules 配置段 {label} 必须是非空列表：{path}")
 
     rules: list[SignalRule] = []
     seen: set[str] = set()
@@ -310,9 +316,7 @@ def _parse_rule_section(value: Any, label: str, path: Path) -> tuple[SignalRule,
         tokens = tuple(token.casefold() for token in tokenize_identifier(text))
 
         if not tokens:
-            raise BusinessProcessesError(
-                f"process-rules 规则分词后为空：{text}（{path}）"
-            )
+            raise BusinessProcessesError(f"process-rules 规则分词后为空：{text}（{path}）")
 
         rules.append(SignalRule(text=text, tokens=tokens))
 
@@ -332,9 +336,7 @@ def load_process_rules(path: Path) -> ProcessRules:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
 
     except yaml.YAMLError as exc:
-        raise BusinessProcessesError(
-            f"process-rules 配置不是合法的 YAML：{path}（{exc}）"
-        ) from exc
+        raise BusinessProcessesError(f"process-rules 配置不是合法的 YAML：{path}（{exc}）") from exc
 
     if raw is None:
         raise BusinessProcessesError(f"process-rules 配置为空：{path}")
@@ -467,20 +469,17 @@ def read_process_inputs(analysis_dir: Path) -> ProcessInputs:
     """读取 M3.3 依赖的全部 M2 / M3 / M3.2 产物。
 
     任何必需输入缺失或 JSON 非法都明确报错，
-    不自动回退执行 analyze / analyze-business / analyze-business-objects。
+    不自动回退执行 analyze / analyze --stage。
     """
 
-    missing = [
-        relative for relative in INPUT_FILES if not (analysis_dir / relative).exists()
-    ]
+    missing = [relative for relative in INPUT_FILES if not (analysis_dir / relative).exists()]
 
     if missing:
         raise BusinessProcessesError(
             "M2 / M3 / M3.2 产物缺失，无法执行 M3.3 Business Process Candidate Analysis："
             f"{'、'.join(missing)}（目录：{_display_path(analysis_dir)}）；"
-            "请先执行 analyze 生成 M2 产物、analyze-business 生成 M3 产物、"
-            "analyze-business-quality 生成 M3.1 产物、"
-            "analyze-business-objects 生成 M3.2 产物"
+            "请先执行 analyze --stage evidence 生成 M2 产物、"
+            "analyze --stage understanding 生成 M3 ~ M3.5 产物"
         )
 
     def load(relative: str, key: str) -> list[dict[str, Any]]:
@@ -490,9 +489,7 @@ def read_process_inputs(analysis_dir: Path) -> ProcessInputs:
             raw = json.loads(path.read_text(encoding="utf-8"))
 
         except json.JSONDecodeError as exc:
-            raise BusinessProcessesError(
-                f"产物不是合法的 JSON：{path}（{exc}）"
-            ) from exc
+            raise BusinessProcessesError(f"产物不是合法的 JSON：{path}（{exc}）") from exc
 
         if not isinstance(raw, dict):
             raise BusinessProcessesError(f"产物根节点不是对象：{path}")
@@ -639,7 +636,6 @@ def _index_associations(
             objects.setdefault(folded, set()).add(obj)
 
     return objects
-
 
 
 def _relationship_pairs(
@@ -834,9 +830,7 @@ def _parse_process_checklist(text: str) -> dict[str, dict[str, str]]:
             continue
 
         found = {
-            name: cells.index(name)
-            for name in PROCESS_CHECKLIST_REQUIRED_COLUMNS
-            if name in cells
+            name: cells.index(name) for name in PROCESS_CHECKLIST_REQUIRED_COLUMNS if name in cells
         }
 
         if len(found) == len(PROCESS_CHECKLIST_REQUIRED_COLUMNS):
@@ -930,9 +924,7 @@ class ProcessGroup:
         present = set(self.column_signal_types) | set(self.table_signal_types)
 
         return tuple(
-            signal_type
-            for signal_type in PROCESS_SIGNAL_TYPE_ORDER
-            if signal_type in present
+            signal_type for signal_type in PROCESS_SIGNAL_TYPE_ORDER if signal_type in present
         )
 
     @property
@@ -940,8 +932,7 @@ class ProcessGroup:
         """候选的稳定身份：Object 集合 + 列级信号类型（不含时间戳 / 随机量）。"""
 
         return (
-            f"objects={','.join(self.objects)}"
-            f"|signals={','.join(sorted(self.column_signal_types))}"
+            f"objects={','.join(self.objects)}|signals={','.join(sorted(self.column_signal_types))}"
         )
 
 
@@ -992,17 +983,11 @@ def _evaluate_group(
     has_lineage = any(folded in lineage_keys for folded in tables)
 
     relationship_count = sum(
-        1
-        for left, right in combinations(sorted(objects), 2)
-        if (left, right) in relationship_pairs
+        1 for left, right in combinations(sorted(objects), 2) if (left, right) in relationship_pairs
     )
 
-    level_1 = has_transaction and bool(
-        objects or has_measure or has_event_time or has_status
-    )
-    level_2 = len(objects) >= 2 and (
-        has_sql or has_lineage or has_measure or has_event_time
-    )
+    level_1 = has_transaction and bool(objects or has_measure or has_event_time or has_status)
+    level_2 = len(objects) >= 2 and (has_sql or has_lineage or has_measure or has_event_time)
     level_3 = relationship_count > 0 and (
         has_transaction or has_event_time or has_measure or has_status
     )
@@ -1118,8 +1103,7 @@ def _grain_signals(
     payload: dict[str, Any] = {"note": GRAIN_UNDETERMINED_NOTE}
 
     by_type: dict[str, dict[str, set[str]]] = {
-        grain_signal: {"tables": set(), "examples": set()}
-        for grain_signal in GRAIN_SIGNAL_ORDER
+        grain_signal: {"tables": set(), "examples": set()} for grain_signal in GRAIN_SIGNAL_ORDER
     }
 
     for row in column_rows:
@@ -1184,9 +1168,7 @@ def _group_column_rows(
     wanted = set(tables)
 
     return [
-        dict(row)
-        for row in column_rows
-        if str(row.get("table_key") or "").casefold() in wanted
+        dict(row) for row in column_rows if str(row.get("table_key") or "").casefold() in wanted
     ]
 
 
@@ -1333,11 +1315,7 @@ def build_business_processes(
                     objects=group.objects,
                     column_rows=group_column_rows,
                     table_terms=sorted(
-                        {
-                            term
-                            for folded in group.tables
-                            for term in business_terms.get(folded, ())
-                        }
+                        {term for folded in group.tables for term in business_terms.get(folded, ())}
                     ),
                     term_counts=term_counts,
                 ),
@@ -1346,18 +1324,10 @@ def build_business_processes(
                 "levels": list(sorted(group.levels, key=_level_rank)),
                 "process_evidence_strength": process_evidence_strength(group.levels),
                 "candidate_layer": sorted(
-                    {
-                        str(layer)
-                        for item in meta
-                        for layer in item.get("candidate_layers", set())
-                    }
+                    {str(layer) for item in meta for layer in item.get("candidate_layers", set())}
                 ),
                 "warehouse_layer": sorted(
-                    {
-                        str(layer)
-                        for item in meta
-                        for layer in item.get("warehouse_layers", set())
-                    }
+                    {str(layer) for item in meta for layer in item.get("warehouse_layers", set())}
                 ),
                 "core_table_count": group.core_table_count,
                 "checklist_table_count": sum(
@@ -1399,9 +1369,7 @@ def build_business_processes(
                         "sql": 1 if folded in sql_keys else 0,
                         "lineage": 1 if folded in lineage_keys else 0,
                     },
-                    "core_candidate": bool(
-                        folded in core_keys or item_meta.get("core_candidate")
-                    ),
+                    "core_candidate": bool(folded in core_keys or item_meta.get("core_candidate")),
                     "status": _table_status(table_reviews.get(folded)),
                 }
             )
@@ -1525,10 +1493,6 @@ def build_business_processes(
     return result
 
 
-
-
-
-
 # ============================================================
 # 产物写出与运行入口
 # ============================================================
@@ -1574,6 +1538,16 @@ def run_business_process_analysis(
     输入缺失时直接报错，不自动回退去跑前置阶段。
     """
 
+    # 旧布局把 M3.3 产物写在 business/：先清理遗留文件（process 清单搬迁保留人工列），
+    # 保证同一阶段的产物只存在于 output_dir。
+    relocate_legacy_artifacts(
+        analysis_dir,
+        output_dir,
+        legacy_dir="business",
+        output_files=OUTPUT_FILES,
+        carryover_files=(Path(PROCESS_CHECKLIST_INPUT_FILE).name,),
+    )
+
     rules = load_process_rules(rules_path)
     inputs = read_process_inputs(analysis_dir)
 
@@ -1590,11 +1564,7 @@ def run_business_process_analysis(
         result.process_strength_counts.get(PROCESS_STRENGTH_ORDER[0], 0),
         result.process_strength_counts.get(PROCESS_STRENGTH_ORDER[1], 0),
         result.process_strength_counts.get(PROCESS_STRENGTH_ORDER[2], 0),
-        sum(
-            1
-            for item in result.processes.get("processes") or []
-            if item.get("human_validated")
-        ),
+        sum(1 for item in result.processes.get("processes") or [] if item.get("human_validated")),
     )
 
     return result

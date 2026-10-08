@@ -1,5 +1,13 @@
 ## Agent skills
 
+### Data safety
+
+`source/` contains collected DataWorks and MaxCompute Snapshot data and must be treated as immutable input.
+
+See `docs/agents/data-safety.md`.
+
+Agents must not modify, delete, overwrite, rename, move, or clean files under `source/` during development, testing, refactoring, or analysis work.
+
 ### Issue tracker
 
 Issues live as markdown files under `.scratch/<feature>/` in this repo. See `docs/agents/issue-tracker.md`.

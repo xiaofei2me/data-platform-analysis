@@ -582,7 +582,7 @@ class ObjectSummary:
 
 @dataclass
 class BusinessTableUnderstanding:
-    """单张表的 M3 业务理解结果（analysis/business/tables.json）。
+    """单张表的 M3 业务理解结果（analysis/understanding/business/tables.json）。
 
     1. warehouse_layer / candidate_sub_layer 只读取 M2.2 Layer Assessment，
        M3 不自行判定层级，也不因「像 DWD / DWS」而修改层级。
@@ -621,11 +621,9 @@ class BusinessTableUnderstanding:
         """存在 high 级别的 Domain 或 Object 候选。"""
 
         return any(
-            item.confidence == BUSINESS_CONFIDENCE_HIGH
-            for item in self.domain_candidates
+            item.confidence == BUSINESS_CONFIDENCE_HIGH for item in self.domain_candidates
         ) or any(
-            item.confidence == BUSINESS_CONFIDENCE_HIGH
-            for item in self.business_object_candidates
+            item.confidence == BUSINESS_CONFIDENCE_HIGH for item in self.business_object_candidates
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -738,7 +736,7 @@ class QualitySample:
     """质量评估抽样明细（UNKNOWN / AMBIGUOUS / 核心表复核共用）。
 
     candidate_domains / candidate_objects 是 `key(confidence)` 形式的紧凑写法，
-    候选全量明细仍以 analysis/business/tables.json 为准。
+    候选全量明细仍以 analysis/understanding/business/tables.json 为准。
     """
 
     table_key: str
@@ -924,14 +922,8 @@ class BusinessObjectResult:
         """至少一个 endpoint 关联核心表候选的关系数量。"""
 
         return sum(
-            1
-            for item in self.relationships.get("relationships") or []
-            if item.get("core_related")
+            1 for item in self.relationships.get("relationships") or [] if item.get("core_related")
         )
-
-    @property
-    def object_status_counts(self) -> dict[str, int]:
-        return dict(self.registry.get("status_counts") or {})
 
     @property
     def association_status_counts(self) -> dict[str, int]:
@@ -1460,6 +1452,7 @@ def normalize_human_status(value: str) -> str | None:
 
     return text if text in MODEL_HUMAN_STATUS_SET else None
 
+
 MODEL_ROLE_FACT = "fact_candidate"
 """fact 候选唯一允许的建模角色。"""
 
@@ -1587,9 +1580,7 @@ MODEL_DIMENSION_UNRESOLVED_ORDER: tuple[str, ...] = (
 )
 """dimension candidate 未决原因的固定顺序。"""
 
-MODEL_DIMENSION_UNRESOLVED_SET: frozenset[str] = frozenset(
-    MODEL_DIMENSION_UNRESOLVED_ORDER
-)
+MODEL_DIMENSION_UNRESOLVED_SET: frozenset[str] = frozenset(MODEL_DIMENSION_UNRESOLVED_ORDER)
 
 MODEL_REL_UNRESOLVED_INSUFFICIENT = "insufficient_evidence"
 MODEL_REL_UNRESOLVED_OBJECT_LINK = "missing_object_link"
@@ -1748,18 +1739,6 @@ class BusinessModelResult:
         return dict(self.fact_candidates.get("status_counts") or {})
 
     @property
-    def fact_strength_counts(self) -> dict[str, int]:
-        return dict(self.fact_candidates.get("strength_counts") or {})
-
-    @property
-    def dimension_strength_counts(self) -> dict[str, int]:
-        return dict(self.dimension_candidates.get("strength_counts") or {})
-
-    @property
-    def relationship_strength_counts(self) -> dict[str, int]:
-        return dict(self.relationships.get("strength_counts") or {})
-
-    @property
     def priority_counts(self) -> dict[str, int]:
         counts = {priority: 0 for priority in MODEL_PRIORITY_ORDER}
 
@@ -1774,8 +1753,7 @@ class BusinessModelResult:
 # ============================================================
 
 CURRENT_STATE_NOTE = (
-    "current-state model 只描述当前平台已经存在的模型形态与评审发现，"
-    "不是 Target DWD Design"
+    "current-state model 只描述当前平台已经存在的模型形态与评审发现，不是 Target DWD Design"
 )
 """M3.6 产物的统一口径：评审既有模型，不设计目标模型。"""
 
@@ -1807,16 +1785,13 @@ REVIEW_PRIORITY_TITLE: dict[str, str] = {
 
 REVIEW_PRIORITY_HINT: dict[str, str] = {
     REVIEW_PRIORITY_P0: (
-        "粒度冲突、角色歧义与 Fact Gate 排除项会直接改变 M4 的事实模型；"
-        "先确认这些，再看其它问题。"
+        "粒度冲突、角色歧义与 Fact Gate 排除项会直接改变 M4 的事实模型；先确认这些，再看其它问题。"
     ),
     REVIEW_PRIORITY_P1: (
-        "疑似重复 / 重叠模型、缺度量的事实与关系证据不足；"
-        "确认前不要合并、拆分或删除任何表。"
+        "疑似重复 / 重叠模型、缺度量的事实与关系证据不足；确认前不要合并、拆分或删除任何表。"
     ),
     REVIEW_PRIORITY_P2: (
-        "宽表、结果表、聚合事实与 dimension 派生方式；"
-        "属于需要说明但不一定改模型的问题。"
+        "宽表、结果表、聚合事实与 dimension 派生方式；属于需要说明但不一定改模型的问题。"
     ),
     REVIEW_PRIORITY_P3: "信息性记录，不构成问题判断。",
 }
@@ -1901,22 +1876,12 @@ REVIEW_GROUP_TITLE: dict[str, str] = {
 
 REVIEW_GROUP_HINT: dict[str, str] = {
     REVIEW_GROUP_FACT: (
-        "回答：Fact Gate 是否误排除、strength 是否被误读、"
-        "缺度量与聚合事实是否仍应算事实。"
+        "回答：Fact Gate 是否误排除、strength 是否被误读、缺度量与聚合事实是否仍应算事实。"
     ),
-    REVIEW_GROUP_DIMENSION: (
-        "回答：dimension 是否只是 Object 的直接映射、"
-        "同对象多角色由谁裁决。"
-    ),
-    REVIEW_GROUP_GRAIN: (
-        "回答：同表多组候选键 / 多种 grain 形态哪一个是业务事实。"
-    ),
-    REVIEW_GROUP_RELATIONSHIP: (
-        "回答：只有技术引用或只有共现证据的关系能否算业务关系。"
-    ),
-    REVIEW_GROUP_MODEL_ISSUE: (
-        "回答：疑似重复 / 重叠 / 宽表 / 结果表是否是真实模型问题。"
-    ),
+    REVIEW_GROUP_DIMENSION: ("回答：dimension 是否只是 Object 的直接映射、同对象多角色由谁裁决。"),
+    REVIEW_GROUP_GRAIN: ("回答：同表多组候选键 / 多种 grain 形态哪一个是业务事实。"),
+    REVIEW_GROUP_RELATIONSHIP: ("回答：只有技术引用或只有共现证据的关系能否算业务关系。"),
+    REVIEW_GROUP_MODEL_ISSUE: ("回答：疑似重复 / 重叠 / 宽表 / 结果表是否是真实模型问题。"),
 }
 """每个清单分区的填写提示。"""
 

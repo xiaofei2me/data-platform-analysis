@@ -14,7 +14,7 @@ const artifacts = {
   problems: await readArtifact("analysis/review/current-state-problems.json"),
   evidence: await readArtifact("analysis/review/current-state-problem-evidence.json"),
   tableMeta: await readArtifact("analysis/review/current-state-model-tables.json"),
-  layer: await readArtifact("analysis/layer/assessments.json"),
+  layer: await readArtifact("analysis/evidence/layer/assessments.json"),
 };
 
 function makeCtx(overrides = {}) {

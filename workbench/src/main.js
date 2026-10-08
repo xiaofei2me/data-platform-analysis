@@ -25,7 +25,7 @@ function showLoading() {
     "../analysis/review/current-state-problems.json",
     "../analysis/review/current-state-problem-evidence.json",
     "../analysis/review/current-state-model-tables.json",
-    "../analysis/layer/assessments.json",
+    "../analysis/evidence/layer/assessments.json",
   ]
     .map((path) => `<li>${esc(path)}</li>`)
     .join("");

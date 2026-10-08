@@ -32,9 +32,9 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from helpers import source_tree_hash
+from helpers import assert_sandbox, source_tree_hash
 
-from data_platform_analysis.analysis.sql.sql_analysis import split_statements
+from data_platform_analysis.analysis.evidence.sql.sql_analysis import split_statements
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SNAPSHOT_FIXTURE = FIXTURES / "snapshot_466339"
@@ -65,9 +65,13 @@ def _read(path: Path) -> Any:
 
 
 def prepare_snapshot() -> dict[str, str]:
-    """把 fixture snapshot 复制成临时 source/，返回分析前的内容哈希。"""
+    """把 fixture snapshot 复制成临时 source/，返回分析前的内容哈希。
 
-    target = Path("source")
+    只能在 `cli_env`（`chdir(tmp_path)`）生效时调用；
+    `assert_sandbox` 保证这里绝不会删到仓库根的真实 `source/`。
+    """
+
+    target = assert_sandbox(Path("source"))
 
     if target.exists():
         shutil.rmtree(target)
@@ -139,10 +143,10 @@ def test_golden_statement_8_is_parsed_with_normalization(
     assert source_tree_hash(Path("source")) == before
 
     # 不再有 SQL_PARSE_ERROR，也不产生任何可恢复错误。
-    assert _read(Path("analysis/sql/parse-errors.json"))["count"] == 0
-    assert _read(Path("analysis/errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/sql/parse-errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/errors.json"))["count"] == 0
 
-    statements = _read(Path("analysis/sql/statements.json"))
+    statements = _read(Path("analysis/evidence/sql/statements.json"))
     assert statements["count"] == 39
 
     golden = [
@@ -193,7 +197,7 @@ def test_golden_statement_8_table_references(
 
     references = [
         item
-        for item in _read(Path("analysis/sql/table-references.json"))["references"]
+        for item in _read(Path("analysis/evidence/sql/table-references.json"))["references"]
         if item["file_id"] == FILE_ID and item["statement_id"] == STATEMENT_ID
     ]
     assert len(references) == 1
@@ -217,7 +221,7 @@ def test_golden_statement_8_table_references(
     # 血缘边来自该语句的证据。
     edges = [
         edge
-        for edge in _read(Path("analysis/lineage/table-lineage.json"))["edges"]
+        for edge in _read(Path("analysis/evidence/lineage/table-lineage.json"))["edges"]
         if edge["target_key"] == GOLDEN_TARGET
     ]
     assert {edge["source_key"] for edge in edges} == set(GOLDEN_SOURCES)
@@ -247,7 +251,7 @@ def test_golden_statement_8_ctas_uses_ast_not_fallback(
 
     statements = {
         item["statement_id"]: item
-        for item in _read(Path("analysis/sql/statements.json"))["statements"]
+        for item in _read(Path("analysis/evidence/sql/statements.json"))["statements"]
     }
 
     golden = statements[STATEMENT_ID]

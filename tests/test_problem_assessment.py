@@ -138,7 +138,7 @@ def _patch_problem_status(
 ) -> Path:
     """把问题清单里某一行的人工三列回填（列序同 PROBLEM_CHECKLIST_HEADERS）。"""
 
-    from data_platform_analysis.analysis.business.grain import _split_markdown_row
+    from data_platform_analysis.analysis.understanding.business.grain import _split_markdown_row
 
     path = analysis_dir / "review" / CHECKLIST_FILE
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -231,14 +231,8 @@ def _overlap_inputs(*, cross_layer: bool) -> dict[str, list[dict[str, Any]]]:
     return {
         "inventory_tables": [_table("proj.dup_a"), _table("proj.dup_b")],
         "columns": [
-            *(
-                _column("proj.dup_a", name, index)
-                for index, name in enumerate(left_columns)
-            ),
-            *(
-                _column("proj.dup_b", name, index)
-                for index, name in enumerate(right_columns)
-            ),
+            *(_column("proj.dup_a", name, index) for index, name in enumerate(left_columns)),
+            *(_column("proj.dup_b", name, index) for index, name in enumerate(right_columns)),
         ],
         "grain_candidates": [
             _grain("grain_candidate_001", "proj.dup_a", "transaction", ["a_id"]),
@@ -281,9 +275,7 @@ def _overlap_inputs(*, cross_layer: bool) -> dict[str, list[dict[str, Any]]]:
         "dimension_tables": [],
         "processes": [{"process_key": "process_candidate_001"}],
         "edges": (
-            [{"source_key": "proj.dup_a", "target_key": "proj.dup_b"}]
-            if cross_layer
-            else []
+            [{"source_key": "proj.dup_a", "target_key": "proj.dup_b"}] if cross_layer else []
         ),
         "core_candidates": [],
         "assessments": (
@@ -309,14 +301,8 @@ def _divergent_inputs() -> dict[str, list[dict[str, Any]]]:
     return {
         "inventory_tables": [_table("proj.div_a"), _table("proj.div_b")],
         "columns": [
-            *(
-                _column("proj.div_a", name, index)
-                for index, name in enumerate(left_columns)
-            ),
-            *(
-                _column("proj.div_b", name, index)
-                for index, name in enumerate(right_columns)
-            ),
+            *(_column("proj.div_a", name, index) for index, name in enumerate(left_columns)),
+            *(_column("proj.div_b", name, index) for index, name in enumerate(right_columns)),
         ],
         "grain_candidates": [
             _grain("grain_candidate_001", "proj.div_a", "transaction", ["d_id"]),
@@ -374,9 +360,7 @@ def test_problem_outputs_written_and_no_stage_beyond_m36_v2(tmp_path: Path) -> N
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
     review_dir = analysis_dir / "review"
-    before = (
-        {path.name for path in review_dir.iterdir()} if review_dir.exists() else set()
-    )
+    before = {path.name for path in review_dir.iterdir()} if review_dir.exists() else set()
 
     result = _result(analysis_dir)
 
@@ -608,9 +592,7 @@ def test_unknown_evidence_rows_are_truncated(tmp_path: Path) -> None:
     )
     evidence = _result(analysis_dir).evidence
     row = next(
-        item
-        for item in evidence["problems"]
-        if item["classification"] == UNKNOWN_REASON_NO_ANCHOR
+        item for item in evidence["problems"] if item["classification"] == UNKNOWN_REASON_NO_ANCHOR
     )
 
     assert row["evidence_total"] == 60
@@ -721,10 +703,9 @@ def test_checklist_machine_columns_preserved_after_rerun(tmp_path: Path) -> None
     assert carry_over[target]["human_status"] == "confirmed"
     assert carry_over[target]["human_name"] == "tester"
     assert carry_over[target]["note"] == "第一批确认"
-    assert (
-        {row["problem_id"] for row in _problems(analysis_dir)}
-        == {row["problem_id"] for row in carry_over.values()}
-    )
+    assert {row["problem_id"] for row in _problems(analysis_dir)} == {
+        row["problem_id"] for row in carry_over.values()
+    }
 
 
 # ============================================================
@@ -825,9 +806,8 @@ def test_cli_prints_problem_counts(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """analyze-current-state-model 一次跑完 M3.6 v1 + v2 并打印 problem 计数。"""
+    """analyze --stage review 一次跑完 M3.6 v1 + v2 并打印 problem 计数。"""
 
-    from test_business_grain import _write_profiling  # noqa: PLC0415
     from test_business_objects import _write_m2 as write_m2  # noqa: PLC0415
     from test_business_processes import (  # noqa: PLC0415
         _m2_payloads,
@@ -839,20 +819,13 @@ def test_cli_prints_problem_counts(
 
     write_m2(Path("analysis"), **_m2_payloads())
 
-    assert run_cli("analyze-business") == 0
-    assert run_cli("analyze-business-quality") == 0
-    assert run_cli("analyze-business-objects") == 0
-    assert run_cli("analyze-business-processes") == 0
-    _write_profiling(Path("analysis"))
-    assert run_cli("analyze-business-grain") == 0
-    assert run_cli("analyze-business-model") == 0
-
-    assert run_cli("analyze-current-state-model") == 0
+    assert run_cli("analyze", "--stage", "review") == 0
 
     out = capsys.readouterr().out
 
-    # rich console 按终端宽度折行，只断言不跨行的片段。
-    assert "Current-State Problem Assessment" in out
-    assert "problem=" in out
-    assert "candidate=" in out
+    # rich console 按终端宽度折行，先去掉换行与缩进再断言文案。
+    flat = "".join(out.split())
+    assert "M3.6v2ProblemAssessment完成" in flat
+    assert "problem=" in flat
+    assert "candidate=" in flat
     assert Path("analysis/review/current-state-problems.json").exists()

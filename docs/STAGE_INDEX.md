@@ -31,36 +31,36 @@
 | Stage | 名称 | Milestone | 命令 | 产物目录（相对 `analysis/`，采集为 `source/`） | 代码 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | **00** | Raw Snapshot | M1 | `export` / `dataworks` / `maxcompute` / `summary` | `dataworks/**`、`maxcompute/**`、`manifest.json`、`Summary.md` | `export.py`、`dataworks.py`、`maxcompute.py`、`summary.py` | 已实现 |
-| **01** | Inventory | M2.1 | `analyze` | `inventory/` | `analysis/pipeline.py` + `analysis/inventory/` | 已实现 |
-| **02** | Layer Assessment | M2.2 | `analyze` 或 `analyze-layer` | `layer/` | `analysis/layer/layer_assessment.py` + `config/layer-rules.yaml` | 已实现 |
-| **03** | SQL Analysis | M2.3 | `analyze` | `sql/` | `analysis/sql/` | 已实现 |
-| **04** | Lineage | M2.4 | `analyze` | `lineage/` | `analysis/lineage/` | 已实现 |
-| **05** | Profiling | M2.5 | `analyze` | `profiling/` | `analysis/profiling/` | 已实现 |
-| **06** | Business Understanding | M3 | `analyze-business` | `business/` | `analysis/business/understanding.py` + `config/business-rules.yaml` | 已实现 |
-| **07** | Business Quality | M3.1 | `analyze-business-quality` | `business/` | `analysis/business/quality.py` | 已实现 |
-| **08** | Business Objects | M3.2 | `analyze-business-objects` | `business/` | `analysis/business/objects.py` | 已实现 |
-| **09** | Business Processes | M3.3 | `analyze-business-processes` | `business/` | `analysis/business/processes.py` + `config/process-rules.yaml` | 已实现 |
-| **10** | Business Grain | M3.4 | `analyze-business-grain` | `business/` | `analysis/business/grain.py` | 已实现 |
-| **11** | Business Model | M3.5 | `analyze-business-model` | `model/` | `analysis/model/business_model.py` | 已实现 |
-| **12** | Current-State Findings | M3.6a | `analyze-current-state-model` | `review/` | `analysis/review/findings.py` | 已实现 |
-| **13** | Current-State Problems | M3.6b | `analyze-current-state-model` | `review/` | `analysis/review/problems.py` | 已实现 |
-| **14** | Current-State Evidence | M3.6b | `analyze-current-state-model`（**同一次运行，无独立入口**） | `review/` | `analysis/review/problems.py`（与 13 原子写出） | 已实现 |
-| **15** | Human Adjudication | — | **无命令**：编辑两份 checklist → 重跑 12/13 | 清单 `human_*` 三列 + `localStorage["m36-human-adjudication"]` | 无 Python 写入方 | 已实现（confirmed = 0） |
+| **01** | Inventory | M2.1 | `analyze --stage inventory` | `inventory/` | `analysis/pipeline.py` + `analysis/inventory/` | 已实现 |
+| **02** | Layer Assessment | M2.2 | `analyze --stage evidence` | `evidence/layer/` | `analysis/evidence/layer/layer_assessment.py` + `config/layer-rules.yaml` | 已实现 |
+| **03** | SQL Analysis | M2.3 | `analyze --stage evidence` | `evidence/sql/` | `analysis/evidence/sql/` | 已实现 |
+| **04** | Lineage | M2.4 | `analyze --stage evidence` | `evidence/lineage/` | `analysis/evidence/lineage/` | 已实现 |
+| **05** | Profiling | M2.5 | `analyze --stage evidence` | `evidence/profiling/` | `analysis/evidence/profiling/` | 已实现 |
+| **06** | Business Understanding | M3 | `analyze --stage understanding` | `understanding/business/` | `analysis/understanding/business/understanding.py` + `config/business-rules.yaml` | 已实现 |
+| **07** | Business Quality | M3.1 | `analyze --stage understanding` | `understanding/business/` | `analysis/understanding/business/quality.py` | 已实现 |
+| **08** | Business Objects | M3.2 | `analyze --stage understanding` | `understanding/business/` | `analysis/understanding/business/objects.py` | 已实现 |
+| **09** | Business Processes | M3.3 | `analyze --stage understanding` | `understanding/business/` | `analysis/understanding/business/processes.py` + `config/process-rules.yaml` | 已实现 |
+| **10** | Business Grain | M3.4 | `analyze --stage understanding` | `understanding/business/` | `analysis/understanding/business/grain.py` | 已实现 |
+| **11** | Business Model | M3.5 | `analyze --stage understanding` | `understanding/modeling/` | `analysis/understanding/modeling/business_model.py` | 已实现 |
+| **12** | Current-State Findings | M3.6a | `analyze --stage review` | `understanding/modeling/` + `review/` | `analysis/review/findings.py` | 已实现 |
+| **13** | Current-State Problems | M3.6b | `analyze --stage review` | `review/` | `analysis/review/problems.py` | 已实现 |
+| **14** | Current-State Evidence | M3.6b | `analyze --stage review`（**同一次运行，无独立入口**） | `review/` | `analysis/review/problems.py`（与 13 原子写出） | 已实现 |
+| **15** | Human Adjudication | — | **无命令**：编辑两份 checklist → 重跑 `analyze --stage review`（人工三列原样带回） | 清单 `human_*` 三列 + `localStorage["m36-human-adjudication"]` | 无 Python 写入方 | 已实现（confirmed = 0） |
 | **16** | Confirmed Current-State Evidence | — | 未实现 | **不存在** | — | 规划 |
 | **17** | Refactoring Evidence | — | 未实现 | **不存在** | — | 规划 |
 | **18** | Target DWD | M4+ | 未实现 | **不存在** | — | 规划 |
 | **19** | Target DWS | M4+ | 未实现 | **不存在** | — | 规划 |
 | **20** | Target Semantic Layer | M4+ | 未实现 | **不存在** | — | 规划 |
 
-目录拆分已随 Phase 2 落地：Stage 11 → `analysis/model/`、Stage 12–14 → `analysis/review/`，产物目录与源码模块（`analysis/model/`、`analysis/review/`）同构。旧布局残留在 `business/` 的 18 个文件由重跑对应命令时的 legacy 清理逻辑（`io_utils.relocate_legacy_artifacts`）删除 / 搬迁，`business/` 最终只含 Stage 06–10。
+四阶段目录已落地：Stage 01 → `analysis/inventory/`，Stage 02–05 → `analysis/evidence/{layer,sql,lineage,profiling}/`，Stage 06–11 → `analysis/understanding/business/`，Stage 12 的当前形态模型产物 → `analysis/understanding/modeling/`，Stage 12–14 的评审产物 → `analysis/review/`，根目录 `analysis/summary.md` 是四节入口报告（旧 `Summary.md` 已废弃）。旧布局残留在 `business/` / `model/` / `layer/` 等目录的文件由重跑对应命令时的 legacy 清理逻辑（`io_utils.relocate_legacy_artifacts`）删除 / 搬迁。
 
 ### 2.1 Stage 判定规则（用于未来追加）
 
 一个 Stage 成立当且仅当满足**产物组独立 + 下游消费者独立 + 人工评审动作独立**三者；**不要求有独立命令**：
 
 - Stage 01–05 共享一条 `analyze`，但产物与消费者各自独立。
-- Stage 12/13/14 共享一条 `analyze-current-state-model`，且 13 与 14 是同一次运行的原子写出——Registry 的"命令"列如实暴露这一点，不假装它们有独立入口。
-- 辅助文件（`manifest.json`、`*-index.json`、`Summary.md`、`summary.md`、`errors.json`、`parse-errors.json`）只索引 / 汇总 / 记账，**不授予 Stage 号**。
+- Stage 12/13/14 共享一条 `analyze --stage review`，且 13 与 14 是同一次运行的原子写出——Registry 的"命令"列如实暴露这一点，不假装它们有独立入口。
+- 辅助文件（`manifest.json`、`*-index.json`、`analysis/summary.md`、`evidence/errors.json`、`evidence/sql/parse-errors.json`）只索引 / 汇总 / 记账，**不授予 Stage 号**。
 
 ### 2.2 阅读顺序（新人 30 分钟路径）
 
@@ -75,13 +75,19 @@
 
 | 类别 | 谁能写 | 典型产物 | 判据 |
 | --- | --- | --- | --- |
-| **机器事实 Fact** | 仅机器 | `source/**`、`inventory/*.json`、`sql/{statements,table-references}.json`、`profiling/*.json`、`errors.json` | 可回指原始位置；`profile_status` 恒为 `metadata_only` |
-| **规则推导** | 仅机器（确定性规则） | `layer/assessments.json`、`lineage/{table-lineage,core-table-candidates}.json` | 规则 / 引用归并，`status = MATCH/UNKNOWN/CONFLICT`，不含业务判断 |
-| **机器候选 Candidate** | 仅机器 | `business/*.json`（Stage 06–10）、`model/*.json`（Stage 11）、`review/*.json`（Stage 12–13） | `status ∈ {candidate, review_required, needs_discussion, rejected}`；**confirmed 只能由人工带来** |
-| **证据 Evidence** | 仅机器 | `current-state-problem-evidence.json`（每组 ≤ 50 行截断） | 由 problem 聚合时生成，不独立重算 |
+| **机器事实 Fact** | 仅机器 | `source/**`、`inventory/*.json`、`evidence/sql/{statements,table-references}.json`、`evidence/profiling/*.json`、`evidence/errors.json` | 可回指原始位置；`profile_status` 恒为 `metadata_only` |
+| **规则推导** | 仅机器（确定性规则） | `evidence/layer/assessments.json`、`evidence/lineage/{table-lineage,core-table-candidates}.json` | 规则 / 引用归并，`status = MATCH/UNKNOWN/CONFLICT`，不含业务判断 |
+| **机器候选 Candidate** | 仅机器 | `understanding/business/*.json`（Stage 06–10）、`understanding/modeling/*.json`（Stage 11）、`review/*.json`（Stage 12–13） | `status ∈ {candidate, review_required, needs_discussion, rejected}`；**confirmed 只能由人工带来** |
+| **证据 Evidence** | 仅机器 | `problem-evidence.json`（每组 ≤ 50 行截断） | 由 problem 聚合时生成，不独立重算 |
 | **回填工件（双向）** | 机器写列 + **人写 `human_*` 三列** + 机器重跑读回 | 6 份 `*-review-checklist.md` | 全仓库**唯一被人工直接编辑**的文件；改后重跑对应命令 |
 | **人工裁决数据** | 仅人 | 清单 `human_status` / `human_name` / `note`；`localStorage["m36-human-adjudication"]` | 浏览器侧数据不回写产物，须导出后回填清单 |
-| **最终报告 / 辅助** | 机器 | 生成式 Markdown 共 13 份（12 份阶段报告：`inventory/layer/lineage/profiling/business` 的 `summary.md`、`quality-assessment.md`、`object-graph.md`、`process/grain/model-summary.md`、`current-state-{model,problem}-summary.md`，加 `analysis/Summary.md`）、`manifest.json`、`*-index.json`、`errors.json` | 生成式、非 Source of Truth、不授予 Stage 号 |
+| **最终报告 / 辅助** | 机器 | 生成式 Markdown 共 13 份（12 份阶段报告：`inventory/` 与 `evidence/{layer,lineage,profiling}/` 的 `summary.md`、`understanding/business/` 的 `summary.md` / `quality-assessment.md` / `object-graph.md` / `process/grain-summary.md`、`understanding/modeling/` 的 `model-summary.md` / `current-state-model-summary.md`、`review/summary.md`，加根目录 `analysis/summary.md`）、`manifest.json`、`*-index.json`、`evidence/errors.json` | 生成式、非 Source of Truth、不授予 Stage 号 |
+
+阶段报告由**对应阶段自己**写出，不在全量 pipeline 末尾补写：
+
+* `inventory/summary.md` 与根 `analysis/summary.md`：`pipeline._write_reports*()`；
+* `evidence/layer/summary.md`：M2.2 `run_layer_assessment()`；
+* `evidence/{lineage,profiling}/summary.md`：`pipeline._write_reports()`——`run()` 与 `run_stage_evidence()` 共用同一实现，用该阶段刚算出的 Layer / SQL / Lineage / Profiling 结果渲染，因此 `analyze --stage evidence` 的 Evidence 产物与全量 `analyze` 逐文件字节一致。
 
 ### 3.1 Candidate → Confirmed 状态机（`models.py` 强制）
 
@@ -96,7 +102,7 @@ status = review_required    →     rejected             →   status = rejected
 
 **禁止表达**：
 
-- `current-state-findings.json`、`current-state-problems.json` 是**候选**，文件名与字段不得出现 `confirmed` / `final` / `authoritative`。
+- `findings.json`、`problems.json` 是**候选**，文件名与字段不得出现 `confirmed` / `final` / `authoritative`。
 - `classification = confirmed_conflict` 是**证据分级名**（同组候选键互不包含），**不是**"人工已确认"。
 - `confirmed-*` 类产物只能属于 Stage 16，且必须由 `status = confirmed` **派生生成**，不可手工编辑。
 
@@ -116,8 +122,8 @@ status = review_required    →     rejected             →   status = rejected
 
 ### 5.1 目录
 
-- **产物目录 = 生产它的源码模块**：`inventory/`、`layer/`、`sql/`、`lineage/`、`profiling/`、`business/`（06–10）、`model/`（11）、`review/`（12–14）全部满足；Stage 15 无产物目录（回填工件与所属阶段同目录）。
-- **不给现有 59 个产物加 `NN-` 前缀**：全仓字面 `analysis/` 引用 540 处（src 252 / tests 93 / workbench 24 / docs 164 / README 7），换不到顺序信息（`analysis/` 本身被 gitignore，真正入口是 §2.2 的阅读链）。
+- **产物目录按语义四阶段划分**：`inventory/`（Stage 01 资产清单）、`evidence/{layer,sql,lineage,profiling}/`（Stage 02–05 技术证据）、`understanding/business/`（Stage 06–10 业务理解）、`understanding/modeling/`（Stage 11 与 Stage 12 的当前形态模型）、`review/`（Stage 12–14 评审发现与问题）；源码模块仍保持 `analysis/{inventory,layer,sql,lineage,profiling,business,model,review}/`，**产物目录与源码模块不再同构**（引用时勿混）。Stage 15 无产物目录（回填工件与所属阶段同目录）。
+- **不给现有 59 个产物加 `NN-` 前缀**：全仓字面 `analysis/` 引用数百处，换不到顺序信息（`analysis/` 本身被 gitignore，真正入口是 §2.2 的阅读链）。
 - **新增阶段**：新目录可带 Stage 号（如 `analysis/16-confirmed/`），**旧文件不补号**——避免混合风格蔓延。
 
 ### 5.2 文件名
@@ -154,4 +160,4 @@ status = review_required    →     rejected             →   status = rejected
 
 已修正（本文件随附的文档勘误）：README §1 原写「M3 业务候选，M3.1 ～ M3.5」（Domain / Object 实为 M3）→ 改为「M3 ～ M3.5」；[CODE_LOGIC_ANALYSIS.md](CODE_LOGIC_ANALYSIS.md) §3.9 原写「输入（11 个）」但实际列举 12 个 → 改为 12（与 [COMMANDS.md](COMMANDS.md) 输入依赖表一致）。
 
-已随 Phase 2 关闭：① `model-review-findings.json` → `current-state-findings.json`（M3.6 九件套命名统一，src / tests / workbench / docs 全量引用已迁移）；② `business/` 混装 06–14 → 拆出 `model/`（Stage 11）与 `review/`（Stage 12–14），`business/` 只留 Stage 06–10。
+已随 Phase 2 关闭：① `model-review-findings.json` → `findings.json`（M3.6 九件套命名统一，src / tests / workbench / docs 全量引用已迁移）；② `business/` 混装 06–14 → 拆出 `model/`（Stage 11）与 `review/`（Stage 12–14），`business/` 只留 Stage 06–10。

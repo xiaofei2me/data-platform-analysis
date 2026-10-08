@@ -13,6 +13,32 @@ from typing import Any
 
 from data_platform_analysis.dataworks_types import get_file_type
 
+# 仓库根的真实 Snapshot：任何测试写入都不得落到这里。
+# 见 docs/agents/data-safety.md。
+_REAL_SOURCE_DIR = (Path(__file__).resolve().parent.parent / "source").resolve()
+
+
+def assert_sandbox(path: Path) -> Path:
+    """断言 `path` 落在测试临时沙盒内，而不是仓库根的真实 `source/`。
+
+    测试对 Snapshot 的一切写入（构造、修改、删除）都必须经过本检查。
+    隔离依赖 `cli_env` 的 `chdir(tmp_path)`，属于隐式保护；
+    本函数是最后一道闸门：一旦写入目标解析到真实 `source/`，立即失败。
+
+    返回原 `path`，便于就地使用。
+    """
+
+    resolved = path.expanduser().resolve()
+
+    if resolved == _REAL_SOURCE_DIR or _REAL_SOURCE_DIR in resolved.parents:
+        raise RuntimeError(
+            "拒绝操作真实 source/：测试只能写入 tmp_path 沙盒。"
+            f"目标={resolved}（真实 Snapshot 目录，只读）。"
+            "见 docs/agents/data-safety.md。"
+        )
+
+    return path
+
 
 def make_workspace(
     workspace_id: int,
@@ -118,7 +144,13 @@ def write_snapshot(
         [{"workspace_id": 9001, "table": "dwd_order",
           "comment": "订单明细", "columns": [{"name": "id", "type": "STRING"}],
           "partitions": ["ds"]}]
+
+    `source_dir` 必须指向临时沙盒（通常是 `Path("source")` 在
+    `cli_env` 切换到 `tmp_path` 之后的解析结果），绝不允许落到
+    仓库根的真实 `source/`。
     """
+
+    assert_sandbox(source_dir)
 
     files = list(files or [])
     tables = list(tables or [])

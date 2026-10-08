@@ -15,10 +15,6 @@ from typing import Any
 import pytest
 from test_business_model import _pipeline as _model_pipeline
 
-from data_platform_analysis.analysis.business.grain import _split_markdown_row
-from data_platform_analysis.analysis.model.business_model import (
-    run_business_model_analysis,
-)
 from data_platform_analysis.analysis.models import (
     CURRENT_MODEL_ROLE_AMBIGUOUS,
     CURRENT_MODEL_ROLE_DIMENSION,
@@ -65,6 +61,10 @@ from data_platform_analysis.analysis.review.findings import (
     read_review_inputs,
     run_current_state_model_analysis,
 )
+from data_platform_analysis.analysis.understanding.business.grain import _split_markdown_row
+from data_platform_analysis.analysis.understanding.modeling.business_model import (
+    run_business_model_analysis,
+)
 
 # ============================================================
 # 测试数据
@@ -88,7 +88,7 @@ def _pipeline(tmp_path: Path) -> Path:
     analysis_dir = _model_pipeline(tmp_path)
     run_business_model_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "model",
+        output_dir=analysis_dir / "understanding" / "modeling",
     )
     run_current_state_model_analysis(
         analysis_dir=analysis_dir,
@@ -104,7 +104,7 @@ def _pre_model_pipeline(tmp_path: Path) -> Path:
     analysis_dir = _model_pipeline(tmp_path)
     run_business_model_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "model",
+        output_dir=analysis_dir / "understanding" / "modeling",
     )
 
     return analysis_dir
@@ -588,14 +588,14 @@ def test_missing_inputs_raise(tmp_path: Path) -> None:
     for relative in INPUT_FILES:
         assert relative in message, relative
 
-    assert "analyze-business-model" in message
+    assert "analyze --stage understanding" in message
 
 
 def test_invalid_json_raises(tmp_path: Path) -> None:
     """输入不是合法 JSON → 报错并带上文件路径。"""
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
-    path = analysis_dir / "model" / "fact-candidates.json"
+    path = analysis_dir / "understanding" / "modeling" / "fact-candidates.json"
     path.write_text("{not json", encoding="utf-8")
 
     with pytest.raises(CurrentStateModelError, match="fact-candidates.json"):
@@ -699,7 +699,7 @@ def test_declared_files_and_output_names() -> None:
     """输入 / 输出文件名按任务书固定。"""
 
     assert len(INPUT_FILES) == 13
-    assert INPUT_FILES[-1] == "layer/assessments.json"
+    assert INPUT_FILES[-1] == "evidence/layer/assessments.json"
     assert OUTPUT_FILES == (
         "current-state-model.json",
         "current-state-model-tables.json",
@@ -713,9 +713,7 @@ def test_inputs_are_read_only(tmp_path: Path) -> None:
     """M3.6 只读上游产物：13 个输入文件字节不变。"""
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
-    before = {
-        relative: (analysis_dir / relative).read_bytes() for relative in INPUT_FILES
-    }
+    before = {relative: (analysis_dir / relative).read_bytes() for relative in INPUT_FILES}
 
     run_current_state_model_analysis(
         analysis_dir=analysis_dir,
@@ -768,9 +766,7 @@ def test_gate_no_measure_finding_carries_grain_evidence(tmp_path: Path) -> None:
     assert row["scope"] == "stage"
     assert row["priority"] == "P0"
     assert row["evidence_sources"] == ["grain"]
-    assert any(
-        entry["source_id"] == "grain_candidate_008" for entry in row["evidence"]
-    )
+    assert any(entry["source_id"] == "grain_candidate_008" for entry in row["evidence"])
 
 
 def test_strength_semantics_finding_is_stage_level(tmp_path: Path) -> None:
@@ -779,11 +775,7 @@ def test_strength_semantics_finding_is_stage_level(tmp_path: Path) -> None:
     analysis_dir = _write_inputs(tmp_path / "analysis")
     result = _run(analysis_dir)
     findings = _findings(analysis_dir)
-    rows = [
-        row
-        for row in findings
-        if row["finding_type"] == FINDING_TYPE_EVIDENCE_STRENGTH
-    ]
+    rows = [row for row in findings if row["finding_type"] == FINDING_TYPE_EVIDENCE_STRENGTH]
 
     assert len(rows) == 1
     assert rows[0]["scope"] == "stage"
@@ -801,9 +793,7 @@ def test_grain_conflict_and_mixed_grain_on_same_table(tmp_path: Path) -> None:
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
     findings = _findings(analysis_dir)
-    conflicts = [
-        row for row in findings if row["finding_type"] == FINDING_TYPE_GRAIN_CONFLICT
-    ]
+    conflicts = [row for row in findings if row["finding_type"] == FINDING_TYPE_GRAIN_CONFLICT]
 
     assert len(conflicts) == 2
     assert {row["scope_key"] for row in conflicts} == {"proj.orders", "proj.wide"}
@@ -818,9 +808,7 @@ def test_fact_without_measure_and_aggregate_fact(tmp_path: Path) -> None:
     analysis_dir = _write_inputs(tmp_path / "analysis")
     findings = _findings(analysis_dir)
     measure_free = [
-        row
-        for row in findings
-        if row["finding_type"] == FINDING_TYPE_FACT_WITHOUT_MEASURE
+        row for row in findings if row["finding_type"] == FINDING_TYPE_FACT_WITHOUT_MEASURE
     ]
 
     assert {row["scope_key"] for row in measure_free} == {
@@ -860,18 +848,14 @@ def test_dimension_object_mapping_and_role_ambiguity(tmp_path: Path) -> None:
     analysis_dir = _write_inputs(tmp_path / "analysis")
     findings = _findings(analysis_dir)
     derived = [
-        row
-        for row in findings
-        if row["finding_type"] == FINDING_TYPE_DIMENSION_OBJECT_DERIVED
+        row for row in findings if row["finding_type"] == FINDING_TYPE_DIMENSION_OBJECT_DERIVED
     ]
 
     assert len(derived) == 1
     assert derived[0]["priority"] == "P2"
     assert derived[0]["scope"] == "stage"
 
-    ambiguous = [
-        row for row in findings if row["finding_type"] == FINDING_TYPE_ROLE_AMBIGUOUS
-    ]
+    ambiguous = [row for row in findings if row["finding_type"] == FINDING_TYPE_ROLE_AMBIGUOUS]
     assert len(ambiguous) == 1
     assert ambiguous[0]["scope_key"] == "dimension_candidate_002"
     assert ambiguous[0]["priority"] == "P0"
@@ -901,9 +885,7 @@ def test_duplicate_and_overlapping_fact(tmp_path: Path) -> None:
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
     findings = _findings(analysis_dir)
-    duplicates = [
-        row for row in findings if row["finding_type"] == FINDING_TYPE_DUPLICATE_FACT
-    ]
+    duplicates = [row for row in findings if row["finding_type"] == FINDING_TYPE_DUPLICATE_FACT]
 
     assert len(duplicates) == 1
     assert duplicates[0]["scope"] == "fact_group"
@@ -914,9 +896,7 @@ def test_duplicate_and_overlapping_fact(tmp_path: Path) -> None:
         "fact_candidate_003",
     }
 
-    overlaps = [
-        row for row in findings if row["finding_type"] == FINDING_TYPE_OVERLAPPING_FACT
-    ]
+    overlaps = [row for row in findings if row["finding_type"] == FINDING_TYPE_OVERLAPPING_FACT]
     assert len(overlaps) == 1
     assert overlaps[0]["scope"] == "table_pair"
     assert overlaps[0]["scope_key"] == "proj.orders|proj.orders_bak"
@@ -945,11 +925,7 @@ def test_multi_process_table(tmp_path: Path) -> None:
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
     findings = _findings(analysis_dir)
-    rows = [
-        row
-        for row in findings
-        if row["finding_type"] == FINDING_TYPE_MULTI_PROCESS_TABLE
-    ]
+    rows = [row for row in findings if row["finding_type"] == FINDING_TYPE_MULTI_PROCESS_TABLE]
 
     assert len(rows) == 1
     assert rows[0]["scope_key"] == "proj.wide"
@@ -961,11 +937,7 @@ def test_wide_and_result_table(tmp_path: Path) -> None:
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
     findings = _findings(analysis_dir)
-    wide = [
-        row
-        for row in findings
-        if row["finding_type"] == FINDING_TYPE_WIDE_ANALYTICAL_TABLE
-    ]
+    wide = [row for row in findings if row["finding_type"] == FINDING_TYPE_WIDE_ANALYTICAL_TABLE]
     results = [row for row in findings if row["finding_type"] == FINDING_TYPE_RESULT_TABLE]
 
     assert {row["scope_key"] for row in wide} == {"proj.wide"}
@@ -1067,9 +1039,9 @@ def test_summary_has_six_sections(tmp_path: Path) -> None:
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
     _run(analysis_dir)
-    summary = (
-        analysis_dir / "review" / "current-state-model-summary.md"
-    ).read_text(encoding="utf-8")
+    summary = (analysis_dir / "review" / "current-state-model-summary.md").read_text(
+        encoding="utf-8"
+    )
 
     for heading in (
         "## 1. Scope",
@@ -1119,9 +1091,9 @@ def test_summary_truncates_findings_table(tmp_path: Path) -> None:
         ],
     )
     _run(analysis_dir)
-    summary = (
-        analysis_dir / "review" / "current-state-model-summary.md"
-    ).read_text(encoding="utf-8")
+    summary = (analysis_dir / "review" / "current-state-model-summary.md").read_text(
+        encoding="utf-8"
+    )
     total = _read(analysis_dir, "current-state-findings.json")["count"]
 
     assert total > REVIEW_REPORT_ROW_LIMIT
@@ -1134,9 +1106,9 @@ def test_checklist_sections_follow_review_groups(tmp_path: Path) -> None:
 
     analysis_dir = _write_inputs(tmp_path / "analysis")
     _run(analysis_dir)
-    checklist = (
-        analysis_dir / "review" / "current-state-review-checklist.md"
-    ).read_text(encoding="utf-8")
+    checklist = (analysis_dir / "review" / "current-state-review-checklist.md").read_text(
+        encoding="utf-8"
+    )
 
     for group in REVIEW_GROUP_ORDER:
         assert f"## {REVIEW_GROUP_TITLE[group]}" in checklist, group
@@ -1185,9 +1157,9 @@ def test_checklist_row_limit_and_note(tmp_path: Path) -> None:
         ],
     )
     _run(analysis_dir)
-    checklist = (
-        analysis_dir / "review" / "current-state-review-checklist.md"
-    ).read_text(encoding="utf-8")
+    checklist = (analysis_dir / "review" / "current-state-review-checklist.md").read_text(
+        encoding="utf-8"
+    )
 
     assert f"只列出前 {REVIEW_CHECKLIST_ROW_LIMIT} 行" in checklist
     assert "current-state-findings.json" in checklist
@@ -1212,9 +1184,7 @@ def test_carryover_confirmed_backfills_status(tmp_path: Path) -> None:
     _run(analysis_dir)
 
     row = next(
-        item
-        for item in _findings(analysis_dir)
-        if item["finding_id"] == "model_finding_0001"
+        item for item in _findings(analysis_dir) if item["finding_id"] == "model_finding_0001"
     )
 
     assert row["status"] == MODEL_STATUS_CONFIRMED
@@ -1228,9 +1198,7 @@ def test_carryover_survives_escaped_pipe_in_scope_key(tmp_path: Path) -> None:
     _run(analysis_dir)
 
     duplicate = next(
-        row
-        for row in _findings(analysis_dir)
-        if row["finding_type"] == FINDING_TYPE_DUPLICATE_FACT
+        row for row in _findings(analysis_dir) if row["finding_type"] == FINDING_TYPE_DUPLICATE_FACT
     )
     assert "|" in duplicate["scope_key"]
 
@@ -1238,9 +1206,7 @@ def test_carryover_survives_escaped_pipe_in_scope_key(tmp_path: Path) -> None:
     _run(analysis_dir)
 
     row = next(
-        item
-        for item in _findings(analysis_dir)
-        if item["finding_id"] == duplicate["finding_id"]
+        item for item in _findings(analysis_dir) if item["finding_id"] == duplicate["finding_id"]
     )
     path = analysis_dir / "review" / "current-state-review-checklist.md"
     kept = [
@@ -1281,12 +1247,12 @@ def test_deterministic_across_runs(tmp_path: Path) -> None:
 def test_pipeline_run_keeps_m35_outputs(tmp_path: Path) -> None:
     """M3.6 不改写 M3.5 的 8 个产物。"""
 
-    from data_platform_analysis.analysis.model.business_model import (  # noqa: PLC0415
+    from data_platform_analysis.analysis.understanding.modeling.business_model import (  # noqa: PLC0415
         OUTPUT_FILES as MODEL_OUTPUT_FILES,
     )
 
     analysis_dir = _pre_model_pipeline(tmp_path)
-    model_dir = analysis_dir / "model"
+    model_dir = analysis_dir / "understanding" / "modeling"
     before = {name: (model_dir / name).read_bytes() for name in MODEL_OUTPUT_FILES}
 
     _run(analysis_dir)
@@ -1301,9 +1267,8 @@ def test_analyze_current_state_model_command(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze-current-state-model 产出 5 个文件，两次运行一致且不改上游。"""
+    """analyze --stage review 产出 5 个 M3.6 文件，两次运行一致且不改上游。"""
 
-    from test_business_grain import _write_profiling  # noqa: PLC0415
     from test_business_objects import _write_m2 as write_m2  # noqa: PLC0415
     from test_business_processes import (  # noqa: PLC0415
         _m2_payloads,
@@ -1315,19 +1280,17 @@ def test_analyze_current_state_model_command(
 
     write_m2(Path("analysis"), **_m2_payloads())
 
-    assert run_cli("analyze-business") == 0
-    assert run_cli("analyze-business-quality") == 0
-    assert run_cli("analyze-business-objects") == 0
-    assert run_cli("analyze-business-processes") == 0
-    _write_profiling(Path("analysis"))
-    assert run_cli("analyze-business-grain") == 0
-    assert run_cli("analyze-business-model") == 0
+    assert run_cli("analyze", "--stage", "understanding") == 0
 
-    business_dir = Path("analysis/business")
+    business_dir = Path("analysis/understanding/business")
     review_dir = Path("analysis/review")
+
+    # understanding 阶段到此为止，M3.6 只属于 review 阶段。
+    assert not (review_dir / "current-state-findings.json").exists()
+
     before = {path.name: path.read_bytes() for path in sorted(business_dir.iterdir())}
 
-    assert run_cli("analyze-current-state-model") == 0
+    assert run_cli("analyze", "--stage", "review") == 0
 
     for name in OUTPUT_FILES:
         assert (review_dir / name).exists(), name
@@ -1338,7 +1301,7 @@ def test_analyze_current_state_model_command(
 
     first = {name: (review_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)}
 
-    assert run_cli("analyze-current-state-model") == 0
+    assert run_cli("analyze", "--stage", "review") == 0
     assert {name: (review_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)} == first
 
 
@@ -1348,7 +1311,7 @@ def test_analyze_current_state_model_command_fails_without_inputs(
 ) -> None:
     """缺前置产物 → 退出码 1，不写任何 M3.6 产物。"""
 
-    assert run_cli("analyze-current-state-model") == 1
+    assert run_cli("analyze", "--stage", "review") == 1
 
     for name in OUTPUT_FILES:
         assert not Path("analysis/review").joinpath(name).exists(), name
@@ -1357,13 +1320,11 @@ def test_analyze_current_state_model_command_fails_without_inputs(
 def test_module_entry_point_exists() -> None:
     """支持 `python -m data_platform_analysis.cli` 的入口。"""
 
-    source = (REPO_ROOT / "src" / "data_platform_analysis" / "cli.py").read_text(
-        encoding="utf-8"
-    )
+    source = (REPO_ROOT / "src" / "data_platform_analysis" / "cli.py").read_text(encoding="utf-8")
 
     assert 'if __name__ == "__main__":' in source
-    assert "analyze-current-state-model" in source
-    assert "run_analyze_current_state_model" in source
+    assert '"--stage"' in source
+    assert "run_analyze" in source
 
 
 def test_legacy_artifacts_in_business_are_relocated(tmp_path: Path) -> None:
@@ -1376,6 +1337,7 @@ def test_legacy_artifacts_in_business_are_relocated(tmp_path: Path) -> None:
     checklist = (review_dir / "current-state-review-checklist.md").read_bytes()
 
     # 模拟旧布局：清单与机器产物（含改名前的 basename）都残留在 business/。
+    business_dir.mkdir(parents=True, exist_ok=True)
     (business_dir / "current-state-review-checklist.md").write_bytes(checklist)
     (business_dir / "current-state-problems.json").write_text("{stale}", encoding="utf-8")
     (business_dir / "model-review-findings.json").write_text("{stale}", encoding="utf-8")

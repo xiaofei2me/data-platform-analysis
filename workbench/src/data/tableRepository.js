@@ -3,7 +3,7 @@
  *
  * Sources — all existing artifacts, nothing recomputed:
  *   - current-state-model-tables.json : role / shape / process / grain / facts
- *   - analysis/layer/assessments.json : layer decision
+ *   - analysis/evidence/layer/assessments.json : layer decision
  *   - problem.table_keys              : fallback workspace derivation
  *
  * When an optional artifact is missing the repository degrades to values that

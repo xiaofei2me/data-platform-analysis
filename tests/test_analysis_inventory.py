@@ -66,7 +66,25 @@ def test_inventory_lists(
         ],
     )
 
-    assert run_cli("analyze") == 0
+    exit_code = run_cli("analyze")
+
+    # 调试：检查 review-checklist.md
+    checklist_path = Path("analysis/understanding/business/review-checklist.md")
+    if checklist_path.exists():
+        print("\n=== review-checklist.md (first 1000 chars) ===")
+        print(checklist_path.read_text()[:1000])
+    else:
+        print("\n=== review-checklist.md NOT FOUND ===")
+
+    errors_path = Path("analysis/evidence/errors.json")
+    if errors_path.exists():
+        print("\n=== errors.json ===")
+        import json
+
+        err_data = json.loads(errors_path.read_text())
+        print(f"Error count: {err_data.get('count', 0)}")
+
+    assert exit_code == 0, f"analyze 命令失败，退出码: {exit_code}"
 
     workspaces = _read(Path("analysis/inventory/workspaces.json"))
     assert workspaces["count"] == 2

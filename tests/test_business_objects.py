@@ -20,20 +20,6 @@ from test_business_understanding import (
     _write_rules,
 )
 
-from data_platform_analysis.analysis.business.objects import (
-    OUTPUT_FILES,
-    BusinessObjectsError,
-    HumanReview,
-    parse_review_checklist,
-    read_object_inputs,
-    run_business_object_analysis,
-)
-from data_platform_analysis.analysis.business.quality import (
-    run_business_quality_assessment,
-)
-from data_platform_analysis.analysis.business.understanding import (
-    run_business_understanding,
-)
 from data_platform_analysis.analysis.models import (
     EVIDENCE_STRENGTH_MODERATE,
     EVIDENCE_STRENGTH_STRONG,
@@ -46,6 +32,20 @@ from data_platform_analysis.analysis.models import (
     RELATIONSHIP_EVIDENCE_LINEAGE,
     RELATIONSHIP_EVIDENCE_SQL,
     RELATIONSHIP_TYPE_CANDIDATE,
+)
+from data_platform_analysis.analysis.understanding.business.objects import (
+    OUTPUT_FILES,
+    BusinessObjectsError,
+    HumanReview,
+    parse_review_checklist,
+    read_object_inputs,
+    run_business_object_analysis,
+)
+from data_platform_analysis.analysis.understanding.business.quality import (
+    run_business_quality_assessment,
+)
+from data_platform_analysis.analysis.understanding.business.understanding import (
+    run_business_understanding,
 )
 
 # ============================================================
@@ -144,11 +144,11 @@ def _prepare(
     run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=rules_path,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
     run_business_quality_assessment(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
     return analysis_dir
@@ -157,7 +157,7 @@ def _prepare(
 def _run(analysis_dir: Path) -> Any:
     return run_business_object_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
 
@@ -169,7 +169,7 @@ def _write_checklist(analysis_dir: Path, *rows: str) -> None:
     """覆盖 M3.1 生成的清单，只保留人工回填需要的四列。"""
 
     text = CHECKLIST_TEMPLATE.format(rows="\n".join(rows))
-    (analysis_dir / "business" / "review-checklist.md").write_text(
+    (analysis_dir / "understanding" / "business" / "review-checklist.md").write_text(
         text, encoding="utf-8"
     )
 
@@ -178,9 +178,7 @@ def _relate(payload: dict[str, Any], object_a: str, object_b: str) -> dict[str, 
     """按排序对取出一条关系记录。"""
 
     for item in payload["relationships"]:
-        if (item["object_a"], item["object_b"]) == tuple(
-            sorted((object_a, object_b))
-        ):
+        if (item["object_a"], item["object_b"]) == tuple(sorted((object_a, object_b))):
             return item
 
     raise AssertionError(f"missing relationship: {object_a} ↔ {object_b}")
@@ -286,10 +284,10 @@ def test_missing_inputs_raise(tmp_path: Path) -> None:
     with pytest.raises(BusinessObjectsError, match="产物缺失"):
         run_business_object_analysis(
             analysis_dir=analysis_dir,
-            output_dir=analysis_dir / "business",
+            output_dir=analysis_dir / "understanding" / "business",
         )
 
-    assert not (analysis_dir / "business").exists()
+    assert not (analysis_dir / "understanding" / "business").exists()
 
 
 def test_missing_single_input_raises(tmp_path: Path) -> None:
@@ -300,15 +298,15 @@ def test_missing_single_input_raises(tmp_path: Path) -> None:
         tables=[_table(9001, "proj", "crm_base", comment="客户")],
         columns=[],
     )
-    (analysis_dir / "lineage" / "core-table-candidates.json").unlink()
+    (analysis_dir / "evidence" / "lineage" / "core-table-candidates.json").unlink()
 
     with pytest.raises(BusinessObjectsError, match="core-table-candidates.json"):
         run_business_object_analysis(
             analysis_dir=analysis_dir,
-            output_dir=analysis_dir / "business",
+            output_dir=analysis_dir / "understanding" / "business",
         )
 
-    assert not (analysis_dir / "business" / "objects-registry.json").exists()
+    assert not (analysis_dir / "understanding" / "business" / "objects-registry.json").exists()
 
 
 def test_invalid_json_raises(tmp_path: Path) -> None:
@@ -319,27 +317,23 @@ def test_invalid_json_raises(tmp_path: Path) -> None:
         tables=[_table(9001, "proj", "crm_base", comment="客户")],
         columns=[],
     )
-    (analysis_dir / "business" / "objects.json").write_text("{", encoding="utf-8")
+    (analysis_dir / "understanding" / "business" / "objects.json").write_text("{", encoding="utf-8")
 
     with pytest.raises(BusinessObjectsError, match="不是合法的 JSON"):
         run_business_object_analysis(
             analysis_dir=analysis_dir,
-            output_dir=analysis_dir / "business",
+            output_dir=analysis_dir / "understanding" / "business",
         )
 
-    assert not (analysis_dir / "business" / "object-graph.md").exists()
+    assert not (analysis_dir / "understanding" / "business" / "object-graph.md").exists()
 
 
 def test_inputs_are_read_only(tmp_path: Path) -> None:
     """M2 / M3 / M3.1 产物在 M3.2 运行前后字节一致。"""
 
     analysis_dir = _relationship_fixture(tmp_path)
-    business_dir = analysis_dir / "business"
-    before = {
-        path: path.read_bytes()
-        for path in sorted(analysis_dir.rglob("*"))
-        if path.is_file()
-    }
+    business_dir = analysis_dir / "understanding" / "business"
+    before = {path: path.read_bytes() for path in sorted(analysis_dir.rglob("*")) if path.is_file()}
 
     _run(analysis_dir)
 
@@ -349,9 +343,9 @@ def test_inputs_are_read_only(tmp_path: Path) -> None:
         assert after[path] == content, path
 
     # 只新增 OUTPUT_FILES，不覆盖已有产物。
-    assert {path.name for path in business_dir.iterdir()} == set(M3_NAMES) | set(
-        M31_NAMES
-    ) | set(OUTPUT_FILES)
+    assert {path.name for path in business_dir.iterdir()} == set(M3_NAMES) | set(M31_NAMES) | set(
+        OUTPUT_FILES
+    )
 
 
 # ============================================================
@@ -450,15 +444,18 @@ def test_default_status_is_candidate(tmp_path: Path) -> None:
 
     analysis_dir = _status_fixture(tmp_path)
     result = _run(analysis_dir)
-    payload = _read(analysis_dir / "business" / "objects-registry.json")
+    payload = _read(analysis_dir / "understanding" / "business" / "objects-registry.json")
 
     assert result.object_count == 4
     assert payload["status_counts"]["candidate"] == 4
     assert payload["status_counts"]["confirmed"] == 0
     assert all(item["status"] == OBJECT_STATUS_CANDIDATE for item in payload["objects"])
-    assert {
-        item["object"]: item["table_count"] for item in payload["objects"]
-    } == {"customer": 1, "order": 2, "product": 0, "store": 0}
+    assert {item["object"]: item["table_count"] for item in payload["objects"]} == {
+        "customer": 1,
+        "order": 2,
+        "product": 0,
+        "store": 0,
+    }
     assert result.association_status_counts[OBJECT_STATUS_CANDIDATE] == 3
 
 
@@ -473,16 +470,14 @@ def test_confirmed_requires_explicit_human_object(tmp_path: Path) -> None:
     )
     _run(analysis_dir)
 
-    payload = _read(analysis_dir / "business" / "objects-registry.json")
+    payload = _read(analysis_dir / "understanding" / "business" / "objects-registry.json")
 
     assert payload["status_counts"]["confirmed"] == 0
     assert payload["status_counts"]["candidate"] == 4
 
-    association = _read(analysis_dir / "business" / "object-tables.json")
+    association = _read(analysis_dir / "understanding" / "business" / "object-tables.json")
     assert association["status_counts"][OBJECT_STATUS_CONFIRMED] == 0
-    assert _assoc(association, "order", "proj.order_only")["status"] == (
-        OBJECT_STATUS_CANDIDATE
-    )
+    assert _assoc(association, "order", "proj.order_only")["status"] == (OBJECT_STATUS_CANDIDATE)
 
 
 def test_confirmed_with_human_object(tmp_path: Path) -> None:
@@ -496,18 +491,12 @@ def test_confirmed_with_human_object(tmp_path: Path) -> None:
     )
     _run(analysis_dir)
 
-    association = _read(analysis_dir / "business" / "object-tables.json")
-    registry = _read(analysis_dir / "business" / "objects-registry.json")
+    association = _read(analysis_dir / "understanding" / "business" / "object-tables.json")
+    registry = _read(analysis_dir / "understanding" / "business" / "objects-registry.json")
 
-    assert _assoc(association, "order", "proj.order_only")["status"] == (
-        OBJECT_STATUS_CONFIRMED
-    )
-    assert _assoc(association, "order", "proj.cust_pair")["status"] == (
-        OBJECT_STATUS_CONFIRMED
-    )
-    assert _assoc(association, "customer", "proj.cust_pair")["status"] == (
-        OBJECT_STATUS_CANDIDATE
-    )
+    assert _assoc(association, "order", "proj.order_only")["status"] == (OBJECT_STATUS_CONFIRMED)
+    assert _assoc(association, "order", "proj.cust_pair")["status"] == (OBJECT_STATUS_CONFIRMED)
+    assert _assoc(association, "customer", "proj.cust_pair")["status"] == (OBJECT_STATUS_CANDIDATE)
 
     statuses = {item["object"]: item["status"] for item in registry["objects"]}
     assert statuses["order"] == OBJECT_STATUS_CONFIRMED
@@ -522,16 +511,12 @@ def test_rejected_covers_all_and_leaves_relationships(tmp_path: Path) -> None:
     _write_checklist(analysis_dir, _row("proj.cust_pair", status="rejected"))
     _run(analysis_dir)
 
-    association = _read(analysis_dir / "business" / "object-tables.json")
-    registry = _read(analysis_dir / "business" / "objects-registry.json")
-    relationships = _read(analysis_dir / "business" / "object-relationships.json")
+    association = _read(analysis_dir / "understanding" / "business" / "object-tables.json")
+    registry = _read(analysis_dir / "understanding" / "business" / "objects-registry.json")
+    relationships = _read(analysis_dir / "understanding" / "business" / "object-relationships.json")
 
-    assert _assoc(association, "customer", "proj.cust_pair")["status"] == (
-        OBJECT_STATUS_REJECTED
-    )
-    assert _assoc(association, "order", "proj.cust_pair")["status"] == (
-        OBJECT_STATUS_REJECTED
-    )
+    assert _assoc(association, "customer", "proj.cust_pair")["status"] == (OBJECT_STATUS_REJECTED)
+    assert _assoc(association, "order", "proj.cust_pair")["status"] == (OBJECT_STATUS_REJECTED)
     assert association["status_counts"][OBJECT_STATUS_REJECTED] == 2
 
     statuses = {item["object"]: item["status"] for item in registry["objects"]}
@@ -552,8 +537,8 @@ def test_needs_discussion_backfills_new_object(tmp_path: Path) -> None:
     )
     _run(analysis_dir)
 
-    association = _read(analysis_dir / "business" / "object-tables.json")
-    registry = _read(analysis_dir / "business" / "objects-registry.json")
+    association = _read(analysis_dir / "understanding" / "business" / "object-tables.json")
+    registry = _read(analysis_dir / "understanding" / "business" / "objects-registry.json")
 
     extra = _assoc(association, "member", "proj.cust_pair")
     assert extra["status"] == OBJECT_STATUS_NEEDS_DISCUSSION
@@ -576,7 +561,7 @@ def test_relationship_merges_three_evidence_sources(tmp_path: Path) -> None:
     """同表 + SQL + 血缘三来源合并成一条记录，evidence 保留三类。"""
 
     analysis_dir = _relationship_fixture(tmp_path)
-    relationships = _read(analysis_dir / "business" / "object-relationships.json")
+    relationships = _read(analysis_dir / "understanding" / "business" / "object-relationships.json")
     pair = _relate(relationships, "customer", "order")
 
     assert relationships["count"] == 4
@@ -599,11 +584,9 @@ def test_relationship_strength_mapping(tmp_path: Path) -> None:
     """证据类型数 → weak / moderate / strong 的确定性映射。"""
 
     analysis_dir = _relationship_fixture(tmp_path)
-    relationships = _read(analysis_dir / "business" / "object-relationships.json")
+    relationships = _read(analysis_dir / "understanding" / "business" / "object-relationships.json")
 
-    assert _relate(relationships, "order", "store")["evidence_strength"] == (
-        EVIDENCE_STRENGTH_WEAK
-    )
+    assert _relate(relationships, "order", "store")["evidence_strength"] == (EVIDENCE_STRENGTH_WEAK)
     assert _relate(relationships, "order", "store")["evidence_types"] == [
         RELATIONSHIP_EVIDENCE_CO_OCCURRENCE
     ]
@@ -623,7 +606,7 @@ def test_relationship_identity_is_sorted_pair(tmp_path: Path) -> None:
     """关系身份是排序对：无自环、无重复、按 (object_a, object_b) 稳定排序。"""
 
     analysis_dir = _relationship_fixture(tmp_path)
-    relationships = _read(analysis_dir / "business" / "object-relationships.json")
+    relationships = _read(analysis_dir / "understanding" / "business" / "object-relationships.json")
     pairs = [(item["object_a"], item["object_b"]) for item in relationships["relationships"]]
 
     assert pairs == [
@@ -640,11 +623,11 @@ def test_relationship_type_always_candidate(tmp_path: Path) -> None:
     """relationship_type 恒为 candidate，不产出 owns / contains / one-to-many。"""
 
     analysis_dir = _relationship_fixture(tmp_path)
-    relationships = _read(analysis_dir / "business" / "object-relationships.json")
+    relationships = _read(analysis_dir / "understanding" / "business" / "object-relationships.json")
 
-    assert {
-        item["relationship_type"] for item in relationships["relationships"]
-    } == {RELATIONSHIP_TYPE_CANDIDATE}
+    assert {item["relationship_type"] for item in relationships["relationships"]} == {
+        RELATIONSHIP_TYPE_CANDIDATE
+    }
 
     body = json.dumps(relationships["relationships"], ensure_ascii=False)
     assert "one-to-many" not in body
@@ -656,16 +639,16 @@ def test_evidence_uses_stable_ids_without_sql_text(tmp_path: Path) -> None:
     """证据条目只引用稳定标识，不复制 SQL 原文。"""
 
     analysis_dir = _relationship_fixture(tmp_path)
-    relationships = _read(analysis_dir / "business" / "object-relationships.json")
+    relationships = _read(analysis_dir / "understanding" / "business" / "object-relationships.json")
     sql_text = "select c1 from proj.crm_base"
     raw = json.dumps(relationships, ensure_ascii=False)
 
     assert sql_text not in raw
     assert "select" not in raw
 
-    sql_entry = _relate(relationships, "customer", "order")["evidence"][
-        RELATIONSHIP_EVIDENCE_SQL
-    ][0]
+    sql_entry = _relate(relationships, "customer", "order")["evidence"][RELATIONSHIP_EVIDENCE_SQL][
+        0
+    ]
     assert set(sql_entry) == {
         "evidence_id",
         "source_object",
@@ -684,7 +667,7 @@ def test_core_related_flag(tmp_path: Path) -> None:
     """core_related 只表达「endpoint 关联核心表候选」。"""
 
     analysis_dir = _relationship_fixture(tmp_path)
-    relationships = _read(analysis_dir / "business" / "object-relationships.json")
+    relationships = _read(analysis_dir / "understanding" / "business" / "object-relationships.json")
 
     assert _relate(relationships, "customer", "order")["core_related"] is True
     assert _relate(relationships, "customer", "product")["core_related"] is True
@@ -695,7 +678,7 @@ def test_evidence_distribution_and_statement_count(tmp_path: Path) -> None:
     """三种证据的 entry / relationship 计数与 SQL 语句数。"""
 
     analysis_dir = _relationship_fixture(tmp_path)
-    relationships = _read(analysis_dir / "business" / "object-relationships.json")
+    relationships = _read(analysis_dir / "understanding" / "business" / "object-relationships.json")
 
     assert relationships["evidence_distribution"] == {
         RELATIONSHIP_EVIDENCE_CO_OCCURRENCE: {
@@ -712,7 +695,7 @@ def test_association_evidence_grouped_by_business_type(tmp_path: Path) -> None:
     """association 的 evidence 按 M3 的 evidence type 分组，只引用稳定标识。"""
 
     analysis_dir = _relationship_fixture(tmp_path)
-    association = _read(analysis_dir / "business" / "object-tables.json")
+    association = _read(analysis_dir / "understanding" / "business" / "object-tables.json")
     row = _assoc(association, "order", "proj.cust_order")
 
     assert set(row["evidence"]) >= {"table_comment", "table_name"}
@@ -733,7 +716,7 @@ def test_output_structure_and_report(tmp_path: Path) -> None:
 
     analysis_dir = _relationship_fixture(tmp_path)
     result = _run(analysis_dir)
-    business_dir = analysis_dir / "business"
+    business_dir = analysis_dir / "understanding" / "business"
 
     assert result.object_count == 4
     assert result.association_count == 8
@@ -817,7 +800,7 @@ def test_deterministic_across_runs(tmp_path: Path) -> None:
     """两次运行字节一致（无时间戳 / 随机抽样）。"""
 
     analysis_dir = _relationship_fixture(tmp_path)
-    business_dir = analysis_dir / "business"
+    business_dir = analysis_dir / "understanding" / "business"
 
     _run(analysis_dir)
     first_run = {
@@ -846,7 +829,7 @@ def test_read_object_inputs_reports_missing_paths(tmp_path: Path) -> None:
     """read_object_inputs 逐个列出缺失的输入相对路径。"""
 
     analysis_dir = _status_fixture(tmp_path)
-    (analysis_dir / "sql" / "statements.json").unlink()
+    (analysis_dir / "evidence" / "sql" / "statements.json").unlink()
 
     with pytest.raises(BusinessObjectsError, match="sql/statements.json"):
         read_object_inputs(analysis_dir)
@@ -863,7 +846,7 @@ def test_analyze_business_objects_command(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze-business-objects 产出 5 个文件，两次运行字节一致，且不改 M3 / M3.1 产物。"""
+    """analyze --stage understanding 产出 5 个对象文件，两次运行字节一致，且不改 M2 输入。"""
 
     rules_path = _write_rules(tmp_path / "config" / "business-rules.yaml")
     monkeypatch.setenv("BUSINESS_RULES_PATH", str(rules_path))
@@ -888,32 +871,22 @@ def test_analyze_business_objects_command(
         ],
     )
 
-    assert run_cli("analyze-business") == 0
-    assert run_cli("analyze-business-quality") == 0
+    m2_inputs = {path: path.read_bytes() for path in sorted(Path("analysis").rglob("*.json"))}
 
-    business_dir = Path("analysis/business")
-    before = {path: path.read_bytes() for path in sorted(business_dir.iterdir())}
+    assert run_cli("analyze", "--stage", "understanding") == 0
 
-    assert run_cli("analyze-business-objects") == 0
+    business_dir = Path("analysis/understanding/business")
 
     for name in OUTPUT_FILES:
         assert (business_dir / name).exists(), name
 
-    for path, content in before.items():
+    for path, content in m2_inputs.items():
         assert path.read_bytes() == content, path
 
-    first_run = {
-        path.name: path.read_bytes()
-        for path in sorted(business_dir.iterdir())
-        if path.name in OUTPUT_FILES
-    }
+    first_run = {path: path.read_bytes() for path in sorted(business_dir.iterdir())}
 
-    assert run_cli("analyze-business-objects") == 0
-    assert {
-        path.name: path.read_bytes()
-        for path in sorted(business_dir.iterdir())
-        if path.name in OUTPUT_FILES
-    } == first_run
+    assert run_cli("analyze", "--stage", "understanding") == 0
+    assert {path: path.read_bytes() for path in sorted(business_dir.iterdir())} == first_run
 
 
 def test_analyze_business_objects_command_fails_without_inputs(
@@ -921,8 +894,8 @@ def test_analyze_business_objects_command_fails_without_inputs(
     run_cli: Any,
     tmp_path: Any,
 ) -> None:
-    """缺 M2 / M3 / M3.1 产物 → 退出码 1，不写任何 M3.2 产物。"""
+    """前置产物缺失 → 退出码 1，不写任何对象产物。"""
 
-    assert run_cli("analyze-business-objects") == 1
-    assert not Path("analysis/business/objects-registry.json").exists()
-    assert not Path("analysis/business/object-graph.md").exists()
+    assert run_cli("analyze", "--stage", "understanding") == 1
+    assert not Path("analysis/understanding/business/objects-registry.json").exists()
+    assert not Path("analysis/understanding/business/object-graph.md").exists()

@@ -15,15 +15,6 @@ from typing import Any
 import pytest
 from helpers import write_snapshot
 
-from data_platform_analysis.analysis.business.understanding import (
-    BusinessUnderstandingError,
-    KeywordMatcher,
-    business_tokens,
-    load_business_rules,
-    resolve_confidence,
-    run_business_understanding,
-    tokenize_identifier,
-)
 from data_platform_analysis.analysis.models import (
     BUSINESS_CONFIDENCE_HIGH,
     BUSINESS_CONFIDENCE_LOW,
@@ -35,6 +26,15 @@ from data_platform_analysis.analysis.models import (
     BUSINESS_EVIDENCE_SQL,
     BUSINESS_EVIDENCE_TABLE_COMMENT,
     BUSINESS_EVIDENCE_TABLE_NAME,
+)
+from data_platform_analysis.analysis.understanding.business.understanding import (
+    BusinessUnderstandingError,
+    KeywordMatcher,
+    business_tokens,
+    load_business_rules,
+    resolve_confidence,
+    run_business_understanding,
+    tokenize_identifier,
 )
 
 # ============================================================
@@ -148,14 +148,34 @@ def _write_m2(
 ) -> None:
     """直接写出 M3 依赖的全部 M2 产物（不跑 M2，也不需要 source/）。"""
 
+    profiling_tables = [
+        {
+            "table_key": row["table_key"],
+            "profile_status": "metadata_only",
+            "data_sample_available": False,
+        }
+        for row in tables
+    ]
+    profiling_columns = [
+        {
+            "table_key": row["table_key"],
+            "column_name": row["column_name"],
+            "profile_status": "metadata_only",
+            "is_candidate_key": False,
+        }
+        for row in columns
+    ]
+
     payloads: list[tuple[str, str, list[dict[str, Any]]]] = [
         ("inventory", "tables", tables),
         ("inventory", "columns", columns),
-        ("sql", "statements", list(statements or [])),
-        ("sql", "references", list(references or [])),
-        ("lineage", "edges", list(edges or [])),
-        ("lineage", "candidates", list(candidates or [])),
-        ("layer", "assessments", list(assessments or [])),
+        ("evidence/sql", "statements", list(statements or [])),
+        ("evidence/sql", "references", list(references or [])),
+        ("evidence/lineage", "edges", list(edges or [])),
+        ("evidence/lineage", "candidates", list(candidates or [])),
+        ("evidence/layer", "assessments", list(assessments or [])),
+        ("evidence/profiling", "tables", profiling_tables),
+        ("evidence/profiling", "columns", profiling_columns),
     ]
 
     # M2 文件名与 JSON 字段名各不相同，单独列出。
@@ -316,12 +336,10 @@ def test_direct_evidence_sources_are_all_recorded(tmp_path: Path) -> None:
     result = run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
-    item = _by_table({"tables": [entry.to_dict() for entry in result.tables]})[
-        "proj.dwd_sales"
-    ]
+    item = _by_table({"tables": [entry.to_dict() for entry in result.tables]})["proj.dwd_sales"]
 
     # 表名 + 字段名命中 sales；表注释命中中文「销售」，各成一条。
     sales_evidence = [entry for entry in item["evidence"] if entry["keyword"] == "sales"]
@@ -395,12 +413,10 @@ def test_sql_evidence_skips_keyword_covered_by_direct_evidence(tmp_path: Path) -
     result = run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
-    item = _by_table({"tables": [entry.to_dict() for entry in result.tables]})[
-        "proj.dwd_sales"
-    ]
+    item = _by_table({"tables": [entry.to_dict() for entry in result.tables]})["proj.dwd_sales"]
     sql_entries = [entry for entry in item["evidence"] if entry["type"] == BUSINESS_EVIDENCE_SQL]
 
     # sales 已被表名覆盖，不再产生 sql 证据；customer 只出现在 SQL 中。
@@ -448,7 +464,7 @@ def test_lineage_evidence_only_for_uncovered_keyword(tmp_path: Path) -> None:
     result = run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
     items = _by_table({"tables": [entry.to_dict() for entry in result.tables]})
@@ -504,12 +520,10 @@ def test_lineage_keyword_already_in_direct_evidence_is_not_duplicated(
     result = run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
-    target = _by_table({"tables": [entry.to_dict() for entry in result.tables]})[
-        "proj.dwd_sales"
-    ]
+    target = _by_table({"tables": [entry.to_dict() for entry in result.tables]})["proj.dwd_sales"]
 
     assert BUSINESS_EVIDENCE_LINEAGE not in _evidence_types(target)
     assert BUSINESS_EVIDENCE_COLUMN_NAME in _evidence_types(target)
@@ -538,12 +552,10 @@ def test_multi_domain_and_object_candidates_are_all_kept(tmp_path: Path) -> None
     result = run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
-    item = _by_table({"tables": [entry.to_dict() for entry in result.tables]})[
-        "proj.dwd_sales"
-    ]
+    item = _by_table({"tables": [entry.to_dict() for entry in result.tables]})["proj.dwd_sales"]
 
     # Domain：sales（表名 + 表注释 → medium）、customer（字段名 → low），全保留。
     domain_confidence = {
@@ -595,7 +607,7 @@ def test_layer_is_copied_from_m2_assessment(tmp_path: Path) -> None:
     result = run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
     items = _by_table({"tables": [entry.to_dict() for entry in result.tables]})
@@ -627,12 +639,10 @@ def test_core_candidate_flag_comes_from_m2_lineage(tmp_path: Path) -> None:
     result = run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
-    item = _by_table({"tables": [entry.to_dict() for entry in result.tables]})[
-        "proj.dwd_sales"
-    ]
+    item = _by_table({"tables": [entry.to_dict() for entry in result.tables]})["proj.dwd_sales"]
 
     assert item["is_core_candidate"] is True
 
@@ -665,7 +675,7 @@ def test_unknown_and_ambiguous_flags(tmp_path: Path) -> None:
     result = run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
     flags = {entry.table_key: entry for entry in result.tables}
@@ -709,10 +719,10 @@ def test_terms_exclude_stopwords_and_are_sorted(tmp_path: Path) -> None:
     run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
-    payload = _read(analysis_dir / "business" / "terms.json")
+    payload = _read(analysis_dir / "understanding" / "business" / "terms.json")
 
     assert payload["sort_by"] == "count_desc,normalized_term_asc"
     assert payload["count"] == len(payload["terms"])
@@ -732,7 +742,7 @@ def test_terms_exclude_stopwords_and_are_sorted(tmp_path: Path) -> None:
     assert all(source["table_key"] == "proj.dwd_sales" for source in sales["sources"])
 
     # 表内 business_terms 同样剔除 stopwords，按出现次数降序。
-    tables_payload = _read(analysis_dir / "business" / "tables.json")
+    tables_payload = _read(analysis_dir / "understanding" / "business" / "tables.json")
     item = _by_table(tables_payload)["proj.dwd_sales"]
     assert "dwd" not in item["business_terms"]
     assert item["business_terms"][0] == "sales"
@@ -764,11 +774,11 @@ def test_domain_and_object_summaries_are_complete(tmp_path: Path) -> None:
     run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
-    domains = _read(analysis_dir / "business" / "domains.json")
-    objects = _read(analysis_dir / "business" / "objects.json")
+    domains = _read(analysis_dir / "understanding" / "business" / "domains.json")
+    objects = _read(analysis_dir / "understanding" / "business" / "objects.json")
 
     assert domains["count"] == 2
     assert objects["count"] == 2
@@ -816,10 +826,12 @@ def test_summary_contains_required_sections(tmp_path: Path) -> None:
     run_business_understanding(
         analysis_dir=analysis_dir,
         rules_path=_write_rules(tmp_path / "business-rules.yaml"),
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
-    summary = (analysis_dir / "business" / "summary.md").read_text(encoding="utf-8")
+    summary = (analysis_dir / "understanding" / "business" / "summary.md").read_text(
+        encoding="utf-8"
+    )
 
     for heading in (
         "# M3 Business Understanding Summary",
@@ -843,7 +855,7 @@ def test_summary_contains_required_sections(tmp_path: Path) -> None:
 
 
 # ============================================================
-# 13. CLI 黑盒：analyze-business + 确定性 + 只读 M2
+# 13. CLI 黑盒：analyze --stage understanding + 确定性 + 只读 M2
 # ============================================================
 
 
@@ -853,7 +865,7 @@ def test_analyze_business_command_writes_outputs(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze-business 产出 5 个文件，两次运行字节一致，且不修改 M2 输入。"""
+    """analyze --stage understanding 产出 5 个文件，两次运行字节一致，且不修改 M2 输入。"""
 
     rules_path = _write_rules(tmp_path / "config" / "business-rules.yaml")
     monkeypatch.setenv("BUSINESS_RULES_PATH", str(rules_path))
@@ -865,13 +877,11 @@ def test_analyze_business_command_writes_outputs(
         assessments=[_assessment(9001, "proj", "dwd_sales", "CDM", "DWD")],
     )
 
-    m2_inputs = {
-        path: path.read_bytes() for path in sorted(Path("analysis").rglob("*.json"))
-    }
+    m2_inputs = {path: path.read_bytes() for path in sorted(Path("analysis").rglob("*.json"))}
 
-    assert run_cli("analyze-business") == 0
+    assert run_cli("analyze", "--stage", "understanding") == 0
 
-    business_dir = Path("analysis/business")
+    business_dir = Path("analysis/understanding/business")
     for name in ("terms.json", "tables.json", "domains.json", "objects.json", "summary.md"):
         assert (business_dir / name).exists(), name
 
@@ -880,7 +890,7 @@ def test_analyze_business_command_writes_outputs(
     # M2 输入一个字节都没变。
     assert {path: path.read_bytes() for path in m2_inputs} == m2_inputs
 
-    assert run_cli("analyze-business") == 0
+    assert run_cli("analyze", "--stage", "understanding") == 0
     assert {path: path.read_bytes() for path in sorted(business_dir.rglob("*"))} == first_run
 
 
@@ -890,13 +900,13 @@ def test_analyze_business_command_fails_without_m2_inputs(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """M2 产物缺失 → 退出码 1，提示先跑 analyze，不写产物。"""
+    """前置产物缺失 → 退出码 1，不写 understanding/business 产物。"""
 
     rules_path = _write_rules(tmp_path / "config" / "business-rules.yaml")
     monkeypatch.setenv("BUSINESS_RULES_PATH", str(rules_path))
 
-    assert run_cli("analyze-business") == 1
-    assert not Path("analysis/business").exists()
+    assert run_cli("analyze", "--stage", "understanding") == 1
+    assert not Path("analysis/understanding/business").exists()
 
 
 def test_analyze_command_does_not_run_business_stage(
@@ -905,7 +915,7 @@ def test_analyze_command_does_not_run_business_stage(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze 仍只跑 M2，不产出 analysis/business。"""
+    """analyze --stage evidence 只跑 M2，不产出 understanding/business。"""
 
     rules_path = _write_rules(tmp_path / "config" / "business-rules.yaml")
     monkeypatch.setenv("BUSINESS_RULES_PATH", str(rules_path))
@@ -922,10 +932,10 @@ def test_analyze_command_does_not_run_business_stage(
         ],
     )
 
-    assert run_cli("analyze") == 0
+    assert run_cli("analyze", "--stage", "evidence") == 0
 
-    assert Path("analysis/layer/assessments.json").exists()
-    assert not Path("analysis/business").exists()
+    assert Path("analysis/evidence/layer/assessments.json").exists()
+    assert not Path("analysis/understanding/business").exists()
 
 
 # ============================================================
@@ -981,7 +991,7 @@ def test_keyword_conflicting_with_stopwords_raises(tmp_path: Path) -> None:
 def test_bare_yaml_boolean_stopword_raises(tmp_path: Path) -> None:
     """YAML 裸 no 被解析成布尔值 → 明确报错并提示加引号。"""
 
-    text = RULES_TEXT.replace("  - dwd\n  - id\n", '  - dwd\n  - no\n')
+    text = RULES_TEXT.replace("  - dwd\n  - id\n", "  - dwd\n  - no\n")
     path = _write_rules(tmp_path / "business-rules.yaml", text)
 
     with pytest.raises(BusinessUnderstandingError, match="需要加引号"):

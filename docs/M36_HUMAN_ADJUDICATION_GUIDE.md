@@ -201,19 +201,19 @@ rejected             人工确认：当前模型设计是合理的，机器判�
 
 ### 4.1 文件清单
 
-以下路径均以仓库根目录为起点，实际路径**以仓库实现为准**（M3.6 v2 产物都在 `analysis/review/` 下）。
+以下路径均以仓库根目录为起点，实际路径**以仓库实现为准**（M3.6 评审产物在 `analysis/review/`，当前形态模型产物在 `analysis/understanding/modeling/`）。
 
 | 文件 | 用途 | 人工是否需要看 |
 | --- | --- | --- |
 | `analysis/review/current-state-problem-review-checklist.md` | **人工裁决唯一入口**，13 类分区、可回填 | **是（主战场）** |
-| `analysis/review/current-state-problems.json` | 完整 Problem 数据（1190 条，含 priority / root_cause / rationale） | **是（查全量时）** |
-| `analysis/review/current-state-problem-evidence.json` | 完整证据链（30201 行，可追溯到表 / 字段 / 粒度 / 血缘） | **是（深挖时）** |
-| `analysis/review/current-state-problem-summary.md` | 总体统计（分布、影响、根因、Top 20） | **是（看全局）** |
+| `analysis/review/problems.json` | 完整 Problem 数据（1190 条，含 priority / root_cause / rationale） | **是（查全量时）** |
+| `analysis/review/problem-evidence.json` | 完整证据链（30201 行，可追溯到表 / 字段 / 粒度 / 血缘） | **是（深挖时）** |
+| `analysis/review/summary.md` | 总体统计（分布、影响、根因、Top 20） | **是（看全局）** |
 | `analysis/review/current-state-review-checklist.md` | Finding 侧人工清单（5 个分区、157 行） | 是（与 Problem 清单**独立**，要单独回填） |
-| `analysis/review/current-state-findings.json` | 全量 4439 条 Finding | 需要追某条 finding 时 |
+| `analysis/review/findings.json` | 全量 4439 条 Finding | 需要追某条 finding 时 |
 | `docs/M36_PROBLEM_ASSESSMENT.md` | 方法论：Finding ≠ Problem、13 类 taxonomy、四条原则 | **第一次阅读** |
 | `source/` | 原始平台快照（DataWorks 文件内容、表元数据） | 必要时 |
-| `analysis/sql/statements.json`、`analysis/lineage/table-lineage.json` | SQL 原文与表级血缘 | 深入验证时 |
+| `analysis/evidence/sql/statements.json`、`analysis/evidence/lineage/table-lineage.json` | SQL 原文与表级血缘 | 深入验证时 |
 
 ### 4.2 三个必须知道的展示限制
 
@@ -221,7 +221,7 @@ rejected             人工确认：当前模型设计是合理的，机器判�
 
 ```text
 current-state-problem-review-checklist.md  →  13 个分区，每区 ≤50 行，合计 260 行
-current-state-problems.json                →  全量 1190 条
+problems.json                →  全量 1190 条
 ```
 
 清单顶部会明确写「只列出前 50 行，共 N 行；其余行见 ……」。**这不代表只有这些问题。**
@@ -233,14 +233,14 @@ current-state-problems.json                →  全量 1190 条
 - 不在清单里的 930 条问题（1190 − 260），**在当前数据下不会自动轮换出现**；
 - 对这些问题，结论要记在团队自己的裁决台账里（用第七章模板），不要指望重跑后自动保留。
 
-> **进阶注意（涉及重跑行为，务必理解）**：如果确实要把清单外问题的结论写进系统，可以按清单同样的 10 列格式在文件末尾追加一行（`problem_id` 必须是真实存在的编号，列数与表头对齐）。下次运行会读到它并把状态写进 `current-state-problems.json`；但运行后清单会被**重新生成**，只渲染每区前 50 行，**你追加的行会消失**，再下一次运行状态就会回退成 `candidate`。所以：
+> **进阶注意（涉及重跑行为，务必理解）**：如果确实要把清单外问题的结论写进系统，可以按清单同样的 10 列格式在文件末尾追加一行（`problem_id` 必须是真实存在的编号，列数与表头对齐）。下次运行会读到它并把状态写进 `problems.json`；但运行后清单会被**重新生成**，只渲染每区前 50 行，**你追加的行会消失**，再下一次运行状态就会回退成 `candidate`。所以：
 > - **外部裁决台账才是主记录**；
 > - 清单是系统识别的入口，两者都要维护。
 
 **限制三：单条 Problem 的证据在 JSON 里只放 5 条样例**
 
-- `current-state-problems.json` 每条只留 5 条证据样例 + `evidence_total` 总数；
-- 完整证据（每条 ≤50 行）在 `current-state-problem-evidence.json`；
+- `problems.json` 每条只留 5 条证据样例 + `evidence_total` 总数；
+- 完整证据（每条 ≤50 行）在 `problem-evidence.json`；
 - 有 53 条 Problem 的证据超过 50 行被截断（看 `evidence_truncated`），全量以 evidence 文件为准。
 
 ### 4.3 两个清单，各自独立
@@ -260,10 +260,10 @@ current-state-problems.json                →  全量 1190 条
 4. 保存后重跑一次：
 
    ```bash
-   uv run data-platform-analysis analyze-current-state-model
+   uv run data-platform-analysis analyze --stage review
    ```
 
-5. 重跑后 `current-state-problems.json` 与 `current-state-problem-summary.md` 里的 `status`、`confirmed` 计数才会更新；
+5. 重跑后 `problems.json` 与 `summary.md` 里的 `status`、`confirmed` 计数才会更新；
 6. 人工三列在重跑时会被原样保留；机器列会被覆盖（所以不要手改机器列）；
 7. **重跑前建议先备份清单**（提交到 git 或复制一份），避免误操作丢失回填。
 
@@ -345,7 +345,7 @@ NO_EVIDENCE = 1578
 
 系统说「存在 grain conflict」「这两张表字段重合 0.98」——**证据是否真实**？
 
-- 打开 `current-state-problem-evidence.json`（或 JSON 里的 evidence 样例），核对表名、字段、候选键是否真的存在；
+- 打开 `problem-evidence.json`（或 JSON 里的 evidence 样例），核对表名、字段、候选键是否真的存在；
 - 看 `evidence` 列的构成（如 `FINDING×1、TABLE×1、COLUMN×3、PROCESS×1、GRAIN×3`）；
 - 若证据指向的表 / 字段根本不存在或明显对不上 → **Finding 不成立**，后续问题不用问了。
 
@@ -852,7 +852,7 @@ Why Change         为什么现在要改
 Human Decision     人工裁决：确认 / 否决 + 理由 + 范围与顺序   ← 只能由人写
 ```
 
-前六段机器已经给出（见 `current-state-problems.json` 的 `rationale`：`current_state` / `problem` / `evidence` / `impact` / `why_change`，以及 `root_cause`）；**第七段只能由人写**。
+前六段机器已经给出（见 `problems.json` 的 `rationale`：`current_state` / `problem` / `evidence` / `impact` / `why_change`，以及 `root_cause`）；**第七段只能由人写**。
 
 ### 12.2 完整示例（基于真实 Problem `problem_0050`）
 
@@ -900,7 +900,7 @@ CONFIRMED —— <Reviewer> <Review Date>
 
 **使用规则**：
 
-1. 每行必须能从 `problem_id` 追溯到 `current-state-problem-evidence.json` 的证据行；
+1. 每行必须能从 `problem_id` 追溯到 `problem-evidence.json` 的证据行；
 2. `Root Cause` 为 `UNKNOWN` 的行，方向只能是「补证据 / 定范围」，**不能**是「拆分 / 合并 / 下线」；
 3. 方向停留在**动作类型**（裁决、收敛、补证据、拆分评估），不落到**具体对象**（某张表、某个字段、某套 DWD 设计）；
 4. **矩阵是 M4 的输入，不是 M4 的产出。**
@@ -1179,17 +1179,17 @@ Reviewer: <姓名>      Review Date: <日期>
 | 需要做什么 | 用什么 |
 | --- | --- |
 | 回填人工结论（唯一入口） | `analysis/review/current-state-problem-review-checklist.md` |
-| 查全量 Problem（1190 条） | `analysis/review/current-state-problems.json` |
-| 查全量证据（30201 行） | `analysis/review/current-state-problem-evidence.json` |
-| 看总体统计 | `analysis/review/current-state-problem-summary.md` |
+| 查全量 Problem（1190 条） | `analysis/review/problems.json` |
+| 查全量证据（30201 行） | `analysis/review/problem-evidence.json` |
+| 看总体统计 | `analysis/review/summary.md` |
 | 回填 Finding 侧（157 行） | `analysis/review/current-state-review-checklist.md` |
-| 查 Finding 全量（4439 条） | `analysis/review/current-state-findings.json` |
+| 查 Finding 全量（4439 条） | `analysis/review/findings.json` |
 | 看方法论（13 类 taxonomy、四条原则） | `docs/M36_PROBLEM_ASSESSMENT.md` |
 | 看阶段逻辑与产物地图 | `docs/CODE_LOGIC_ANALYSIS.md` |
 | 查看原始平台数据 | `source/` |
-| 查 SQL / 血缘 | `analysis/sql/statements.json`、`analysis/lineage/table-lineage.json` |
-| 回填后让状态生效 | `uv run data-platform-analysis analyze-current-state-model` |
-| 重跑后核对计数 | 看 `current-state-problem-summary.md` §2 的 status 表 |
+| 查 SQL / 血缘 | `analysis/evidence/sql/statements.json`、`analysis/evidence/lineage/table-lineage.json` |
+| 回填后让状态生效 | `uv run data-platform-analysis analyze --stage review` |
+| 重跑后核对计数 | 看 `summary.md` §2 的 status 表 |
 
 **最后再强调一次**：
 

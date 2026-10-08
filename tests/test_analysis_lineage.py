@@ -111,7 +111,7 @@ def test_lineage_dedup_cross_workspace_and_candidates(
 
     assert run_cli("analyze") == 0
 
-    lineage = _read(Path("analysis/lineage/table-lineage.json"))
+    lineage = _read(Path("analysis/evidence/lineage/table-lineage.json"))
     assert lineage["count"] == 3
 
     by_target = {item["target_key"]: item for item in lineage["edges"]}
@@ -138,9 +138,9 @@ def test_lineage_dedup_cross_workspace_and_candidates(
     assert unknown["source_workspace_id"] is None
     assert unknown["target_workspace_id"] == 9001
 
-    assert Path("analysis/lineage/summary.md").exists()
+    assert Path("analysis/evidence/lineage/summary.md").exists()
 
-    candidates = _read(Path("analysis/lineage/core-table-candidates.json"))
+    candidates = _read(Path("analysis/evidence/lineage/core-table-candidates.json"))
     assert candidates["sort_by"] == "downstream_count_desc"
 
     downstream = [item["downstream_count"] for item in candidates["candidates"]]
@@ -192,7 +192,7 @@ def test_lineage_keeps_sql_spelling_and_raw_reference(
 
     assert run_cli("analyze") == 0
 
-    edges = _read(Path("analysis/lineage/table-lineage.json"))["edges"]
+    edges = _read(Path("analysis/evidence/lineage/table-lineage.json"))["edges"]
     assert len(edges) == 1
 
     edge = edges[0]

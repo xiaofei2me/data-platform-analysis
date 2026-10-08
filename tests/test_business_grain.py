@@ -16,21 +16,6 @@ from test_business_objects import _prepare
 from test_business_processes import _write_process_rules
 from test_business_understanding import _table
 
-from data_platform_analysis.analysis.business.grain import (
-    CARRYOVER_CHECKLIST_INPUT_FILE,
-    INPUT_FILES,
-    OUTPUT_FILES,
-    PROCESS_CHECKLIST_INPUT_FILE,
-    BusinessGrainError,
-    read_grain_inputs,
-    run_business_grain_analysis,
-)
-from data_platform_analysis.analysis.business.objects import (
-    run_business_object_analysis,
-)
-from data_platform_analysis.analysis.business.processes import (
-    run_business_process_analysis,
-)
 from data_platform_analysis.analysis.models import (
     EVIDENCE_STRENGTH_MODERATE,
     EVIDENCE_STRENGTH_STRONG,
@@ -58,6 +43,21 @@ from data_platform_analysis.analysis.models import (
     GRAIN_UNRESOLVED_NO_IDENTIFIER,
     GRAIN_UNRESOLVED_ORDER,
     GRAIN_UNRESOLVED_TIME,
+)
+from data_platform_analysis.analysis.understanding.business.grain import (
+    CARRYOVER_CHECKLIST_INPUT_FILE,
+    INPUT_FILES,
+    OUTPUT_FILES,
+    PROCESS_CHECKLIST_INPUT_FILE,
+    BusinessGrainError,
+    read_grain_inputs,
+    run_business_grain_analysis,
+)
+from data_platform_analysis.analysis.understanding.business.objects import (
+    run_business_object_analysis,
+)
+from data_platform_analysis.analysis.understanding.business.processes import (
+    run_business_process_analysis,
 )
 
 # ============================================================
@@ -239,8 +239,8 @@ def _write_profiling(analysis_dir: Path) -> None:
     ]
 
     for relative, key, records in (
-        ("profiling/tables.json", "tables", tables),
-        ("profiling/columns.json", "columns", columns),
+        ("evidence/profiling/tables.json", "tables", tables),
+        ("evidence/profiling/columns.json", "columns", columns),
     ):
         path = analysis_dir / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -256,11 +256,11 @@ def _pipeline(tmp_path: Path) -> Path:
     analysis_dir = _prepare(tmp_path, **_grain_m2())
     run_business_object_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
     run_business_process_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
         rules_path=_write_process_rules(tmp_path / "config" / "process-rules.yaml"),
     )
     _write_profiling(analysis_dir)
@@ -271,12 +271,14 @@ def _pipeline(tmp_path: Path) -> Path:
 def _run(analysis_dir: Path) -> Any:
     return run_business_grain_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
 
 def _read(analysis_dir: Path, name: str) -> Any:
-    return json.loads((analysis_dir / "business" / name).read_text(encoding="utf-8"))
+    return json.loads(
+        (analysis_dir / "understanding" / "business" / name).read_text(encoding="utf-8")
+    )
 
 
 def _candidates(analysis_dir: Path) -> list[dict[str, Any]]:
@@ -286,19 +288,13 @@ def _candidates(analysis_dir: Path) -> list[dict[str, Any]]:
 def _for_table(rows: list[dict[str, Any]], table_key: str) -> list[dict[str, Any]]:
     """按 table_key 取出候选（大小写不敏感）。"""
 
-    return [
-        row
-        for row in rows
-        if str(row["table_key"]).casefold() == table_key.casefold()
-    ]
+    return [row for row in rows if str(row["table_key"]).casefold() == table_key.casefold()]
 
 
 def _one(rows: list[dict[str, Any]], table_key: str, keys: list[str]) -> dict[str, Any]:
     """取出唯一的指定候选键组合。"""
 
-    matched = [
-        row for row in _for_table(rows, table_key) if list(row["candidate_keys"]) == keys
-    ]
+    matched = [row for row in _for_table(rows, table_key) if list(row["candidate_keys"]) == keys]
 
     assert len(matched) == 1, (table_key, keys, len(matched))
 
@@ -331,7 +327,7 @@ def test_missing_single_input_reports_path(tmp_path: Path) -> None:
     """缺 profiling/columns.json → 报错信息点名该文件。"""
 
     analysis_dir = _pipeline(tmp_path)
-    (analysis_dir / "profiling" / "columns.json").unlink()
+    (analysis_dir / "evidence" / "profiling" / "columns.json").unlink()
 
     with pytest.raises(BusinessGrainError, match="profiling/columns.json"):
         read_grain_inputs(analysis_dir)
@@ -341,7 +337,7 @@ def test_invalid_json_raises(tmp_path: Path) -> None:
     """产物不是合法 JSON → 报错，不回退、不静默跳过。"""
 
     analysis_dir = _pipeline(tmp_path)
-    (analysis_dir / "lineage" / "table-lineage.json").write_text("{", encoding="utf-8")
+    (analysis_dir / "evidence" / "lineage" / "table-lineage.json").write_text("{", encoding="utf-8")
 
     with pytest.raises(BusinessGrainError, match="不是合法的 JSON"):
         read_grain_inputs(analysis_dir)
@@ -351,7 +347,7 @@ def test_array_payload_with_non_object_root_raises(tmp_path: Path) -> None:
     """产物根节点不是对象 → 明确报错。"""
 
     analysis_dir = _pipeline(tmp_path)
-    (analysis_dir / "profiling" / "tables.json").write_text("[]", encoding="utf-8")
+    (analysis_dir / "evidence" / "profiling" / "tables.json").write_text("[]", encoding="utf-8")
 
     with pytest.raises(BusinessGrainError, match="根节点不是对象"):
         read_grain_inputs(analysis_dir)
@@ -479,11 +475,7 @@ def test_signal_without_candidate_is_retained(tmp_path: Path) -> None:
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
     rows = _read(analysis_dir, "grain-signals.json")["signals"]
-    plain = [
-        row
-        for row in rows
-        if str(row["table_key"]).casefold() == "proj.plain_tbl"
-    ]
+    plain = [row for row in rows if str(row["table_key"]).casefold() == "proj.plain_tbl"]
 
     assert {row["signal_type"] for row in plain} >= {"identifier", "time"}
 
@@ -529,18 +521,12 @@ def test_periodic_snapshot_event_forms(tmp_path: Path) -> None:
     _run(analysis_dir)
     rows = _candidates(analysis_dir)
 
-    assert (
-        _one(rows, "proj.cal_period", ["month"])["grain_pattern"]
-        == GRAIN_PATTERN_PERIODIC
-    )
+    assert _one(rows, "proj.cal_period", ["month"])["grain_pattern"] == GRAIN_PATTERN_PERIODIC
     assert (
         _one(rows, "proj.cust_snapshot", ["region_snapshot"])["grain_pattern"]
         == GRAIN_PATTERN_SNAPSHOT
     )
-    assert (
-        _one(rows, "proj.event_log", ["event_id"])["grain_pattern"]
-        == GRAIN_PATTERN_EVENT
-    )
+    assert _one(rows, "proj.event_log", ["event_id"])["grain_pattern"] == GRAIN_PATTERN_EVENT
 
 
 def test_no_form_yields_empty_candidate_keys(tmp_path: Path) -> None:
@@ -564,15 +550,13 @@ def test_candidate_keys_exist_in_inventory(tmp_path: Path) -> None:
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
 
-    columns = json.loads(
-        (analysis_dir / "inventory" / "columns.json").read_text(encoding="utf-8")
-    )["columns"]
+    columns = json.loads((analysis_dir / "inventory" / "columns.json").read_text(encoding="utf-8"))[
+        "columns"
+    ]
     present: dict[str, set[str]] = {}
 
     for row in columns:
-        present.setdefault(str(row["table_key"]).casefold(), set()).add(
-            str(row["column_name"])
-        )
+        present.setdefault(str(row["table_key"]).casefold(), set()).add(str(row["column_name"]))
 
     for candidate in _candidates(analysis_dir):
         names = present[str(candidate["table_key"]).casefold()]
@@ -651,14 +635,13 @@ def test_time_semantics_and_aggregation_level_reasons(tmp_path: Path) -> None:
     rows = _candidates(analysis_dir)
 
     # plain_tbl 的 update_time 只有名字形态证据，且是空候选。
-    assert GRAIN_UNRESOLVED_TIME in _for_table(rows, "proj.plain_tbl")[0][
-        "unresolved_reasons"
-    ]
+    assert GRAIN_UNRESOLVED_TIME in _for_table(rows, "proj.plain_tbl")[0]["unresolved_reasons"]
 
     # daily_sales 有度量且是 aggregation 形态 → 聚合层级未决。
-    assert GRAIN_UNRESOLVED_AGGREGATION in _one(
-        rows, "proj.daily_sales", ["customer_id", "ds"]
-    )["unresolved_reasons"]
+    assert (
+        GRAIN_UNRESOLVED_AGGREGATION
+        in _one(rows, "proj.daily_sales", ["customer_id", "ds"])["unresolved_reasons"]
+    )
 
 
 def test_insufficient_evidence_requires_two_sources(tmp_path: Path) -> None:
@@ -720,7 +703,9 @@ def test_no_uniqueness_is_invented(tmp_path: Path) -> None:
 
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
-    text = (analysis_dir / "business" / "grain-summary.md").read_text(encoding="utf-8")
+    text = (analysis_dir / "understanding" / "business" / "grain-summary.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "is_candidate_key=true 的列 0" in text
     assert "唯一" in text  # 说明不伪造唯一性
@@ -729,8 +714,7 @@ def test_no_uniqueness_is_invented(tmp_path: Path) -> None:
     for candidate in _candidates(analysis_dir):
         assert "unique" not in candidate["evidence_sources"]
         assert all(
-            entry["source_type"] in set(GRAIN_EVIDENCE_ORDER)
-            for entry in candidate["evidence"]
+            entry["source_type"] in set(GRAIN_EVIDENCE_ORDER) for entry in candidate["evidence"]
         )
 
 
@@ -761,7 +745,9 @@ def test_process_human_validated_is_recorded_only(tmp_path: Path) -> None:
     """Process 的人工确认只被记录，不改变 grain 的 candidate 状态。"""
 
     analysis_dir = _pipeline(tmp_path)
-    (analysis_dir / PROCESS_CHECKLIST_INPUT_FILE).write_text(
+    checklist_path = analysis_dir / PROCESS_CHECKLIST_INPUT_FILE
+    checklist_path.parent.mkdir(parents=True, exist_ok=True)
+    checklist_path.write_text(
         "# M3.3 Process Review Checklist\n\n"
         "| process_key | objects | tables | signals | evidence | human_process_name "
         "| confirmed | note |\n"
@@ -792,9 +778,9 @@ def test_checklist_carry_over_is_preserved(tmp_path: Path) -> None:
     )
     _run(analysis_dir)
 
-    checklist = (analysis_dir / "business" / "grain-review-checklist.md").read_text(
-        encoding="utf-8"
-    )
+    checklist = (
+        analysis_dir / "understanding" / "business" / "grain-review-checklist.md"
+    ).read_text(encoding="utf-8")
 
     assert "每日订单粒度" in checklist
     assert "| true |" in checklist
@@ -804,19 +790,58 @@ def test_checklist_carry_over_is_preserved(tmp_path: Path) -> None:
     assert _candidates(analysis_dir)[0]["status"] == GRAIN_STATUS_CANDIDATE
 
 
+def test_legacy_checklist_is_migrated(tmp_path: Path) -> None:
+    """旧布局 analysis/business/ 的 grain 清单迁移到正式路径：内容保留、正式文件存在时不覆盖。"""
+
+    analysis_dir = _pipeline(tmp_path)
+    _run(analysis_dir)
+    first = _candidates(analysis_dir)[0]
+    candidate_id = first["grain_candidate_id"]
+
+    _write_carryover(
+        analysis_dir,
+        f"| {candidate_id} | {first['table_key']} | {first['grain_pattern']} "
+        f"| - | {first['strength']} | - | 每日订单粒度 | true | 人工确认 |",
+    )
+
+    current = analysis_dir / CARRYOVER_CHECKLIST_INPUT_FILE
+    legacy_root = analysis_dir / "business"
+    legacy_root.mkdir(parents=True, exist_ok=True)
+    legacy = legacy_root / "grain-review-checklist.md"
+    current.replace(legacy)
+
+    _run(analysis_dir)
+
+    assert not legacy.exists()
+    migrated = current.read_text(encoding="utf-8")
+    assert "每日订单粒度" in migrated
+    assert "| true |" in migrated
+    assert "人工确认" in migrated
+
+    # 正式路径已有文件时，遗留副本只被清理，不参与读写。
+    legacy.write_text(
+        "| grain_candidate_id | confirmed | note |\n| stale | true | 旧文件 |\n",
+        encoding="utf-8",
+    )
+    _run(analysis_dir)
+
+    assert not legacy.exists()
+    assert "旧文件" not in current.read_text(encoding="utf-8")
+    assert "每日订单粒度" in current.read_text(encoding="utf-8")
+
+
 def test_checklist_defaults_to_false(tmp_path: Path) -> None:
     """未回填的行 confirmed 一律 false。"""
 
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
-    checklist = (analysis_dir / "business" / "grain-review-checklist.md").read_text(
-        encoding="utf-8"
-    )
+    checklist = (
+        analysis_dir / "understanding" / "business" / "grain-review-checklist.md"
+    ).read_text(encoding="utf-8")
     lines = [
         line
         for line in checklist.splitlines()
-        if line.startswith("| grain_candidate_")
-        and not line.startswith("| grain_candidate_id |")
+        if line.startswith("| grain_candidate_") and not line.startswith("| grain_candidate_id |")
     ]
 
     assert lines
@@ -836,9 +861,7 @@ def test_anchor_and_supporting_roles(tmp_path: Path) -> None:
     _run(analysis_dir)
     tables = _read(analysis_dir, "grain-tables.json")["tables"]
     anchor = _one(_candidates(analysis_dir), "proj.daily_sales", ["customer_id", "ds"])
-    rows = [
-        row for row in tables if row["grain_candidate_id"] == anchor["grain_candidate_id"]
-    ]
+    rows = [row for row in tables if row["grain_candidate_id"] == anchor["grain_candidate_id"]]
     roles = {row["role"]: row for row in rows}
 
     assert set(roles) == {GRAIN_ROLE_ANCHOR, GRAIN_ROLE_SUPPORTING}
@@ -851,7 +874,7 @@ def test_anchor_and_supporting_roles(tmp_path: Path) -> None:
 def test_supporting_rows_are_capped(tmp_path: Path) -> None:
     """supporting 行每个候选最多 5 条（上限常量生效）。"""
 
-    from data_platform_analysis.analysis.business.grain import (  # noqa: PLC0415
+    from data_platform_analysis.analysis.understanding.business.grain import (  # noqa: PLC0415
         GRAIN_SUPPORTING_ROW_LIMIT,
     )
 
@@ -864,9 +887,7 @@ def test_supporting_rows_are_capped(tmp_path: Path) -> None:
 
     for row in tables:
         if row["role"] == GRAIN_ROLE_SUPPORTING:
-            counts[row["grain_candidate_id"]] = (
-                counts.get(row["grain_candidate_id"], 0) + 1
-            )
+            counts[row["grain_candidate_id"]] = counts.get(row["grain_candidate_id"], 0) + 1
 
     assert counts
     assert max(counts.values()) <= 5
@@ -878,7 +899,9 @@ def test_role_vocabulary_has_no_fact_dimension(tmp_path: Path) -> None:
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
     payload = _read(analysis_dir, "grain-tables.json")
-    text = (analysis_dir / "business" / "grain-summary.md").read_text(encoding="utf-8")
+    text = (analysis_dir / "understanding" / "business" / "grain-summary.md").read_text(
+        encoding="utf-8"
+    )
 
     assert set(payload["role_counts"]) <= set(GRAIN_ROLE_ORDER)
     assert set(payload["role_counts"]) == {GRAIN_ROLE_ANCHOR, GRAIN_ROLE_SUPPORTING}
@@ -911,7 +934,7 @@ def test_output_structure_and_counts(tmp_path: Path) -> None:
     result = _run(analysis_dir)
 
     for name in OUTPUT_FILES:
-        assert (analysis_dir / "business" / name).exists(), name
+        assert (analysis_dir / "understanding" / "business" / name).exists(), name
 
     signals = _read(analysis_dir, "grain-signals.json")
     candidates = _read(analysis_dir, "grain-candidates.json")
@@ -941,9 +964,7 @@ def test_candidate_id_and_signature_are_deterministic(tmp_path: Path) -> None:
     assert signatures == sorted(signatures)
     assert len(set(signatures)) == len(signatures)
     assert all(
-        row["canonical_signature"].startswith(
-            f"process={row['process_candidate_id']}|"
-        )
+        row["canonical_signature"].startswith(f"process={row['process_candidate_id']}|")
         and "|table=" in row["canonical_signature"]
         and "|keys=" in row["canonical_signature"]
         and "|pattern=" in row["canonical_signature"]
@@ -956,7 +977,9 @@ def test_summary_has_required_sections(tmp_path: Path) -> None:
 
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
-    summary = (analysis_dir / "business" / "grain-summary.md").read_text(encoding="utf-8")
+    summary = (analysis_dir / "understanding" / "business" / "grain-summary.md").read_text(
+        encoding="utf-8"
+    )
 
     for heading in (
         "# M3.4 Grain Candidate Analysis",
@@ -982,7 +1005,9 @@ def test_summary_tables_are_truncated_with_note(tmp_path: Path) -> None:
 
     analysis_dir = _pipeline(tmp_path)
     result = _run(analysis_dir)
-    summary = (analysis_dir / "business" / "grain-summary.md").read_text(encoding="utf-8")
+    summary = (analysis_dir / "understanding" / "business" / "grain-summary.md").read_text(
+        encoding="utf-8"
+    )
     candidate_lines = [
         line for line in summary.splitlines() if line.startswith("| grain_candidate_")
     ]
@@ -994,7 +1019,7 @@ def test_summary_tables_are_truncated_with_note(tmp_path: Path) -> None:
     else:
         assert "只列出前" not in summary
 
-    assert "完整明细见 `analysis/business/grain-candidates.json`" in summary
+    assert "完整明细见 `analysis/understanding/business/grain-candidates.json`" in summary
 
 
 def test_checklist_is_grouped_by_process_with_row_limit(tmp_path: Path) -> None:
@@ -1002,7 +1027,7 @@ def test_checklist_is_grouped_by_process_with_row_limit(tmp_path: Path) -> None:
 
     analysis_dir = _pipeline(tmp_path)
     _run(analysis_dir)
-    text = (analysis_dir / "business" / "grain-review-checklist.md").read_text(
+    text = (analysis_dir / "understanding" / "business" / "grain-review-checklist.md").read_text(
         encoding="utf-8"
     )
     section_rows: list[int] = []
@@ -1043,7 +1068,7 @@ def test_deterministic_across_runs(tmp_path: Path) -> None:
     """两次运行字节一致（无时间戳 / UUID / 随机抽样）。"""
 
     analysis_dir = _pipeline(tmp_path)
-    business_dir = analysis_dir / "business"
+    business_dir = analysis_dir / "understanding" / "business"
 
     _run(analysis_dir)
     first = {name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)}
@@ -1065,7 +1090,7 @@ def test_analyze_business_grain_command(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze-business-grain 产出 5 个文件，两次运行一致且不改前置产物。"""
+    """analyze --stage understanding 产出 5 个 M3.4 文件，两次运行一致且不改 M2 输入。"""
 
     from test_business_objects import _write_m2 as write_m2  # noqa: PLC0415
     from test_business_processes import (  # noqa: PLC0415
@@ -1078,62 +1103,58 @@ def test_analyze_business_grain_command(
 
     write_m2(Path("analysis"), **_m2_payloads())
 
-    assert run_cli("analyze-business") == 0
-    assert run_cli("analyze-business-quality") == 0
-    assert run_cli("analyze-business-objects") == 0
-    assert run_cli("analyze-business-processes") == 0
-    _write_profiling(Path("analysis"))
+    m2_inputs = {path: path.read_bytes() for path in sorted(Path("analysis").rglob("*.json"))}
 
-    business_dir = Path("analysis/business")
-    before = {path.name: path.read_bytes() for path in sorted(business_dir.iterdir())}
+    assert run_cli("analyze", "--stage", "understanding") == 0
 
-    assert run_cli("analyze-business-grain") == 0
+    business_dir = Path("analysis/understanding/business")
 
     for name in OUTPUT_FILES:
         assert (business_dir / name).exists(), name
 
-    for name, content in before.items():
-        assert (business_dir / name).read_bytes() == content, name
+    for path, content in m2_inputs.items():
+        assert path.read_bytes() == content, path
 
     first = {name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)}
 
-    assert run_cli("analyze-business-grain") == 0
-    assert {
-        name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)
-    } == first
+    assert run_cli("analyze", "--stage", "understanding") == 0
+    assert {name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)} == first
 
 
 def test_analyze_business_grain_command_fails_without_inputs(
     cli_env: Any,
     run_cli: Any,
 ) -> None:
-    """缺 M3.3 产物 → 退出码 1，不写任何 M3.4 产物。"""
+    """前置产物缺失 → 退出码 1，不写任何 M3.4 产物。"""
 
-    assert run_cli("analyze-business-grain") == 1
-    assert not Path("analysis/business/grain-candidates.json").exists()
+    assert run_cli("analyze", "--stage", "understanding") == 1
+    assert not Path("analysis/understanding/business/grain-candidates.json").exists()
 
 
-def test_analyze_business_command_does_not_produce_grain_outputs(
+def test_analyze_evidence_stage_does_not_produce_grain_outputs(
     cli_env: Any,
     run_cli: Any,
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze-business 只跑到 M3，不会顺带产出 M3.4 产物。"""
+    """analyze --stage evidence 只跑到 M2，不会顺带产出 M3.4 grain 产物。"""
 
-    from test_business_objects import (  # noqa: PLC0415
-        OBJECT_RULES_TEXT,
-        _write_m2,
-        _write_rules,
-    )
-    from test_business_processes import _m2_payloads  # noqa: PLC0415
+    from helpers import write_snapshot  # noqa: PLC0415
+    from test_business_objects import OBJECT_RULES_TEXT, _write_rules  # noqa: PLC0415
 
     monkeypatch.setenv(
         "BUSINESS_RULES_PATH",
         str(_write_rules(tmp_path / "config" / "business-rules.yaml", OBJECT_RULES_TEXT)),
     )
-    _write_m2(Path("analysis"), **_m2_payloads())
+    write_snapshot(
+        Path("source"),
+        workspaces=[{"id": 9001, "name": "proj"}],
+        tables=[
+            {"workspace_id": 9001, "table": "tbl_a", "columns": []},
+        ],
+    )
 
-    assert run_cli("analyze-business") == 0
+    assert run_cli("analyze", "--stage", "evidence") == 0
 
-    assert not Path("analysis/business/grain-candidates.json").exists()
+    assert not Path("analysis/understanding").exists()
+    assert not Path("analysis/understanding/business/grain-candidates.json").exists()

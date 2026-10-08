@@ -4,7 +4,7 @@
 
 - 代码实现：`src/data_platform_analysis/analysis/review/problems.py`（v2）、`analysis/review/findings.py`（M3.6）、常量与契约在 `analysis/models.py`
 - 阶段逻辑分析：[docs/CODE_LOGIC_ANALYSIS.md](CODE_LOGIC_ANALYSIS.md) §3.14、§4 产物地图、§8 局限（第 13、14 条）
-- 命令：`uv run data-platform-analysis analyze-current-state-model`（M3.6 与 v2 同一次运行，写出 9 个产物）
+- 命令：`uv run data-platform-analysis analyze --stage review`（M3.6 与 v2 同一次运行，写出 9 个产物）
 - 数据基准：本仓库 `analysis/` 的当前快照（3719 张表、4439 条 finding、1190 条 problem）
 
 ---
@@ -39,14 +39,14 @@
 
 | 任务书编号 | 本仓库编号 | 阶段 | 主产物 |
 | --- | --- | --- | --- |
-| M3.1 | **M3** | Business Understanding | `business/tables.json`、`business/summary.md` |
-| （无，任务书未列） | **M3.1** | Quality Assessment（只评估不识别） | `business/quality-assessment.{json,md}`、`review-checklist.md` |
+| M3.1 | **M3** | Business Understanding | `understanding/business/tables.json`、`understanding/business/summary.md` |
+| （无，任务书未列） | **M3.1** | Quality Assessment（只评估不识别） | `understanding/business/quality-assessment.{json,md}`、`review-checklist.md` |
 | M3.2 | **M3.2** | Object & Relationship | `objects-registry.json`、`object-relationships.json`、`object-graph.md` |
 | M3.3 | **M3.3** | Process | `processes.json`、`process-summary.md`、`process-review-checklist.md` |
 | M3.4 | **M3.4** | Grain | `grain-candidates.json`、`grain-summary.md`、`grain-review-checklist.md` |
 | M3.5 | **M3.5** | Business Model（Fact / Dimension Candidate） | `fact-candidates.json`、`dimension-candidates.json`、`model-review-checklist.md` |
-| M3.6 | **M3.6** | Current-State Model Review | `current-state-model*.json`、`current-state-findings.json`、`current-state-review-checklist.md` |
-| M3.6 v2 | **M3.6 v2** | Problem Assessment | `current-state-problems.json`、`current-state-problem-evidence.json`、`current-state-problem-summary.md`、`current-state-problem-review-checklist.md` |
+| M3.6 | **M3.6** | Current-State Model Review | `current-state-model*.json`、`findings.json`、`current-state-review-checklist.md` |
+| M3.6 v2 | **M3.6 v2** | Problem Assessment | `problems.json`、`problem-evidence.json`、`summary.md`、`current-state-problem-review-checklist.md` |
 
 除 M3.1 Quality 外，两套编号在 Object 及之后完全一致。本文以下一律使用仓库编号。
 
@@ -60,13 +60,13 @@
 | 粒度 | 一条 finding 观察一个现象 | 一个问题聚合若干条 finding |
 | 类型 | 18 类 finding | 13 类 problem |
 | 实测数量 | 4439 | 1190 |
-| 载体 | `current-state-findings.json` + `current-state-review-checklist.md`（5 个分区） | `current-state-problems.json` + `current-state-problem-review-checklist.md`（13 个分区） |
+| 载体 | `findings.json` + `current-state-review-checklist.md`（5 个分区） | `problems.json` + `current-state-problem-review-checklist.md`（13 个分区） |
 | 回答的问题 | 现在的模型长什么样、有哪些结构现象 | 这些现象里**哪些值得改、证据够不够、先改什么** |
 | 边界 | 只评审不改模 | 只评审不改模，不设计 Target DWD |
 
-两者共用一条命令 `analyze-current-state-model`：同一次运行先写 5 个 M3.6 产物，再把 finding 聚合成 problem，追加 4 个 v2 产物，合计 9 个。v2 只读本次 M3.6 的 finding 与表级行 + 同一批 13 个上游产物，不读 `source/`、profiling、SQL 参考，不调 LLM / 外部 API，不改写任何已有产物。
+两者共用一条命令 `analyze --stage review`：同一次运行先写 5 个 M3.6 产物，再把 finding 聚合成 problem，追加 4 个 v2 产物，合计 9 个。v2 只读本次 M3.6 的 finding 与表级行 + 同一批 13 个上游产物，不读 `source/`、profiling、SQL 参考，不调 LLM / 外部 API，不改写任何已有产物。
 
-13 个上游输入（只读）：`model/fact-candidates.json`、`dimension-candidates.json`、`fact-dimension-relationships.json`、`fact-tables.json`、`dimension-tables.json`、`grain-candidates.json`、`processes.json`、`objects-registry.json`、`inventory/tables.json`、`inventory/columns.json`、`lineage/table-lineage.json`、`lineage/core-table-candidates.json`、`layer/assessments.json`；另有可选回填文件 `review/current-state-problem-review-checklist.md`。
+13 个上游输入（只读）：`understanding/modeling/fact-candidates.json`、`dimension-candidates.json`、`fact-dimension-relationships.json`、`fact-tables.json`、`dimension-tables.json`、`understanding/business/{grain-candidates,processes,objects-registry}.json`、`inventory/tables.json`、`inventory/columns.json`、`evidence/lineage/table-lineage.json`、`evidence/lineage/core-table-candidates.json`、`evidence/layer/assessments.json`；另有可选回填文件 `review/current-state-problem-review-checklist.md`。
 
 ---
 
@@ -93,7 +93,7 @@ Finding Count (4439)  ≠  Problem Count (1190)  ≠  Confirmed Problem Count (0
 
 ### 3.3 Finding 覆盖账目
 
-`current-state-problems.json` 的 `finding_coverage` 字段记录账目：本轮 **4427 / 4439** 条 finding 进入了 problem，未进入的 **12 条全部是 `aggregate_fact`**。原因见 §5.3：它们被评估为 `valid_aggregate`（有原子事实上游、无重复），**有意不产生问题**。覆盖不到 100% 是正确行为，不是漏算。
+`problems.json` 的 `finding_coverage` 字段记录账目：本轮 **4427 / 4439** 条 finding 进入了 problem，未进入的 **12 条全部是 `aggregate_fact`**。原因见 §5.3：它们被评估为 `valid_aggregate`（有原子事实上游、无重复），**有意不产生问题**。覆盖不到 100% 是正确行为，不是漏算。
 
 ### 3.4 聚合维度（scope）
 
@@ -356,7 +356,7 @@ candidate ────────────────────→  confi
 
 ### 7.2 唯一回填入口
 
-清单文件：`analysis/review/current-state-problem-review-checklist.md`，按 13 类分区，每区 ≤50 行并注明总数（全量见 `current-state-problems.json`）。
+清单文件：`analysis/review/current-state-problem-review-checklist.md`，按 13 类分区，每区 ≤50 行并注明总数（全量见 `problems.json`）。
 
 固定 10 列（`PROBLEM_CHECKLIST_HEADERS`）：`problem_id`、`problem_type`、`priority`、`scope_key`、`evidence`、`system_interpretation`、`human_question`、`human_status`、`human_name`、`note`。
 
@@ -430,7 +430,7 @@ Current State   当前是什么样（描述，不是评价）
 Problem         这构成什么问题（问题陈述）
     ↓  取自 problem.rationale.problem
 Evidence        凭什么这么说（可追溯证据）
-    ↓  取自 problem.rationale.evidence + current-state-problem-evidence.json
+    ↓  取自 problem.rationale.evidence + problem-evidence.json
 Impact          会造成什么后果（结构影响）
     ↓  取自 problem.rationale.impact（impact_types 及其中文说明）
 Root Cause      根因是什么（或明确写 UNKNOWN）
@@ -446,7 +446,7 @@ Human Decision  人工裁决：确认 / 否决 + 理由 + 决定的范围与顺�
 - 七段缺一不可；没有 `Evidence` 的条目直接被 Evidence First 拦截（构造阶段即报错）。
 - `Root Cause` 证据不足时必须写 `UNKNOWN`（12 条），**禁止写设计偏好**（如「应该分层」「应该拆表」）。
 - `Human Decision` 未填写前，该 problem 一律按 candidate 对待，不得进入实施排期。
-- 全量机器字段见 `current-state-problems.json` 的 `rationale` 对象（`current_state` / `problem` / `evidence` / `impact` / `why_change` 五键）。
+- 全量机器字段见 `problems.json` 的 `rationale` 对象（`current_state` / `problem` / `evidence` / `impact` / `why_change` 五键）。
 
 ---
 
@@ -463,7 +463,7 @@ Human Decision  人工裁决：确认 / 否决 + 理由 + 决定的范围与顺�
 
 使用规则：
 
-1. 每行必须能从 `problem_id` 追溯到 `current-state-problem-evidence.json` 的证据行。
+1. 每行必须能从 `problem_id` 追溯到 `problem-evidence.json` 的证据行。
 2. `Root Cause` 为 `UNKNOWN` 的行，`Direction` 只能是「补证据 / 定范围」类动作，不能是「拆分 / 合并 / 下线」类动作。
 3. 方向描述停留在**动作类型**（裁决、收敛、补证据、拆分评估），不落到**具体对象**（某张表、某个字段、某套 DWD 设计）。
 4. 矩阵整体是 M4 的输入，不是 M4 的产出——**矩阵完成后才允许开始 Target DWD Design**。
@@ -485,7 +485,7 @@ Human Decision  人工裁决：确认 / 否决 + 理由 + 决定的范围与顺�
 | 受影响表（去重） | 3345 |
 | Finding 覆盖 | 4427 / 4439（未进入 12 条，全部 `aggregate_fact`） |
 | 证据行 | 30201（TABLE 9177、GRAIN 8059、FINDING 6313、COLUMN 4219、PROCESS 1210、LINEAGE 1202、RELATIONSHIP 12、OBJECT 9、SQL 0） |
-| 证据截断 | 53 条 problem 超过单条 50 行上限被截断（全量看 `current-state-problem-evidence.json`） |
+| 证据截断 | 53 条 problem 超过单条 50 行上限被截断（全量看 `problem-evidence.json`） |
 | Fact Gate 复算 | qualified 3364 / rejected 2315（全部 `no_measure_evidence`），`matches_m35 = true` |
 
 ### 11.2 13 类分布
@@ -520,7 +520,7 @@ Human Decision  人工裁决：确认 / 否决 + 理由 + 决定的范围与顺�
 
 ### 12.1 Machine side —— 已完成（可验证）
 
-- [x] 一条命令 `analyze-current-state-model` 写出 9 个产物（5 个 M3.6 + 4 个 v2），不改上游 13 个输入与更早阶段产物
+- [x] 一条命令 `analyze --stage review` 写出 9 个产物（5 个 M3.6 + 4 个 v2），不改上游 13 个输入与更早阶段产物
 - [x] 4439 条 finding → 1190 条 problem，`finding_coverage` 账目自洽（未覆盖 12 条全部为 `valid_aggregate`）
 - [x] 每条 problem ≥1 条证据；无证据即报错，不产出「只有结论没有证据」的行
 - [x] 机器状态只出现 `candidate` / `review_required`，`confirmed` = 0
@@ -572,9 +572,9 @@ Human Decision  人工裁决：确认 / 否决 + 理由 + 决定的范围与顺�
 | Finding 生成、Fact Gate 复算 | `src/data_platform_analysis/analysis/review/findings.py` |
 | 报告 6 节与清单 13 分区渲染 | `src/data_platform_analysis/analysis/reports.py` |
 | 23 条行为测试 | `tests/test_problem_assessment.py` |
-| 全量 problem 数据 | `analysis/review/current-state-problems.json` |
-| 全量证据行 | `analysis/review/current-state-problem-evidence.json` |
-| 人工入口报告 | `analysis/review/current-state-problem-summary.md` |
+| 全量 problem 数据 | `analysis/review/problems.json` |
+| 全量证据行 | `analysis/review/problem-evidence.json` |
+| 人工入口报告 | `analysis/review/summary.md` |
 | 人工回填台账 | `analysis/review/current-state-problem-review-checklist.md` |
 | 阶段逻辑与产物地图 | [docs/CODE_LOGIC_ANALYSIS.md](CODE_LOGIC_ANALYSIS.md) |
 | 命令与退出码 | [docs/COMMANDS.md](COMMANDS.md) |

@@ -24,40 +24,40 @@
 输入（只读 analysis/ 与 config/ 之外的产物，不读 source/，不调 API，
 不修改 M2 / M3 / M3.1 / M3.2 / M3.3 / M3.4 产物）：
 
-    analysis/business/grain-candidates.json
-    analysis/business/grain-tables.json
-    analysis/business/processes.json
-    analysis/business/process-objects.json
-    analysis/business/objects-registry.json
-    analysis/business/object-tables.json
-    analysis/business/object-relationships.json
+    analysis/understanding/business/grain-candidates.json
+    analysis/understanding/business/grain-tables.json
+    analysis/understanding/business/processes.json
+    analysis/understanding/business/process-objects.json
+    analysis/understanding/business/objects-registry.json
+    analysis/understanding/business/object-tables.json
+    analysis/understanding/business/object-relationships.json
     analysis/inventory/tables.json
     analysis/inventory/columns.json
-    analysis/sql/table-references.json
-    analysis/lineage/table-lineage.json
-    analysis/lineage/core-table-candidates.json
-    analysis/profiling/tables.json
-    analysis/profiling/columns.json
-    analysis/layer/assessments.json
-    analysis/business/process-review-checklist.md   （可选：Process 人工确认）
-    analysis/business/grain-review-checklist.md     （可选：Grain 人工确认）
-    analysis/model/model-review-checklist.md        （可选：本阶段清单回填）
+    analysis/evidence/sql/table-references.json
+    analysis/evidence/lineage/table-lineage.json
+    analysis/evidence/lineage/core-table-candidates.json
+    analysis/evidence/profiling/tables.json
+    analysis/evidence/profiling/columns.json
+    analysis/evidence/layer/assessments.json
+    understanding/business/process-review-checklist.md   （可选：Process 人工确认）
+    understanding/business/grain-review-checklist.md     （可选：Grain 人工确认）
+    analysis/understanding/modeling/model-review-checklist.md        （可选：本阶段清单回填）
 
     不读 grain-signals / process-signals / process-tables：M3.5 不重算信号，
     grain candidate 已经携带全部粒度结论；不读 sql/statements.json：表级引用
     足以支撑证据，语句正文不属于本阶段；不读 business/{tables,terms,domains}
     与 quality-assessment.json：它们是 M3 / M3.1 的分类结论，重读等于重新分类。
 
-输出（Stage 11，M3.5 产物统一写在 analysis/model/）：
+输出（Stage 11，M3.5 产物统一写在 analysis/understanding/modeling/）：
 
-    analysis/model/fact-candidates.json
-    analysis/model/dimension-candidates.json
-    analysis/model/fact-dimension-relationships.json
-    analysis/model/fact-tables.json
-    analysis/model/dimension-tables.json
-    analysis/model/model-evidence-matrix.json
-    analysis/model/model-summary.md
-    analysis/model/model-review-checklist.md
+    analysis/understanding/modeling/fact-candidates.json
+    analysis/understanding/modeling/dimension-candidates.json
+    analysis/understanding/modeling/fact-dimension-relationships.json
+    analysis/understanding/modeling/fact-tables.json
+    analysis/understanding/modeling/dimension-tables.json
+    analysis/understanding/modeling/model-evidence-matrix.json
+    analysis/understanding/modeling/model-summary.md
+    analysis/understanding/modeling/model-review-checklist.md
 
 原则：
 
@@ -86,28 +86,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ...io_utils import (
+from ....io_utils import (
     ensure_dir,
     relocate_legacy_artifacts,
     write_json,
     write_text,
 )
-from ..business.grain import (
-    IDENTIFIER_NAMES,
-    IDENTIFIER_TOKENS,
-    BusinessGrainError,
-    _dict_values,
-    _display_path,
-    _evidence_entry,
-    _parse_checklist_rows,
-    _profiling_stats,
-    _rank,
-    _status_counts,
-    _table_column_sort_key,
-)
-from ..business.objects import _string_list, _table_sort_key, _text, _workspace_projects
-from ..business.understanding import tokenize_identifier
-from ..models import (
+from ...models import (
     DIMENSION_EVIDENCE_COLUMN,
     DIMENSION_EVIDENCE_FACT_REFERENCE,
     DIMENSION_EVIDENCE_LINEAGE,
@@ -200,8 +185,26 @@ from ..models import (
     evidence_strength,
     normalize_human_status,
 )
-from ..naming import qualify_table_ref
-from ..reports import render_model_review_checklist, render_model_summary
+from ...naming import qualify_table_ref
+from ...reports import (
+    render_model_review_checklist,
+    render_model_summary,
+)
+from ..business.grain import (
+    IDENTIFIER_NAMES,
+    IDENTIFIER_TOKENS,
+    BusinessGrainError,
+    _dict_values,
+    _display_path,
+    _evidence_entry,
+    _parse_checklist_rows,
+    _profiling_stats,
+    _rank,
+    _status_counts,
+    _table_column_sort_key,
+)
+from ..business.objects import _string_list, _table_sort_key, _text, _workspace_projects
+from ..business.understanding import tokenize_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -210,31 +213,31 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 ARRAY_INPUT_FILES: tuple[tuple[str, str, str], ...] = (
-    ("business/grain-candidates.json", "candidates", "grain_candidates"),
-    ("business/grain-tables.json", "tables", "grain_tables"),
-    ("business/processes.json", "processes", "processes"),
-    ("business/process-objects.json", "objects", "process_objects"),
-    ("business/objects-registry.json", "objects", "registry_objects"),
-    ("business/object-tables.json", "associations", "associations"),
-    ("business/object-relationships.json", "relationships", "object_relationships"),
+    ("understanding/business/grain-candidates.json", "candidates", "grain_candidates"),
+    ("understanding/business/grain-tables.json", "tables", "grain_tables"),
+    ("understanding/business/processes.json", "processes", "processes"),
+    ("understanding/business/process-objects.json", "objects", "process_objects"),
+    ("understanding/business/objects-registry.json", "objects", "registry_objects"),
+    ("understanding/business/object-tables.json", "associations", "associations"),
+    ("understanding/business/object-relationships.json", "relationships", "object_relationships"),
     ("inventory/tables.json", "tables", "inventory_tables"),
     ("inventory/columns.json", "columns", "columns"),
-    ("sql/table-references.json", "references", "references"),
-    ("lineage/table-lineage.json", "edges", "edges"),
-    ("lineage/core-table-candidates.json", "candidates", "core_candidates"),
-    ("profiling/tables.json", "tables", "profile_tables"),
-    ("profiling/columns.json", "columns", "profile_columns"),
-    ("layer/assessments.json", "assessments", "assessments"),
+    ("evidence/sql/table-references.json", "references", "references"),
+    ("evidence/lineage/table-lineage.json", "edges", "edges"),
+    ("evidence/lineage/core-table-candidates.json", "candidates", "core_candidates"),
+    ("evidence/profiling/tables.json", "tables", "profile_tables"),
+    ("evidence/profiling/columns.json", "columns", "profile_columns"),
+    ("evidence/layer/assessments.json", "assessments", "assessments"),
 )
 """M3.5 依赖的数组型 M2 / M3 产物（相对 analysis/ 路径 → JSON 数组字段名 → 属性名）。"""
 
-PROCESS_CHECKLIST_INPUT_FILE = "business/process-review-checklist.md"
+PROCESS_CHECKLIST_INPUT_FILE = "understanding/business/process-review-checklist.md"
 """M3.3 人工确认清单（可选输入）：只用于刷新 Process 的人工确认状态。"""
 
-GRAIN_CHECKLIST_INPUT_FILE = "business/grain-review-checklist.md"
+GRAIN_CHECKLIST_INPUT_FILE = "understanding/business/grain-review-checklist.md"
 """M3.4 人工确认清单（可选输入）：只用于记录 Grain 的人工确认状态。"""
 
-CARRYOVER_CHECKLIST_INPUT_FILE = "model/model-review-checklist.md"
+CARRYOVER_CHECKLIST_INPUT_FILE = "understanding/modeling/model-review-checklist.md"
 """本阶段清单（可选输入）：回填过的人工状态在重跑时被带回去。"""
 
 INPUT_FILES: tuple[str, ...] = tuple(relative for relative, _key, _attr in ARRAY_INPUT_FILES)
@@ -250,7 +253,8 @@ OUTPUT_FILES: tuple[str, ...] = (
     "model-summary.md",
     "model-review-checklist.md",
 )
-"""M3.5 产物文件名（固定顺序，写出到 analysis/model/）；只覆盖这八个文件，不动已有 M2 / M3 产物。"""
+"""M3.5 产物文件名（固定顺序，写出到 analysis/understanding/modeling/）；
+只覆盖这八个文件，不动已有 M2 / M3 产物。"""
 
 PROCESS_CHECKLIST_REQUIRED_COLUMNS: tuple[str, ...] = ("process_key", "confirmed")
 """process-review-checklist.md 必须包含的列，缺一即报错。"""
@@ -433,7 +437,7 @@ def read_model_inputs(analysis_dir: Path) -> ModelInputs:
     """读取 M3.5 依赖的全部 M2 / M3 产物。
 
     任何必需输入缺失或 JSON 非法都明确报错，
-    不自动回退执行 analyze / analyze-business / ... / analyze-business-grain。
+    不自动回退执行 analyze / analyze --stage。
     """
 
     missing = [relative for relative in INPUT_FILES if not (analysis_dir / relative).exists()]
@@ -443,11 +447,8 @@ def read_model_inputs(analysis_dir: Path) -> ModelInputs:
             "M2 / M3 / M3.4 产物缺失，无法执行 M3.5 Fact / Dimension "
             f"Candidate Analysis：{'、'.join(missing)}"
             f"（目录：{_display_path(analysis_dir)}）；"
-            "请先执行 analyze 生成 M2 产物、analyze-business 生成 M3 产物、"
-            "analyze-business-quality 生成 M3.1 产物、"
-            "analyze-business-objects 生成 M3.2 产物、"
-            "analyze-business-processes 生成 M3.3 产物、"
-            "analyze-business-grain 生成 M3.4 产物"
+            "请先执行 analyze --stage evidence 生成 M2 产物、"
+            "analyze --stage understanding 生成 M3 ~ M3.5 产物"
         )
 
     def load(relative: str, key: str) -> list[dict[str, Any]]:
@@ -533,7 +534,7 @@ def _validate_inputs(inputs: ModelInputs) -> None:
         if not process_key or process_key not in process_keys:
             raise BusinessModelError(
                 f"grain candidate {grain_id} 引用未知 process candidate："
-                f"{process_key or '（空）'}；请先执行 analyze-business-processes"
+                f"{process_key or '（空）'}；请先执行 analyze --stage understanding"
             )
 
         unknown = sorted(
@@ -547,7 +548,7 @@ def _validate_inputs(inputs: ModelInputs) -> None:
         if unknown:
             raise BusinessModelError(
                 f"grain candidate {grain_id} 的 matched_objects 含未知 Object："
-                f"{'、'.join(unknown)}；请先执行 analyze-business-objects"
+                f"{'、'.join(unknown)}；请先执行 analyze --stage understanding"
             )
 
     for position, record in enumerate(inputs.grain_tables):

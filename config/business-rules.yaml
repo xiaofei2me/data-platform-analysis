@@ -6,7 +6,7 @@
 #
 # 边界（重要）：
 # 1. domains / objects 是「候选识别规则」，不是企业最终业务域标准，也不构成业务结论；
-#    业务人员可以随时修改本文件并重新执行 analyze-business。
+#    业务人员可以随时修改本文件并重新执行 analyze --stage understanding。
 # 2. stopwords 是技术 token（数仓层级前缀、临时表模板、通用字段词），
 #    分词后直接丢弃，不进入 terms / Domain / Object 匹配，
 #    因此 dwd_sales_order 中的 dwd 不会被当成业务词。
@@ -14,8 +14,8 @@
 # 4. 匹配一律忽略大小写；中文关键词按子串匹配（不做中文分词）。
 #
 # 约束：
-# - 只被 analyze-business 读取；M2（analyze / analyze-layer）不读取本文件。
-# - 配置缺失或非法时 analyze-business 直接报错退出，不回退默认值。
+# - 只被 analyze --stage understanding 读取；M2（analyze / analyze --stage evidence）不读取本文件。
+# - 配置缺失或非法时 analyze --stage understanding 直接报错退出，不回退默认值。
 
 version: "1.0"
 

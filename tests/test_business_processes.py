@@ -15,10 +15,16 @@ from typing import Any
 import pytest
 from test_business_objects import _column, _prepare, _table, _write_checklist
 
-from data_platform_analysis.analysis.business.objects import (
+from data_platform_analysis.analysis.models import (
+    PROCESS_STRENGTH_MODERATE,
+    PROCESS_STRENGTH_STRONG,
+    PROCESS_STRENGTH_WEAK,
+    process_evidence_strength,
+)
+from data_platform_analysis.analysis.understanding.business.objects import (
     run_business_object_analysis,
 )
-from data_platform_analysis.analysis.business.processes import (
+from data_platform_analysis.analysis.understanding.business.processes import (
     INPUT_FILES,
     OUTPUT_FILES,
     PROCESS_CHECKLIST_INPUT_FILE,
@@ -26,12 +32,6 @@ from data_platform_analysis.analysis.business.processes import (
     load_process_rules,
     read_process_inputs,
     run_business_process_analysis,
-)
-from data_platform_analysis.analysis.models import (
-    PROCESS_STRENGTH_MODERATE,
-    PROCESS_STRENGTH_STRONG,
-    PROCESS_STRENGTH_WEAK,
-    process_evidence_strength,
 )
 
 # ============================================================
@@ -193,7 +193,7 @@ def _pipeline(tmp_path: Path) -> tuple[Path, Path]:
     analysis_dir = _prepare(tmp_path, **_m2_payloads())
     run_business_object_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
     )
 
     rules_path = _write_process_rules(tmp_path / "config" / "process-rules.yaml")
@@ -204,7 +204,7 @@ def _pipeline(tmp_path: Path) -> tuple[Path, Path]:
 def _run(analysis_dir: Path, rules_path: Path) -> Any:
     return run_business_process_analysis(
         analysis_dir=analysis_dir,
-        output_dir=analysis_dir / "business",
+        output_dir=analysis_dir / "understanding" / "business",
         rules_path=rules_path,
     )
 
@@ -237,7 +237,9 @@ def _write_process_checklist(analysis_dir: Path, *rows: str) -> None:
     """覆盖 M3.3 生成的清单，用于回填测试。"""
 
     text = PROCESS_CHECKLIST_TEMPLATE.format(rows="\n".join(rows))
-    (analysis_dir / PROCESS_CHECKLIST_INPUT_FILE).write_text(
+    path = analysis_dir / PROCESS_CHECKLIST_INPUT_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         text,
         encoding="utf-8",
     )
@@ -302,7 +304,7 @@ def test_cross_section_conflict_process_rules_raises(tmp_path: Path) -> None:
 
 def test_missing_inputs_raise(tmp_path: Path) -> None:
     analysis_dir, rules_path = _pipeline(tmp_path)
-    (analysis_dir / "business" / "object-tables.json").unlink()
+    (analysis_dir / "understanding" / "business" / "object-tables.json").unlink()
 
     with pytest.raises(BusinessProcessesError, match="business/object-tables.json"):
         _run(analysis_dir, rules_path)
@@ -321,7 +323,9 @@ def test_read_process_inputs_reports_missing_paths(tmp_path: Path) -> None:
 
 def test_invalid_json_raises(tmp_path: Path) -> None:
     analysis_dir, rules_path = _pipeline(tmp_path)
-    (analysis_dir / "business" / "terms.json").write_text("{oops", encoding="utf-8")
+    (analysis_dir / "understanding" / "business" / "terms.json").write_text(
+        "{oops", encoding="utf-8"
+    )
 
     with pytest.raises(BusinessProcessesError, match="terms.json"):
         _run(analysis_dir, rules_path)
@@ -361,17 +365,13 @@ def test_signal_matching_uses_token_subsequence(tmp_path: Path) -> None:
     payload = result.signals
 
     order_date = next(
-        item
-        for item in _signals_for(payload, "proj.tbl_b")
-        if item["column_name"] == "order_date"
+        item for item in _signals_for(payload, "proj.tbl_b") if item["column_name"] == "order_date"
     )
     assert order_date["signal_type"] == "event_time"
     assert order_date["signal"] == "date"
 
     update_time = next(
-        item
-        for item in _signals_for(payload, "proj.tbl_c")
-        if item["column_name"] == "update_time"
+        item for item in _signals_for(payload, "proj.tbl_c") if item["column_name"] == "update_time"
     )
     assert update_time["signal"] == "time"
 
@@ -430,9 +430,7 @@ def test_table_level_signals(tmp_path: Path) -> None:
     assert "proj.tbl_c" not in multi_objects
 
     lifecycles = {
-        str(item["table_key"])
-        for item in payload["signals"]
-        if item["signal_type"] == "lifecycle"
+        str(item["table_key"]) for item in payload["signals"] if item["signal_type"] == "lifecycle"
     }
     assert "proj.tbl_b" in lifecycles
     assert "proj.tbl_c" in lifecycles
@@ -488,11 +486,7 @@ def test_grouping_is_disjoint_and_deduplicated(tmp_path: Path) -> None:
     assert measures == {"amount", "quantity"}
 
     # order_line 同时属于 {order, product}，不会另起一个 candidate。
-    order_line_processes = [
-        item
-        for item in processes
-        if "proj.tbl_b" in item["tables"]
-    ]
+    order_line_processes = [item for item in processes if "proj.tbl_b" in item["tables"]]
     assert len(order_line_processes) == 1
 
 
@@ -519,9 +513,7 @@ def test_level_and_strength_mapping(tmp_path: Path) -> None:
     assert linked["evidence"]["lineage"] >= 1
 
     assert result.process_strength_counts[PROCESS_STRENGTH_WEAK] == 1
-    assert result.process_strength_counts[PROCESS_STRENGTH_STRONG] == (
-        result.process_count - 1
-    )
+    assert result.process_strength_counts[PROCESS_STRENGTH_STRONG] == (result.process_count - 1)
 
 
 def test_process_key_and_stable_ordering(tmp_path: Path) -> None:
@@ -537,8 +529,7 @@ def test_process_key_and_stable_ordering(tmp_path: Path) -> None:
     signatures = [item["canonical_signature"] for item in processes]
     assert signatures == sorted(signatures)
     assert all(
-        signature.startswith("objects=") and "|signals=" in signature
-        for signature in signatures
+        signature.startswith("objects=") and "|signals=" in signature for signature in signatures
     )
 
 
@@ -561,9 +552,7 @@ def test_no_process_name_and_no_simple_object_mapping(tmp_path: Path) -> None:
     assert "不会产出某个 Object 对应一个 Process" in report
 
     # 同一个 Object（order）出现在多个 candidate 里，不是一对一映射。
-    order_processes = [
-        item for item in result.processes["processes"] if "order" in item["objects"]
-    ]
+    order_processes = [item for item in result.processes["processes"] if "order" in item["objects"]]
     assert len(order_processes) >= 2
 
 
@@ -607,15 +596,52 @@ def test_process_checklist_carry_over(tmp_path: Path) -> None:
     second = _run(analysis_dir, rules_path)
     assert _process(second.processes, "order")["human_validated"] is True
 
-    checklist = (analysis_dir / PROCESS_CHECKLIST_INPUT_FILE).read_text(
-        encoding="utf-8"
-    )
+    checklist = (analysis_dir / PROCESS_CHECKLIST_INPUT_FILE).read_text(encoding="utf-8")
     assert "订单处理流程" in checklist
     assert "| true |" in checklist
     assert "人工确认" in checklist
 
     # 未回填的行保持 false，不会因为跑过一次就自动确认。
     assert checklist.count("| false |") == second.process_count - 1
+
+
+def test_legacy_checklist_is_migrated(tmp_path: Path) -> None:
+    """旧布局 analysis/business/ 的 process 清单迁移到正式路径：内容保留、正式文件存在时不覆盖。"""
+
+    analysis_dir, rules_path = _pipeline(tmp_path)
+    first = _run(analysis_dir, rules_path)
+    key = _process(first.processes, "order")["process_key"]
+
+    _write_process_checklist(
+        analysis_dir,
+        f"| {key} | order | 1 | status | column=2 | 订单处理流程 | true | 人工确认 |",
+    )
+
+    current = analysis_dir / PROCESS_CHECKLIST_INPUT_FILE
+    legacy_root = analysis_dir / "business"
+    legacy_root.mkdir(parents=True, exist_ok=True)
+    legacy = legacy_root / "process-review-checklist.md"
+    current.replace(legacy)
+
+    _run(analysis_dir, rules_path)
+
+    assert not legacy.exists()
+    migrated = current.read_text(encoding="utf-8")
+    assert "订单处理流程" in migrated
+    assert "| true |" in migrated
+    assert "人工确认" in migrated
+
+    # 正式路径已有文件时，遗留副本只被清理，不参与读写。
+    legacy.write_text(
+        "| process_key | human_process_name | confirmed | note |\n"
+        "| stale | 旧布局 | true | 旧文件 |\n",
+        encoding="utf-8",
+    )
+    _run(analysis_dir, rules_path)
+
+    assert not legacy.exists()
+    assert "旧布局" not in current.read_text(encoding="utf-8")
+    assert "订单处理流程" in current.read_text(encoding="utf-8")
 
 
 # ============================================================
@@ -628,7 +654,7 @@ def test_output_structure_and_report(tmp_path: Path) -> None:
 
     analysis_dir, rules_path = _pipeline(tmp_path)
     result = _run(analysis_dir, rules_path)
-    business_dir = analysis_dir / "business"
+    business_dir = analysis_dir / "understanding" / "business"
 
     for name in OUTPUT_FILES:
         assert (business_dir / name).exists(), name
@@ -794,17 +820,13 @@ def test_deterministic_across_runs(tmp_path: Path) -> None:
     """两次运行字节一致（无时间戳 / 随机抽样）。"""
 
     analysis_dir, rules_path = _pipeline(tmp_path)
-    business_dir = analysis_dir / "business"
+    business_dir = analysis_dir / "understanding" / "business"
 
     _run(analysis_dir, rules_path)
-    first_run = {
-        name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)
-    }
+    first_run = {name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)}
 
     _run(analysis_dir, rules_path)
-    second_run = {
-        name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)
-    }
+    second_run = {name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)}
 
     assert first_run == second_run
 
@@ -820,7 +842,7 @@ def test_analyze_business_processes_command(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze-business-processes 产出 6 个文件，且不改 M2 / M3 / M3.1 / M3.2 产物。"""
+    """analyze --stage understanding 产出 6 个 M3.3 文件，两次运行一致，且不改 M2 输入。"""
 
     rules_path = _write_process_rules(tmp_path / "config" / "process-rules.yaml")
     monkeypatch.setenv("PROCESS_RULES_PATH", str(rules_path))
@@ -829,29 +851,22 @@ def test_analyze_business_processes_command(
 
     _write_m2(Path("analysis"), **_m2_payloads())
 
-    assert run_cli("analyze-business") == 0
-    assert run_cli("analyze-business-quality") == 0
-    assert run_cli("analyze-business-objects") == 0
+    m2_inputs = {path: path.read_bytes() for path in sorted(Path("analysis").rglob("*.json"))}
 
-    business_dir = Path("analysis/business")
-    before = {path.name: path.read_bytes() for path in sorted(business_dir.iterdir())}
+    assert run_cli("analyze", "--stage", "understanding") == 0
 
-    assert run_cli("analyze-business-processes") == 0
+    business_dir = Path("analysis/understanding/business")
 
     for name in OUTPUT_FILES:
         assert (business_dir / name).exists(), name
 
-    for name, content in before.items():
-        assert (business_dir / name).read_bytes() == content, name
+    for path, content in m2_inputs.items():
+        assert path.read_bytes() == content, path
 
-    first_run = {
-        name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)
-    }
+    first_run = {path: path.read_bytes() for path in sorted(business_dir.iterdir())}
 
-    assert run_cli("analyze-business-processes") == 0
-    assert {
-        name: (business_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)
-    } == first_run
+    assert run_cli("analyze", "--stage", "understanding") == 0
+    assert {path: path.read_bytes() for path in sorted(business_dir.iterdir())} == first_run
 
 
 def test_analyze_business_processes_command_fails_without_inputs(
@@ -860,15 +875,24 @@ def test_analyze_business_processes_command_fails_without_inputs(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """缺 M3.2 产物或缺配置 → 退出码 1，不写任何 M3.3 产物。"""
+    """前置产物缺失或缺配置 → 退出码 1，不写任何 M3.3 产物。"""
 
     rules_path = _write_process_rules(tmp_path / "config" / "process-rules.yaml")
     monkeypatch.setenv("PROCESS_RULES_PATH", str(rules_path))
 
-    assert run_cli("analyze-business-processes") == 1
-    assert not Path("analysis/business/processes.json").exists()
+    assert run_cli("analyze", "--stage", "understanding") == 1
+    assert not Path("analysis/understanding/business/processes.json").exists()
+
+    # 有 M2 产物时，唯独 process 规则缺失 → 仍在 M3.3 处失败。
+    from test_business_understanding import _write_m2, _write_rules  # noqa: PLC0415
+
+    monkeypatch.setenv(
+        "BUSINESS_RULES_PATH", str(_write_rules(tmp_path / "config" / "business-rules.yaml"))
+    )
+    _write_m2(Path("analysis"), **_m2_payloads())
 
     missing_rules = tmp_path / "config" / "nope.yaml"
     monkeypatch.setenv("PROCESS_RULES_PATH", str(missing_rules))
 
-    assert run_cli("analyze-business-processes") == 1
+    assert run_cli("analyze", "--stage", "understanding") == 1
+    assert not Path("analysis/understanding/business/processes.json").exists()

@@ -46,15 +46,6 @@ from pathlib import Path
 from typing import Any
 
 from ...io_utils import ensure_dir, write_json, write_text
-from ..business.grain import (
-    BusinessGrainError,
-    _display_path,
-    _parse_checklist_rows,
-    _rank,
-    _status_counts,
-)
-from ..business.objects import _text
-from ..model.business_model import fact_gate
 from ..models import (
     AGGREGATE_ASSESSMENT_MODEL_PROBLEM,
     AGGREGATE_ASSESSMENT_ORDER,
@@ -186,6 +177,15 @@ from ..reports import (
     render_current_state_problem_review_checklist,
     render_current_state_problem_summary,
 )
+from ..understanding.business.grain import (
+    BusinessGrainError,
+    _display_path,
+    _parse_checklist_rows,
+    _rank,
+    _status_counts,
+)
+from ..understanding.business.objects import _text
+from ..understanding.modeling.business_model import fact_gate
 from .findings import (
     CurrentStateModelError,
     ReviewIndexes,
@@ -264,35 +264,59 @@ FINDING_SOURCE_TO_PROBLEM_EVIDENCE: dict[str, str] = {
 """finding 证据类型 → problem 证据类型；profiling / layer 本阶段不参与问题证据。"""
 
 IMPACT_TYPES_BY_TYPE: dict[str, tuple[str, ...]] = {
-    PROBLEM_TYPE_GRAIN: (PROBLEM_IMPACT_GRAIN_INCONSISTENCY,
-        PROBLEM_IMPACT_METRIC_AMBIGUITY,),
-    PROBLEM_TYPE_OVERLAP: (PROBLEM_IMPACT_QUERY_COMPLEXITY,
-        PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,),
+    PROBLEM_TYPE_GRAIN: (
+        PROBLEM_IMPACT_GRAIN_INCONSISTENCY,
+        PROBLEM_IMPACT_METRIC_AMBIGUITY,
+    ),
+    PROBLEM_TYPE_OVERLAP: (
+        PROBLEM_IMPACT_QUERY_COMPLEXITY,
+        PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
+    ),
     PROBLEM_TYPE_DUPLICATION: (
         PROBLEM_IMPACT_DUPLICATED_MODEL,
         PROBLEM_IMPACT_MAINTENANCE_COST,
         PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
     ),
-    PROBLEM_TYPE_MIXED_RESPONSIBILITY: (PROBLEM_IMPACT_MAINTENANCE_COST,
-        PROBLEM_IMPACT_GOVERNANCE_DIFFICULTY,),
-    PROBLEM_TYPE_ROLE_AMBIGUITY: (PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
-        PROBLEM_IMPACT_DATA_CONSUMER_CONFUSION,),
-    PROBLEM_TYPE_PROCESS_ALIGNMENT: (PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
-        PROBLEM_IMPACT_QUERY_COMPLEXITY,),
-    PROBLEM_TYPE_AGGREGATION: (PROBLEM_IMPACT_METRIC_AMBIGUITY,
-        PROBLEM_IMPACT_MAINTENANCE_COST,),
-    PROBLEM_TYPE_FACT_IDENTIFICATION: (PROBLEM_IMPACT_ANALYTICAL_RISK,
-        PROBLEM_IMPACT_METRIC_AMBIGUITY,),
-    PROBLEM_TYPE_DIMENSION_IDENTIFICATION: (PROBLEM_IMPACT_REUSE_DIFFICULTY,
-        PROBLEM_IMPACT_DATA_CONSUMER_CONFUSION,),
-    PROBLEM_TYPE_SELECTION_AMBIGUITY: (PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
-        PROBLEM_IMPACT_QUERY_COMPLEXITY,),
-    PROBLEM_TYPE_SEMANTIC_AMBIGUITY: (PROBLEM_IMPACT_AI_SEMANTIC_RISK,
-        PROBLEM_IMPACT_METRIC_AMBIGUITY,),
-    PROBLEM_TYPE_COVERAGE_GAP: (PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
-        PROBLEM_IMPACT_ANALYTICAL_RISK,),
-    PROBLEM_TYPE_UNKNOWN_MODEL: (PROBLEM_IMPACT_GOVERNANCE_DIFFICULTY,
-        PROBLEM_IMPACT_DATA_CONSUMER_CONFUSION,),
+    PROBLEM_TYPE_MIXED_RESPONSIBILITY: (
+        PROBLEM_IMPACT_MAINTENANCE_COST,
+        PROBLEM_IMPACT_GOVERNANCE_DIFFICULTY,
+    ),
+    PROBLEM_TYPE_ROLE_AMBIGUITY: (
+        PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
+        PROBLEM_IMPACT_DATA_CONSUMER_CONFUSION,
+    ),
+    PROBLEM_TYPE_PROCESS_ALIGNMENT: (
+        PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
+        PROBLEM_IMPACT_QUERY_COMPLEXITY,
+    ),
+    PROBLEM_TYPE_AGGREGATION: (
+        PROBLEM_IMPACT_METRIC_AMBIGUITY,
+        PROBLEM_IMPACT_MAINTENANCE_COST,
+    ),
+    PROBLEM_TYPE_FACT_IDENTIFICATION: (
+        PROBLEM_IMPACT_ANALYTICAL_RISK,
+        PROBLEM_IMPACT_METRIC_AMBIGUITY,
+    ),
+    PROBLEM_TYPE_DIMENSION_IDENTIFICATION: (
+        PROBLEM_IMPACT_REUSE_DIFFICULTY,
+        PROBLEM_IMPACT_DATA_CONSUMER_CONFUSION,
+    ),
+    PROBLEM_TYPE_SELECTION_AMBIGUITY: (
+        PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
+        PROBLEM_IMPACT_QUERY_COMPLEXITY,
+    ),
+    PROBLEM_TYPE_SEMANTIC_AMBIGUITY: (
+        PROBLEM_IMPACT_AI_SEMANTIC_RISK,
+        PROBLEM_IMPACT_METRIC_AMBIGUITY,
+    ),
+    PROBLEM_TYPE_COVERAGE_GAP: (
+        PROBLEM_IMPACT_MODEL_SELECTION_DIFFICULTY,
+        PROBLEM_IMPACT_ANALYTICAL_RISK,
+    ),
+    PROBLEM_TYPE_UNKNOWN_MODEL: (
+        PROBLEM_IMPACT_GOVERNANCE_DIFFICULTY,
+        PROBLEM_IMPACT_DATA_CONSUMER_CONFUSION,
+    ),
 }
 """problem_type → 影响类型（结构后果，只在问题成立时给）。"""
 
@@ -546,20 +570,12 @@ def _keys_slug(grain: Mapping[str, Any]) -> str:
 def _component_processes(ctx: _Context, tables: Sequence[str]) -> list[str]:
     """连通分量涉及的全部 process（去重排序）。"""
 
-    return sorted(
-        {
-            process
-            for table_key in tables
-            for process in _table_processes(ctx, table_key)
-        }
-    )
+    return sorted({process for table_key in tables for process in _table_processes(ctx, table_key)})
 
 
 def _finding_ids(findings: Sequence[Mapping[str, Any]]) -> list[str]:
     return [
-        str(finding.get("finding_id") or "")
-        for finding in findings
-        if finding.get("finding_id")
+        str(finding.get("finding_id") or "") for finding in findings if finding.get("finding_id")
     ]
 
 
@@ -703,8 +719,7 @@ def _dup_finding_tables(finding: Mapping[str, Any]) -> list[str]:
     tables = {
         str(entry.get("table_key") or "")
         for entry in finding.get("evidence") or []
-        if str(entry.get("source_type") or "") == REVIEW_EVIDENCE_TABLE
-        and entry.get("table_key")
+        if str(entry.get("source_type") or "") == REVIEW_EVIDENCE_TABLE and entry.get("table_key")
     }
 
     if tables:
@@ -901,12 +916,8 @@ class _ProblemBuilder:
 
 def _evidence_summary(evidence: Sequence[Mapping[str, Any]]) -> str:
     counts = Counter(str(item.get("evidence_type") or "") for item in evidence)
-    parts = [
-        f"{name}={counts[name]}" for name in PROBLEM_EVIDENCE_ORDER if counts.get(name)
-    ]
-    samples = [
-        str(item.get("evidence_id") or "") for item in evidence[:PROBLEM_EVIDENCE_SAMPLE]
-    ]
+    parts = [f"{name}={counts[name]}" for name in PROBLEM_EVIDENCE_ORDER if counts.get(name)]
+    samples = [str(item.get("evidence_id") or "") for item in evidence[:PROBLEM_EVIDENCE_SAMPLE]]
 
     return "；".join(["，".join(parts), f"样例：{'、'.join(samples)}"])
 
@@ -981,8 +992,7 @@ def _grain_problems(ctx: _Context, builder: _ProblemBuilder) -> None:
 
         processes = _table_processes(ctx, table_key)
         key_sets = [
-            frozenset(str(key) for key in grain.get("candidate_keys") or [])
-            for grain in grains
+            frozenset(str(key) for key in grain.get("candidate_keys") or []) for grain in grains
         ]
         has_empty = any(not keys for keys in key_sets)
         disjoint = any(
@@ -1308,9 +1318,7 @@ def _overlap_problems(
                 classification=classification,
                 table_keys=tables,
                 process_keys=shared_processes or _component_processes(ctx, tables),
-                grain_keys=[
-                    str(grain.get("grain_candidate_id") or "") for grain in grain_samples
-                ],
+                grain_keys=[str(grain.get("grain_candidate_id") or "") for grain in grain_samples],
                 finding_ids=finding_ids,
                 evidence=evidence,
                 description=(
@@ -1377,11 +1385,7 @@ def _duplicate_problems(ctx: _Context, builder: _ProblemBuilder) -> list[dict[st
         )
         process_keys = [
             str(finding.get("process_candidate_id") or ""),
-            *[
-                process
-                for table_key in tables
-                for process in _table_processes(ctx, table_key)
-            ],
+            *[process for table_key in tables for process in _table_processes(ctx, table_key)],
         ]
         grain_samples = [grain for table_key in tables for grain in _grains(ctx, table_key)[:1]]
         shared_columns: list[str] = []
@@ -1460,9 +1464,7 @@ def _duplicate_problems(ctx: _Context, builder: _ProblemBuilder) -> list[dict[st
             classification=classification,
             table_keys=tables,
             process_keys=[key for key in process_keys if key],
-            grain_keys=[
-                str(grain.get("grain_candidate_id") or "") for grain in grain_samples
-            ],
+            grain_keys=[str(grain.get("grain_candidate_id") or "") for grain in grain_samples],
             finding_ids=[finding_id],
             evidence=evidence,
             description=(
@@ -1477,15 +1479,11 @@ def _duplicate_problems(ctx: _Context, builder: _ProblemBuilder) -> list[dict[st
                 f"但没有形成字段重合连通分量"
             ),
             problem_statement=(
-                "同一逻辑事实的候选被复制到多张表，且结构已经分歧；"
-                "机器不判断哪张是权威版本。"
+                "同一逻辑事实的候选被复制到多张表，且结构已经分歧；机器不判断哪张是权威版本。"
             ),
-            why_change=(
-                "M4 需要先确认权威表与副本关系，避免同一事实被重复建模与重复计数。"
-            ),
+            why_change=("M4 需要先确认权威表与副本关系，避免同一事实被重复建模与重复计数。"),
             human_question=(
-                f"{tables[0]} 等 {len(tables)} 张表是否是同一逻辑模型的副本？"
-                "权威表是哪一张？"
+                f"{tables[0]} 等 {len(tables)} 张表是否是同一逻辑模型的副本？权威表是哪一张？"
             ),
             impact_types=IMPACT_TYPES_BY_TYPE[PROBLEM_TYPE_DUPLICATION],
             root_cause=(
@@ -1620,16 +1618,14 @@ def _mixed_problems(ctx: _Context, builder: _ProblemBuilder) -> None:
                     f"（model_shape={row.get('model_shape')}）"
                 ),
                 problem_statement=(
-                    f"表 {table_key} 同时承担多种职责（{signal_text}），"
-                    "无法用单一模型职责描述它。"
+                    f"表 {table_key} 同时承担多种职责（{signal_text}），无法用单一模型职责描述它。"
                 ),
                 why_change=(
                     "M4 需要先裁决该表应承担的单一职责边界，"
                     "再决定是否拆分；职责未拆清前不能直接进 Target DWD。"
                 ),
                 human_question=(
-                    f"表 {table_key} 的信号为 {signal_text}；"
-                    "它到底承担哪一种职责？是否需要拆分？"
+                    f"表 {table_key} 的信号为 {signal_text}；它到底承担哪一种职责？是否需要拆分？"
                 ),
                 impact_types=IMPACT_TYPES_BY_TYPE[PROBLEM_TYPE_MIXED_RESPONSIBILITY],
                 root_cause=(
@@ -1662,8 +1658,7 @@ def _role_problems(ctx: _Context, builder: _ProblemBuilder) -> None:
                     "既被当作维度又被其它角色引用，M4 无法确定它的建模位置。"
                 ),
                 why_change=(
-                    "M4 必须先由人工确认该 Object 的唯一模型角色，"
-                    "再决定它在目标模型中的位置。"
+                    "M4 必须先由人工确认该 Object 的唯一模型角色，再决定它在目标模型中的位置。"
                 ),
                 human_question=str(finding.get("human_question") or "")
                 or f"Object {dimension_key} 的模型角色到底是什么？",
@@ -1689,11 +1684,7 @@ def _aggregate_assessment(ctx: _Context, table_key: str) -> str:
 
     upstream = ctx.indexes.lineage_in.get(_fold(table_key), ())
 
-    anchors = [
-        ancestor
-        for ancestor in upstream
-        if ancestor in ctx.fact_anchor_tables
-    ]
+    anchors = [ancestor for ancestor in upstream if ancestor in ctx.fact_anchor_tables]
 
     if len(anchors) >= AGGREGATE_MIN_UPSTREAM_FOR_VALID:
         return AGGREGATE_ASSESSMENT_VALID
@@ -1822,10 +1813,7 @@ def _emit_aggregation_problem(
             grain_keys=[str(g.get("grain_candidate_id") or "") for g in grains],
             finding_ids=finding_ids,
             evidence=evidence,
-            description=(
-                f"{len(tables)} 张聚合表（assessment={assessment}）："
-                f"{tables[0]} 等"
-            ),
+            description=(f"{len(tables)} 张聚合表（assessment={assessment}）：{tables[0]} 等"),
             problem_statement=(
                 "聚合表的上游原子事实来源未确认（无 fact-anchor 血缘，或自身带粒度 / "
                 "重复问题），聚合口径无法回溯。"
@@ -1865,8 +1853,7 @@ def _fact_identification_problems(ctx: _Context, builder: _ProblemBuilder) -> No
         rejected = [
             grain
             for grain in ctx.inputs.grain_candidates
-            if str(grain.get("grain_pattern") or "") == scope_key
-            and not _fact_gate_passed(grain)
+            if str(grain.get("grain_pattern") or "") == scope_key and not _fact_gate_passed(grain)
         ]
 
         for grain in rejected:
@@ -1916,9 +1903,7 @@ def _fact_identification_problems(ctx: _Context, builder: _ProblemBuilder) -> No
                 scope_key,
                 table_keys=table_keys,
                 process_keys=process_keys,
-                grain_keys=[
-                    str(grain.get("grain_candidate_id") or "") for grain in rejected
-                ],
+                grain_keys=[str(grain.get("grain_candidate_id") or "") for grain in rejected],
                 finding_ids=finding_ids,
                 evidence=evidence,
                 description=(
@@ -1977,11 +1962,7 @@ def _fact_without_measure_problems(ctx: _Context, builder: _ProblemBuilder) -> N
                 table_name=str(row.get("table_name") or ""),
                 reason=f"measure_count={row.get('measure_count')}",
             ),
-            *[
-                row_entry
-                for finding in findings
-                for row_entry in _finding_evidence(finding)
-            ],
+            *[row_entry for finding in findings for row_entry in _finding_evidence(finding)],
         ]
 
         builder.add(
@@ -2001,13 +1982,9 @@ def _fact_without_measure_problems(ctx: _Context, builder: _ProblemBuilder) -> N
                     "事实识别依赖 measure 字段，而这些表没有显式度量；"
                     "它们可能是无显式度量的真实事实，也可能是识别错误。"
                 ),
-                why_change=(
-                    "M4 必须先人工判断这些表是否是事实，"
-                    "否则事实模型会漏建或错建。"
-                ),
+                why_change=("M4 必须先人工判断这些表是否是事实，否则事实模型会漏建或错建。"),
                 human_question=(
-                    f"表 {table_key} 没有 measure 字段，它仍然是事实表吗？"
-                    "度量在哪里计算？"
+                    f"表 {table_key} 没有 measure 字段，它仍然是事实表吗？度量在哪里计算？"
                 ),
                 impact_types=IMPACT_TYPES_BY_TYPE[PROBLEM_TYPE_FACT_IDENTIFICATION],
                 root_cause=PROBLEM_ROOT_CAUSE_GATE_MEASURE_DEPENDENCY,
@@ -2022,13 +1999,9 @@ def _dimension_identification_problems(ctx: _Context, builder: _ProblemBuilder) 
         finding_types=(FINDING_TYPE_DIMENSION_OBJECT_DERIVED,),
         problem_type=PROBLEM_TYPE_DIMENSION_IDENTIFICATION,
         statement=(
-            "维度候选的定义来自 Object 派生证据，而非显式维度表声明；"
-            "维度边界与权威来源未确认。"
+            "维度候选的定义来自 Object 派生证据，而非显式维度表声明；维度边界与权威来源未确认。"
         ),
-        why_change=(
-            "M4 需要先确认这些 Object 是否构成正式维度及其权威来源，"
-            "再决定维度模型。"
-        ),
+        why_change=("M4 需要先确认这些 Object 是否构成正式维度及其权威来源，再决定维度模型。"),
         root_cause=PROBLEM_ROOT_CAUSE_NO_STANDARDIZATION,
     )
 
@@ -2044,13 +2017,9 @@ def _semantic_problems(ctx: _Context, builder: _ProblemBuilder) -> None:
         ),
         problem_type=PROBLEM_TYPE_SEMANTIC_AMBIGUITY,
         statement=(
-            "关系 / 强度结论只由技术引用或共现证据支撑，"
-            "缺少业务语义证据，语义结论存在误读风险。"
+            "关系 / 强度结论只由技术引用或共现证据支撑，缺少业务语义证据，语义结论存在误读风险。"
         ),
-        why_change=(
-            "M4 需要先由人工补齐业务语义证据，"
-            "再决定这些关系是否进入目标模型的语义层。"
-        ),
+        why_change=("M4 需要先由人工补齐业务语义证据，再决定这些关系是否进入目标模型的语义层。"),
         root_cause=PROBLEM_ROOT_CAUSE_NO_STANDARDIZATION,
     )
 
@@ -2112,10 +2081,7 @@ def _process_alignment_problems(ctx: _Context, builder: _ProblemBuilder) -> None
                     f"表 {table_key} 被多个 process 共同使用，"
                     "表级模型归属与过程职责没有唯一对应关系。"
                 ),
-                why_change=(
-                    "M4 需要先确认这张表归属哪个过程、是否应该共享，"
-                    "再决定建模位置。"
-                ),
+                why_change=("M4 需要先确认这张表归属哪个过程、是否应该共享，再决定建模位置。"),
                 human_question=str(finding.get("human_question") or "")
                 or f"表 {table_key} 应归属哪个 process？",
                 impact_types=IMPACT_TYPES_BY_TYPE[PROBLEM_TYPE_PROCESS_ALIGNMENT],
@@ -2165,8 +2131,7 @@ def _process_alignment_problems(ctx: _Context, builder: _ProblemBuilder) -> None
                 evidence=evidence,
                 description=str(finding.get("description") or ""),
                 problem_statement=(
-                    f"process {process_key} 下的表使用多种 grain 形态，"
-                    "过程职责与模型粒度没有对齐。"
+                    f"process {process_key} 下的表使用多种 grain 形态，过程职责与模型粒度没有对齐。"
                 ),
                 why_change=(
                     "M4 需要先确认该过程内各表的粒度关系与共享口径，"
@@ -2272,13 +2237,9 @@ def _selection_ambiguity_problems(ctx: _Context, builder: _ProblemBuilder) -> No
                     f"{len(tables)} 张表，消费者难以选择正确模型"
                 ),
                 problem_statement=(
-                    "同一 process 下重复模型过多，模型选择没有唯一入口，"
-                    "消费者只能靠猜。"
+                    "同一 process 下重复模型过多，模型选择没有唯一入口，消费者只能靠猜。"
                 ),
-                why_change=(
-                    "M4 需要先收敛该 process 的权威模型集合，"
-                    "再决定目标模型的入口与命名。"
-                ),
+                why_change=("M4 需要先收敛该 process 的权威模型集合，再决定目标模型的入口与命名。"),
                 human_question=(
                     f"process {process_key} 下的 {len(scope_keys)} 个重复组"
                     "应该收敛成几个模型？权威入口是哪个？"
@@ -2347,9 +2308,7 @@ def _coverage_gap_problems(ctx: _Context, builder: _ProblemBuilder) -> None:
                 process_key,
                 table_keys=tables,
                 process_keys=[process_key],
-                grain_keys=[
-                    str(grain.get("grain_candidate_id") or "") for grain in grains
-                ],
+                grain_keys=[str(grain.get("grain_candidate_id") or "") for grain in grains],
                 evidence=evidence,
                 description=(
                     f"process {process_key} 有 {len(grains)} 个 grain candidate、"
@@ -2360,12 +2319,10 @@ def _coverage_gap_problems(ctx: _Context, builder: _ProblemBuilder) -> None:
                     "要么该过程的事实被闸门排除，要么事实识别存在缺口。"
                 ),
                 why_change=(
-                    "M4 需要先确认该过程是否真的没有可建模事实，"
-                    "再决定目标模型是否需要覆盖它。"
+                    "M4 需要先确认该过程是否真的没有可建模事实，再决定目标模型是否需要覆盖它。"
                 ),
                 human_question=(
-                    f"process {process_key} 真的没有事实需要建模吗？"
-                    "它的事实应该来自哪里？"
+                    f"process {process_key} 真的没有事实需要建模吗？它的事实应该来自哪里？"
                 ),
                 impact_types=IMPACT_TYPES_BY_TYPE[PROBLEM_TYPE_COVERAGE_GAP],
                 root_cause=PROBLEM_ROOT_CAUSE_UNKNOWN,
@@ -2566,9 +2523,7 @@ def _payloads(
     finding_count = len(ctx.findings)
     covered = {finding_id for row in rows for finding_id in row.get("finding_ids") or []}
     uncovered = [
-        finding
-        for finding in ctx.findings
-        if str(finding.get("finding_id") or "") not in covered
+        finding for finding in ctx.findings if str(finding.get("finding_id") or "") not in covered
     ]
 
     problems_payload: dict[str, Any] = {
@@ -2589,11 +2544,7 @@ def _payloads(
         },
         "classification_counts": _classification_counts(rows),
         "impact_counts": _status_counts(
-            [
-                str(impact)
-                for row in rows
-                for impact in row.get("impact_types") or []
-            ],
+            [str(impact) for row in rows for impact in row.get("impact_types") or []],
             PROBLEM_IMPACT_ORDER,
         ),
         "root_cause_counts": _status_counts(
@@ -2611,9 +2562,7 @@ def _payloads(
             "uncovered_finding_count": len(uncovered),
             "uncovered_by_type": dict(
                 sorted(
-                    Counter(
-                        str(finding.get("finding_type") or "") for finding in uncovered
-                    ).items()
+                    Counter(str(finding.get("finding_type") or "") for finding in uncovered).items()
                 )
             ),
         },
@@ -2714,9 +2663,7 @@ def _classification_counts(rows: Sequence[Mapping[str, Any]]) -> dict[str, int]:
         *UNKNOWN_REASON_ORDER,
         "unclassified",
     ]
-    values = [
-        str(row.get("classification") or "") or "unclassified" for row in rows
-    ]
+    values = [str(row.get("classification") or "") or "unclassified" for row in rows]
 
     counts = _status_counts(values, order)
 

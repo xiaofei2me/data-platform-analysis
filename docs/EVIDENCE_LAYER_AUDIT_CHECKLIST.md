@@ -50,7 +50,7 @@
 
 ### 证据与产物
 - [x] evidence 含 workspace_layer / rule / hits 结构，可回答「为什么这样判」
-- [x] `layer/{assessments.json, summary.md}` 产出（UNKNOWN 明细、CONFLICT 明细）
+- [x] `evidence/layer/{assessments.json, summary.md}` 产出（UNKNOWN 明细、CONFLICT 明细）
 - [x] 排序 `(workspace_id, project, table_name)` 确定性
 - [x] Lineage / CoreTable 的 layer_candidate 读自 `candidate_layer`（唯一口径，见 ADR-0003）
 

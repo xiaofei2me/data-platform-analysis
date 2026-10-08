@@ -23,8 +23,11 @@ from typing import Any
 import pytest
 from helpers import source_tree_hash, write_snapshot
 
-from data_platform_analysis.analysis.sql.normalization import _quoted_end, normalize_for_parser
-from data_platform_analysis.analysis.sql.sql_analysis import parse_statement
+from data_platform_analysis.analysis.evidence.sql.normalization import (
+    _quoted_end,
+    normalize_for_parser,
+)
+from data_platform_analysis.analysis.evidence.sql.sql_analysis import parse_statement
 
 
 def _read(path: Path) -> Any:
@@ -238,7 +241,7 @@ def test_statements_record_normalization(
 
     assert source_tree_hash(Path("source")) == before
 
-    statements = _read(Path("analysis/sql/statements.json"))
+    statements = _read(Path("analysis/evidence/sql/statements.json"))
     assert statements["count"] == 5
 
     by_id = {item["statement_id"]: item for item in statements["statements"]}
@@ -274,8 +277,8 @@ def test_statements_record_normalization(
     assert by_id[2]["normalizations"] == [{"from": "（", "to": "(", "count": 1}]
 
     # 归一化不产生新的错误。
-    assert _read(Path("analysis/sql/parse-errors.json"))["count"] == 0
-    assert _read(Path("analysis/errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/sql/parse-errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/errors.json"))["count"] == 0
 
     summary = Path("analysis/Summary.md").read_text(encoding="utf-8")
     assert "Parser Compatibility Normalization 生效语句：2" in summary

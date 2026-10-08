@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .evidence.lineage.lineage import LineageResult
+from .evidence.sql.sql_analysis import ParseErrorRecord
 from .inventory.inventory import (
     STAGE_ANALYZED,
     STAGE_DISCOVERED,
@@ -22,7 +24,6 @@ from .inventory.inventory import (
     InventorySummary,
     WorkspaceInventorySummary,
 )
-from .lineage.lineage import LineageResult
 from .models import (
     AGGREGATE_ASSESSMENT_ORDER,
     BUSINESS_CONFIDENCE_ORDER,
@@ -127,7 +128,6 @@ from .models import (
     is_analysis_eligible,
     normalize_human_status,
 )
-from .sql.sql_analysis import ParseErrorRecord
 
 
 def render_inventory_summary(summary: InventorySummary) -> str:
@@ -411,7 +411,7 @@ def render_inventory_summary(summary: InventorySummary) -> str:
         "- 本节不是 M3.6 Problem，也不是数据质量或模型问题。",
         "",
         f"Inventory 阶段可恢复错误合计：{_num(summary.inventory_error_count)} 条，"
-        "明细见 `analysis/errors.json`。",
+        "明细见 `analysis/evidence/errors.json`。",
         "",
         "## 8. Conclusion",
         "",
@@ -704,7 +704,7 @@ def _what_we_know(summary: InventorySummary) -> list[str]:
 
     return [
         f"- 当前 Snapshot 覆盖 {len(summary.workspaces)} 个 Workspace"
-        f"（{ '、'.join(str(item.workspace_id) for item in summary.workspaces) }）。",
+        f"（{'、'.join(str(item.workspace_id) for item in summary.workspaces)}）。",
         f"- 已建立 DataWorks File 清单 {_num(dataworks.registered_count)} 条、"
         f"MaxCompute Table 清单 {_num(maxcompute.registered_count)} 条、"
         f"Column 清单 {_num(maxcompute.column_count)} 条。",
@@ -737,7 +737,7 @@ def _downstream_impact(summary: InventorySummary) -> list[str]:
 
 
 def render_lineage_summary(lineage: LineageResult) -> str:
-    """生成 analysis/lineage/summary.md。"""
+    """生成 analysis/evidence/lineage/summary.md。"""
 
     cross = lineage.cross_workspace_edges
 
@@ -782,7 +782,7 @@ def render_profiling_summary(
     tables: list[TableProfile],
     columns: list[ColumnProfile],
 ) -> str:
-    """生成 analysis/profiling/summary.md。"""
+    """生成 analysis/evidence/profiling/summary.md。"""
 
     partitioned = sum(1 for item in tables if (item.partition_count or 0) > 0)
     commented = sum(1 for item in columns if item.comment)
@@ -811,7 +811,7 @@ def render_layer_summary(
     rules_version: str,
     inventory_path: str | Path,
 ) -> str:
-    """生成 analysis/layer/summary.md。
+    """生成 analysis/evidence/layer/summary.md。
 
     只做纯渲染：status / candidate_layer / evidence 都来自 M2.2 评估结果，
     这里不产生新的判断，也不把 UNKNOWN 写成违规。
@@ -823,9 +823,7 @@ def render_layer_summary(
     unknown_limit = 20
 
     status_counts = Counter(item.status for item in assessments)
-    candidate_counts = Counter(
-        item.candidate_layer or undetermined_label for item in assessments
-    )
+    candidate_counts = Counter(item.candidate_layer or undetermined_label for item in assessments)
     workspace_counts = Counter(
         (item.workspace_id, item.workspace_name, item.workspace_layer or unconfigured_label)
         for item in assessments
@@ -855,40 +853,34 @@ def render_layer_summary(
     ]
 
     conflict_note = (
-        f"只列出前 {conflict_limit} 条，"
-        "完整明细见 `analysis/layer/assessments.json`。"
+        f"只列出前 {conflict_limit} 条，完整明细见 `analysis/evidence/layer/assessments.json`。"
         if len(conflict_rows) > conflict_limit
-        else "完整明细见 `analysis/layer/assessments.json`。"
+        else "完整明细见 `analysis/evidence/layer/assessments.json`。"
     )
 
     unknown_rows: list[list[object]] = [
-        [item.table_identifier, item.workspace_id, item.workspace_name]
-        for item in unknowns
+        [item.table_identifier, item.workspace_id, item.workspace_name] for item in unknowns
     ]
 
     unknown_note = (
-        f"只列出前 {unknown_limit} 条，"
-        "完整明细见 `analysis/layer/assessments.json`。"
+        f"只列出前 {unknown_limit} 条，完整明细见 `analysis/evidence/layer/assessments.json`。"
         if len(unknown_rows) > unknown_limit
-        else "完整明细见 `analysis/layer/assessments.json`。"
+        else "完整明细见 `analysis/evidence/layer/assessments.json`。"
     )
 
     cross_rows: list[list[object]] = [
         [
             item.table_identifier,
             item.workspace_layer,
-            ", ".join(
-                dict.fromkeys(str(hit.get("layer")) for hit in item.cross_layer_hits)
-            ),
+            ", ".join(dict.fromkeys(str(hit.get("layer")) for hit in item.cross_layer_hits)),
         ]
         for item in cross_layer_items
     ]
 
     cross_note = (
-        f"只列出前 {conflict_limit} 条，"
-        "完整明细见 `analysis/layer/assessments.json`。"
+        f"只列出前 {conflict_limit} 条，完整明细见 `analysis/evidence/layer/assessments.json`。"
         if len(cross_rows) > conflict_limit
-        else "完整明细见 `analysis/layer/assessments.json`。"
+        else "完整明细见 `analysis/evidence/layer/assessments.json`。"
     )
 
     lines = [
@@ -904,9 +896,7 @@ def render_layer_summary(
             ["workspace_id", "workspace_name", "workspace_layer", "table_count"],
             [
                 [workspace_id, workspace_name, layer, count]
-                for (workspace_id, workspace_name, layer), count in sorted(
-                    workspace_counts.items()
-                )
+                for (workspace_id, workspace_name, layer), count in sorted(workspace_counts.items())
             ],
         ),
         "",
@@ -923,10 +913,7 @@ def render_layer_summary(
         "",
         _table(
             ["candidate_layer", "table_count"],
-            [
-                [candidate, count]
-                for candidate, count in sorted(candidate_counts.items())
-            ],
+            [[candidate, count] for candidate, count in sorted(candidate_counts.items())],
         ),
         "",
         "## 未配置 Workspace",
@@ -935,9 +922,7 @@ def render_layer_summary(
             ["workspace_id", "workspace_name", "table_count"],
             [
                 [workspace_id, workspace_name, count]
-                for (workspace_id, workspace_name, layer), count in sorted(
-                    workspace_counts.items()
-                )
+                for (workspace_id, workspace_name, layer), count in sorted(workspace_counts.items())
                 if layer == unconfigured_label
             ],
         ),
@@ -1005,7 +990,7 @@ def render_business_summary(
     rules_version: str,
     analysis_dir: str | Path,
 ) -> str:
-    """生成 analysis/business/summary.md。
+    """生成 analysis/understanding/business/summary.md。
 
     只做纯渲染：全部数字来自 M3 构建结果，这里不产生新的业务判断，
     也不把候选写成结论。
@@ -1030,9 +1015,7 @@ def render_business_summary(
         candidate.confidence for item in tables for candidate in item.domain_candidates
     )
     object_confidence: Counter[str] = Counter(
-        candidate.confidence
-        for item in tables
-        for candidate in item.business_object_candidates
+        candidate.confidence for item in tables for candidate in item.business_object_candidates
     )
 
     ambiguous_rows: list[list[object]] = [
@@ -1060,19 +1043,19 @@ def render_business_summary(
     detail_limit = 20
     term_limit = 30
     ambiguous_note = (
-        f"只列出前 {detail_limit} 条，完整明细见 `analysis/business/tables.json`。"
+        f"只列出前 {detail_limit} 条，完整明细见 `analysis/understanding/business/tables.json`。"
         if len(ambiguous_rows) > detail_limit
-        else "完整明细见 `analysis/business/tables.json`。"
+        else "完整明细见 `analysis/understanding/business/tables.json`。"
     )
     unknown_note = (
-        f"只列出前 {detail_limit} 条，完整明细见 `analysis/business/tables.json`。"
+        f"只列出前 {detail_limit} 条，完整明细见 `analysis/understanding/business/tables.json`。"
         if len(unknown_rows) > detail_limit
-        else "完整明细见 `analysis/business/tables.json`。"
+        else "完整明细见 `analysis/understanding/business/tables.json`。"
     )
     term_note = (
-        f"只列出前 {term_limit} 条，完整列表见 `analysis/business/terms.json`。"
+        f"只列出前 {term_limit} 条，完整列表见 `analysis/understanding/business/terms.json`。"
         if len(terms) > term_limit
-        else f"完整列表见 `analysis/business/terms.json`（共 {len(terms)} 条）。"
+        else f"完整列表见 `analysis/understanding/business/terms.json`（共 {len(terms)} 条）。"
     )
 
     def category_rows(
@@ -1083,8 +1066,7 @@ def render_business_summary(
 
         for item in summaries:
             confidence_text = (
-                "，".join(f"{key}={value}" for key, value in item.confidence_counts.items())
-                or "-"
+                "，".join(f"{key}={value}" for key, value in item.confidence_counts.items()) or "-"
             )
             evidence_text = (
                 "，".join(f"{key}={value}" for key, value in item.evidence_type_counts.items())
@@ -1143,10 +1125,7 @@ def render_business_summary(
         "",
         _table(
             ["term", "normalized", "count"],
-            [
-                [item.term, item.normalized_term, item.count]
-                for item in terms[:term_limit]
-            ],
+            [[item.term, item.normalized_term, item.count] for item in terms[:term_limit]],
         ),
         "",
         term_note,
@@ -1225,7 +1204,8 @@ def render_business_summary(
         "- 术语分词基于标识符字面（snake_case / camelCase），没有语义消歧；",
         "  同义词（如 order / po）不会自动合并。",
         "- 本命令只读 M2 产物，不会刷新自身；M2 产物变化后需重新执行",
-        "  `analyze-business`，否则 `analysis/business/` 可能停留在旧输入上。",
+        "  `analyze --stage understanding`，否则 `analysis/understanding/business/`"
+        "  可能停留在旧输入上。",
         "",
     ]
 
@@ -1254,7 +1234,7 @@ def render_business_quality_report(
     core_table_review: Mapping[str, Any],
     analysis_dir: str | Path,
 ) -> str:
-    """生成 analysis/business/quality-assessment.md。
+    """生成 analysis/understanding/business/quality-assessment.md。
 
     只做纯渲染：全部数字来自 M3.1 构建结果，这里不产生新的业务判断，
     也不把候选写成结论。
@@ -1310,15 +1290,17 @@ def render_business_quality_report(
         for item in (core_samples.get("core_flag_mismatch") or [])[:limit]
     ]
 
+    quality_report_note = "`analysis/understanding/business/quality-assessment.json`。"
+
     unknown_sample_note = (
-        f"只列出前 {limit} 条，完整明细见 `analysis/business/quality-assessment.json`。"
+        f"只列出前 {limit} 条，完整明细见 {quality_report_note}"
         if len(unknown.get("samples") or []) > limit
-        else "完整明细见 `analysis/business/quality-assessment.json`。"
+        else f"完整明细见 {quality_report_note}"
     )
     ambiguous_sample_note = (
-        f"只列出前 {limit} 条，完整明细见 `analysis/business/quality-assessment.json`。"
+        f"只列出前 {limit} 条，完整明细见 {quality_report_note}"
         if len(ambiguous.get("samples") or []) > limit
-        else "完整明细见 `analysis/business/quality-assessment.json`。"
+        else f"完整明细见 {quality_report_note}"
     )
 
     lines = [
@@ -1349,10 +1331,7 @@ def render_business_quality_report(
         "",
         _table(
             ["reason", "table_count"],
-            [
-                [reason, count]
-                for reason, count in (unknown.get("by_reason") or {}).items()
-            ],
+            [[reason, count] for reason, count in (unknown.get("by_reason") or {}).items()],
         ),
         "",
         str(unknown.get("note") or ""),
@@ -1398,10 +1377,7 @@ def render_business_quality_report(
         "",
         _table(
             ["reason", "table_count"],
-            [
-                [reason, count]
-                for reason, count in (ambiguous.get("by_reason") or {}).items()
-            ],
+            [[reason, count] for reason, count in (ambiguous.get("by_reason") or {}).items()],
         ),
         "",
         str(ambiguous.get("note") or ""),
@@ -1410,10 +1386,7 @@ def render_business_quality_report(
         "",
         _table(
             ["type", "table_count"],
-            [
-                [key, value]
-                for key, value in (ambiguous.get("by_type") or {}).items()
-            ],
+            [[key, value] for key, value in (ambiguous.get("by_type") or {}).items()],
         ),
         "",
         "### 高频业务词（top_terms）",
@@ -1447,8 +1420,7 @@ def render_business_quality_report(
         f"{evidence_quality.get('table_count_with_evidence', 0)}"
         f" / {summary.get('table_count', 0)}",
         f"- 只有命名类直接证据的表：{evidence_quality.get('direct_only_table_count', 0)}",
-        f"- 同一关键词重复出现的表："
-        f"{evidence_quality.get('repeated_keyword_table_count', 0)}",
+        f"- 同一关键词重复出现的表：{evidence_quality.get('repeated_keyword_table_count', 0)}",
         "",
         "### 证据类型构成（by_source_type）",
         "",
@@ -1461,9 +1433,7 @@ def render_business_quality_report(
                     value.get("source_count", 0),
                     value.get("table_count", 0),
                 ]
-                for evidence_type, value in (
-                    evidence_quality.get("by_source_type") or {}
-                ).items()
+                for evidence_type, value in (evidence_quality.get("by_source_type") or {}).items()
             ],
         ),
         "",
@@ -1580,7 +1550,7 @@ def render_business_quality_report(
             mismatch_rows,
         ),
         "",
-        "复核顺序见 `analysis/business/review-checklist.md`。",
+        "复核顺序见 `analysis/understanding/business/review-checklist.md`。",
         "",
         "## 7. Limitations",
         "",
@@ -1593,7 +1563,7 @@ def render_business_quality_report(
         "- UNKNOWN 主因来自注释 / SQL / 词 / 血缘信号的存在性，不解析其业务含义。",
         "- 样本按稳定排序截断（每类最多 "
         f"{limit} 条），清单每个 Priority 最多 50 行，完整数据以 JSON 为准。",
-        "- 本命令只读 M2 / M3 产物，不自动回退执行 analyze / analyze-business；",
+        "- 本命令只读 M2 / M3 产物，不自动回退执行 analyze；",
         "  输入变化后需先重跑对应阶段再重新评估。",
         "",
     ]
@@ -1643,7 +1613,7 @@ def render_object_graph(
     relationship_row_limit: int,
     analysis_dir: str | Path,
 ) -> str:
-    """生成 analysis/business/object-graph.md。
+    """生成 analysis/understanding/business/object-graph.md。
 
     只做纯渲染：所有数字都来自 M3.2 构建结果。措辞严格停留在
     「当前证据显示 …candidate 之间存在 table co-occurrence / SQL reference /
@@ -1665,15 +1635,13 @@ def render_object_graph(
         return "+".join(str(item) for item in row.get("evidence_types") or []) or "-"
 
     evidence_counts = [
-        f"{evidence_type} "
-        f"{int((distribution.get(evidence_type) or {}).get('entry_count') or 0)} 条"
+        f"{evidence_type} {int((distribution.get(evidence_type) or {}).get('entry_count') or 0)} 条"
         for evidence_type in RELATIONSHIP_EVIDENCE_ORDER
     ]
     sql_statements = int(relationships.get("sql_statement_count") or 0)
 
     object_rows: list[list[object]] = [
-        [item.get("object"), item.get("name") or "-", item.get("status")]
-        for item in objects
+        [item.get("object"), item.get("name") or "-", item.get("status")] for item in objects
     ]
 
     table_rows: list[list[object]] = []
@@ -1685,8 +1653,7 @@ def render_object_graph(
                 item.get("object"),
                 item.get("table_count", 0),
                 item.get("core_table_count", 0),
-                ", ".join(str(value) for value in matrix_row.get("candidate_layers") or [])
-                or "-",
+                ", ".join(str(value) for value in matrix_row.get("candidate_layers") or []) or "-",
                 ", ".join(str(value) for value in matrix_row.get("domains") or []) or "-",
             ]
         )
@@ -1707,9 +1674,9 @@ def render_object_graph(
     ]
     relationship_note = (
         f"只列出前 {relationship_row_limit} 条，共 {len(relationship_rows)} 条；"
-        "完整明细见 `analysis/business/object-relationships.json`。"
+        "完整明细见 `analysis/understanding/business/object-relationships.json`。"
         if len(relationship_rows) > relationship_row_limit
-        else "完整明细见 `analysis/business/object-relationships.json`。"
+        else "完整明细见 `analysis/understanding/business/object-relationships.json`。"
     )
 
     core_rows_text: list[list[object]] = [
@@ -1723,9 +1690,9 @@ def render_object_graph(
     ]
     core_note = (
         f"只列出前 {relationship_row_limit} 条，共 {len(core_rows)} 条；"
-        "完整明细见 `analysis/business/object-relationships.json`。"
+        "完整明细见 `analysis/understanding/business/object-relationships.json`。"
         if len(core_rows) > relationship_row_limit
-        else "完整明细见 `analysis/business/object-relationships.json`。"
+        else "完整明细见 `analysis/understanding/business/object-relationships.json`。"
     )
 
     distribution_rows: list[list[object]] = [
@@ -1744,7 +1711,7 @@ def render_object_graph(
             "## 1. Overview",
             "",
             f"- Object 数量：{registry.get('count', 0)}"
-            "（来自 `analysis/business/objects.json`，M3.2 不重新分类）",
+            "（来自 `analysis/understanding/business/objects.json`，M3.2 不重新分类）",
             f"- Object ↔ Table association：{associations.get('count', 0)}"
             f"（{status_text(associations.get('status_counts') or {})}）",
             f"- Object relationship：{relationships.get('count', 0)}"
@@ -1920,7 +1887,7 @@ def render_process_summary(
     rules_version: str,
     analysis_dir: Path | str,
 ) -> str:
-    """生成 analysis/business/process-summary.md（8 节）。
+    """生成 analysis/understanding/business/process-summary.md（8 节）。
 
     只做纯渲染：所有数字都来自 M3.3 构建结果。措辞严格停留在
     「process candidate + 信号 + 证据」，不命名 Business Process、不判定 Grain、
@@ -1960,17 +1927,17 @@ def render_process_summary(
     candidate_rows = [candidate_row(row) for row in process_rows]
     candidate_note = (
         f"只列出前 {PROCESS_REPORT_ROW_LIMIT} 条，共 {len(process_rows)} 条；"
-        "完整明细见 `analysis/business/processes.json`。"
+        "完整明细见 `analysis/understanding/business/processes.json`。"
         if len(process_rows) > PROCESS_REPORT_ROW_LIMIT
-        else "完整明细见 `analysis/business/processes.json`。"
+        else "完整明细见 `analysis/understanding/business/processes.json`。"
     )
 
     core_rows_text = [candidate_row(row) for row in core_rows]
     core_note = (
         f"只列出前 {PROCESS_REPORT_ROW_LIMIT} 条，共 {len(core_rows)} 条；"
-        "完整明细见 `analysis/business/processes.json`。"
+        "完整明细见 `analysis/understanding/business/processes.json`。"
         if len(core_rows) > PROCESS_REPORT_ROW_LIMIT
-        else "完整明细见 `analysis/business/processes.json`。"
+        else "完整明细见 `analysis/understanding/business/processes.json`。"
     )
 
     signal_rows: list[list[object]] = [
@@ -1984,9 +1951,7 @@ def render_process_summary(
     ]
 
     evidence_totals = {
-        source: sum(
-            int((row.get("evidence") or {}).get(source) or 0) for row in process_rows
-        )
+        source: sum(int((row.get("evidence") or {}).get(source) or 0) for row in process_rows)
         for source in (
             "column",
             "table",
@@ -2000,9 +1965,7 @@ def render_process_summary(
         1 for row in process_rows if not int((row.get("evidence") or {}).get("sql") or 0)
     )
     missing_lineage = sum(
-        1
-        for row in process_rows
-        if not int((row.get("evidence") or {}).get("lineage") or 0)
+        1 for row in process_rows if not int((row.get("evidence") or {}).get("lineage") or 0)
     )
     missing_relationship = sum(
         1
@@ -2054,13 +2017,12 @@ def render_process_summary(
             "",
             f"- Inventory 表数量：{inventory_table_count}",
             f"- 参与 Object 的表数量：{object_table_count}"
-            "（来自 `analysis/business/object-tables.json`，M3.3 不重新识别 Object）",
+            "（来自 `analysis/understanding/business/object-tables.json`，M3.3 不重新识别 Object）",
             f"- Process Signal 行数：{signals.get('count', 0)}"
             f"（覆盖 {signals.get('table_count', 0)} 张表）",
             f"- Process candidate 数量：{processes.get('count', 0)}（{status_text}）",
             f"- 过程证据强度：{strength_text}（Level 分布：{level_text}）",
-            f"- 参与的 Object 数量：{len(object_names)}"
-            f"（{', '.join(object_names) or '-'}）",
+            f"- 参与的 Object 数量：{len(object_names)}（{', '.join(object_names) or '-'}）",
             f"- Core 表候选：{sum(int(row.get('core_table_count') or 0) for row in process_rows)}"
             f"（含核心表候选的 candidate：{len(core_rows)}）",
             f"- 人工已确认的 candidate：{len(validated_rows)} / {len(process_rows)}",
@@ -2119,7 +2081,7 @@ def render_process_summary(
             ),
             "",
             "SQL / 血缘证据按表归属到 candidate；关系证据来自 "
-            "`analysis/business/object-relationships.json` 的排序 Object 对。",
+            "`analysis/understanding/business/object-relationships.json` 的排序 Object 对。",
             "",
             "## 6. Unresolved Questions",
             "",
@@ -2167,7 +2129,7 @@ def render_process_summary(
             "- process 命名：`process-review-checklist.md` 的 human_process_name"
             f"（当前已确认 {len(validated_rows)} / {len(process_rows)}）。",
             "- process 语义与边界：见第 6 节 unresolved_questions。",
-            "- 表级口径：`analysis/business/review-checklist.md` 中仍为 candidate / "
+            "- 表级口径：`analysis/understanding/business/review-checklist.md` 中仍为 candidate / "
             "未回填的表，不能当作已确认的过程范围。",
             "",
             f"当前数据是否足以支撑 Grain Candidate Analysis："
@@ -2186,7 +2148,7 @@ def render_process_review_checklist(
     processes: Sequence[Mapping[str, Any]],
     carry_over: Mapping[str, Mapping[str, str]] | None = None,
 ) -> str:
-    """生成 analysis/business/process-review-checklist.md（人工回填清单）。
+    """生成 analysis/understanding/business/process-review-checklist.md（人工回填清单）。
 
     前六列由机器输出，重跑时会被覆盖；human_process_name / confirmed / note
     三列保留上一次的人工回填，未回填的一律是 false —— candidate 不会自动确认。
@@ -2214,28 +2176,42 @@ def render_process_review_checklist(
             ]
         )
 
-    return "\n".join(
-        [
-            "# M3.3 Process Review Checklist",
-            "",
-            "人工填写 human process name，并把 confirmed 从 false 改为 true 以确认该"
-            " process candidate；未回填的行一律保持 false，candidate 不会自动变成"
-            " confirmed process。",
-            "",
-            "前六列（process_key / objects / tables / signals / evidence）与 note 之外的"
-            "机器列由 `analyze-business-processes` 生成，重跑会被覆盖；"
-            "human_process_name / confirmed / note 三列会被保留。",
-            "",
-            "| process_key | objects | tables | signals | evidence | human_process_name "
-            "| confirmed | note |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- |",
-            *[
-                "| " + " | ".join(str(item).replace("|", "\\|") for item in cells) + " |"
-                for cells in rows
-            ],
-            "",
-        ]
-    )
+    # 即使没有数据也生成表头
+    table_lines = [
+        "# M3.3 Process Review Checklist",
+        "",
+        "人工填写 human process name，并把 confirmed 从 false 改为 true 以确认该"
+        " process candidate；未回填的行一律保持 false，candidate 不会自动变成"
+        " confirmed process。",
+        "",
+        "前六列（process_key / objects / tables / signals / evidence）与 note 之外的"
+        "机器列由 `analyze --stage understanding` 生成，重跑会被覆盖；"
+        "human_process_name / confirmed / note 三列会被保留。",
+        "",
+        "| process_key | objects | tables | signals | evidence | human_process_name "
+        "| confirmed | note |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+
+    if not rows:
+        table_lines.extend(
+            [
+                "_（无候选）_",
+                "",
+            ]
+        )
+    else:
+        table_lines.extend(
+            [
+                *[
+                    "| " + " | ".join(str(item).replace("|", "\\|") for item in cells) + " |"
+                    for cells in rows
+                ],
+                "",
+            ]
+        )
+
+    return "\n".join(table_lines)
 
 
 def render_grain_summary(
@@ -2249,7 +2225,7 @@ def render_grain_summary(
     profiling: Mapping[str, Any],
     analysis_dir: Path | str,
 ) -> str:
-    """生成 analysis/business/grain-summary.md（9 节）。
+    """生成 analysis/understanding/business/grain-summary.md（9 节）。
 
     只做纯渲染：所有数字都来自 M3.4 构建结果。措辞严格停留在
     「grain candidate + 信号 + 证据 + 未决问题」，不判 confirmed grain，
@@ -2265,23 +2241,18 @@ def render_grain_summary(
     role_counts = dict(grain_tables.get("role_counts") or {})
 
     process_validated = {
-        str(row.get("process_key") or ""): bool(row.get("human_validated"))
-        for row in processes
+        str(row.get("process_key") or ""): bool(row.get("human_validated")) for row in processes
     }
     validated_process_count = sum(1 for value in process_validated.values() if value)
     validated_candidate_count = sum(
         1 for row in candidate_rows if row.get("process_human_validated")
     )
     empty_key_rows = [row for row in candidate_rows if not row.get("candidate_keys")]
-    strong_rows = [
-        row for row in candidate_rows if row.get("strength") == EVIDENCE_STRENGTH_STRONG
-    ]
+    strong_rows = [row for row in candidate_rows if row.get("strength") == EVIDENCE_STRENGTH_STRONG]
     moderate_rows = [
         row for row in candidate_rows if row.get("strength") == EVIDENCE_STRENGTH_MODERATE
     ]
-    weak_rows = [
-        row for row in candidate_rows if row.get("strength") == EVIDENCE_STRENGTH_WEAK
-    ]
+    weak_rows = [row for row in candidate_rows if row.get("strength") == EVIDENCE_STRENGTH_WEAK]
     core_rows = [row for row in candidate_rows if row.get("core_candidate")]
 
     by_process: dict[str, list[Mapping[str, Any]]] = {}
@@ -2297,10 +2268,10 @@ def render_grain_summary(
         if total > GRAIN_REPORT_ROW_LIMIT:
             return (
                 f"只列出前 {GRAIN_REPORT_ROW_LIMIT} 条，共 {total} 条；"
-                f"完整明细见 `analysis/business/{name}`。"
+                f"完整明细见 `analysis/understanding/business/{name}`。"
             )
 
-        return f"完整明细见 `analysis/business/{name}`。"
+        return f"完整明细见 `analysis/understanding/business/{name}`。"
 
     signal_table = _table(
         ["signal type", "signal rows", "tables", "source"],
@@ -2317,10 +2288,7 @@ def render_grain_summary(
 
     pattern_table = _table(
         ["grain_pattern", "candidates"],
-        [
-            [pattern, int(pattern_counts.get(pattern) or 0)]
-            for pattern in GRAIN_PATTERN_ORDER
-        ],
+        [[pattern, int(pattern_counts.get(pattern) or 0)] for pattern in GRAIN_PATTERN_ORDER],
     )
 
     process_table = _table(
@@ -2329,10 +2297,7 @@ def render_grain_summary(
             [
                 process_key,
                 len(rows),
-                ", ".join(
-                    sorted({str(row.get("grain_pattern") or "") for row in rows})
-                )
-                or "-",
+                ", ".join(sorted({str(row.get("grain_pattern") or "") for row in rows})) or "-",
                 sum(1 for row in rows if not row.get("candidate_keys")),
                 "true" if process_validated.get(process_key) else "false",
             ]
@@ -2368,9 +2333,7 @@ def render_grain_summary(
     status_text = "，".join(
         f"{status}={int(status_counts.get(status) or 0)}" for status in GRAIN_STATUS_ORDER
     )
-    role_text = "，".join(
-        f"{role}={int(role_counts.get(role) or 0)}" for role in GRAIN_ROLE_ORDER
-    )
+    role_text = "，".join(f"{role}={int(role_counts.get(role) or 0)}" for role in GRAIN_ROLE_ORDER)
 
     return "\n".join(
         [
@@ -2380,8 +2343,7 @@ def render_grain_summary(
             "",
             f"- Inventory 表数量：{inventory_table_count}",
             f"- 参与 M3.3 的 (process, table) 数量：{process_table_count}",
-            f"- Process candidate 数量：{len(processes)}"
-            f"（人工已确认 {validated_process_count}）",
+            f"- Process candidate 数量：{len(processes)}（人工已确认 {validated_process_count}）",
             f"- Grain Signal 行数：{signals.get('count', 0)}"
             f"（覆盖 {signals.get('table_count', 0)} 张表）",
             f"- Grain Candidate 数量：{candidates.get('count', 0)}（{status_text}）",
@@ -2441,10 +2403,7 @@ def render_grain_summary(
                         row.get("grain_pattern"),
                         candidate_cell(row),
                         row.get("strength"),
-                        ", ".join(
-                            str(item) for item in row.get("unresolved_reasons") or []
-                        )
-                        or "-",
+                        ", ".join(str(item) for item in row.get("unresolved_reasons") or []) or "-",
                     ]
                     for row in candidate_rows
                 ],
@@ -2469,10 +2428,7 @@ def render_grain_summary(
             "",
             _table(
                 ["evidence source", "total（候选证据条目）"],
-                [
-                    [source, evidence_totals[source]]
-                    for source in GRAIN_EVIDENCE_ORDER
-                ],
+                [[source, evidence_totals[source]] for source in GRAIN_EVIDENCE_ORDER],
             ),
             "",
             _table(
@@ -2490,10 +2446,7 @@ def render_grain_summary(
             "",
             _table(
                 ["unresolved reason", "candidates"],
-                [
-                    [reason, unresolved_counts[reason]]
-                    for reason in GRAIN_UNRESOLVED_ORDER
-                ],
+                [[reason, unresolved_counts[reason]] for reason in GRAIN_UNRESOLVED_ORDER],
             ),
             "",
             f"- 空 candidate_keys：{len(empty_key_rows)} / {len(candidate_rows)}",
@@ -2504,7 +2457,7 @@ def render_grain_summary(
             "",
             "## 7. Human Review",
             "",
-            "回填 `analysis/business/grain-review-checklist.md` 的 "
+            "回填 `analysis/understanding/business/grain-review-checklist.md` 的 "
             "human_grain_name / confirmed / note 后重跑本阶段即可保留人工输入；"
             "机器阶段不会把任何候选变成 confirmed。",
             "",
@@ -2512,8 +2465,7 @@ def render_grain_summary(
             f"{validated_candidate_count} 个，绑定未确认 process 的 "
             f"{len(candidate_rows) - validated_candidate_count} 个）",
             f"- Process 侧已确认：{validated_process_count} / {len(processes)}",
-            f"- Core 表候选上的候选：{len(core_rows)}"
-            "（core_candidate 只作证据覆盖与复核优先级）",
+            f"- Core 表候选上的候选：{len(core_rows)}（core_candidate 只作证据覆盖与复核优先级）",
             "",
             "优先复核顺序建议：先看第 6 节缺口最少的候选，再看空 candidate_keys "
             "与 multiple_possible_keys 的候选。",
@@ -2545,8 +2497,7 @@ def render_grain_summary(
             "需要人工确认唯一形态。",
             f"- 时间语义未决：{unresolved_counts.get('time_semantics_unclear', 0)}，"
             f"聚合层级未决：{unresolved_counts.get('aggregation_level_unclear', 0)}。",
-            "- 行级唯一性证据：当前 Profiling 无样本，"
-            "任何「唯一」结论都必须由人工确认。",
+            "- 行级唯一性证据：当前 Profiling 无样本，任何「唯一」结论都必须由人工确认。",
             "",
         ]
     )
@@ -2558,10 +2509,10 @@ def render_grain_review_checklist(
     carry_over: Mapping[str, Mapping[str, str]] | None = None,
     row_limit: int,
 ) -> str:
-    """生成 analysis/business/grain-review-checklist.md（人工回填清单）。
+    """生成 analysis/understanding/business/grain-review-checklist.md（人工回填清单）。
 
     按 process 分组；每组最多 row_limit 行并注明总数。
-    机器列由 `analyze-business-grain` 生成、重跑会被覆盖；
+    机器列由 `analyze --stage understanding` 生成、重跑会被覆盖；
     human_grain_name / confirmed / note 三列保留上一次的人工回填。
     """
 
@@ -2573,7 +2524,7 @@ def render_grain_review_checklist(
         " grain candidate；未回填的行一律保持 false，candidate 不会自动变成"
         " confirmed grain。",
         "",
-        "机器列（grain_candidate_id 起到 strength 为止）由 `analyze-business-grain` "
+        "机器列（grain_candidate_id 起到 strength 为止）由 `analyze --stage understanding` "
         "生成，重跑会被覆盖；human_grain_name / confirmed / note 三列会被保留。",
         "",
     ]
@@ -2584,7 +2535,16 @@ def render_grain_review_checklist(
         grouped.setdefault(str(row.get("process_candidate_id") or ""), []).append(row)
 
     if not grouped:
-        lines.extend(["_（无候选）_", ""])
+        # 即使没有数据也生成表头，确保必需列存在
+        lines.extend(
+            [
+                "| grain_candidate_id | table_key | grain_pattern | candidate_keys "
+                "| strength | unresolved_reasons | human_grain_name | confirmed | note |",
+                "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+                "_（无候选）_",
+                "",
+            ]
+        )
         return "\n".join(lines)
 
     for process_key in sorted(grouped):
@@ -2595,7 +2555,7 @@ def render_grain_review_checklist(
         if len(rows) > row_limit:
             lines.append(
                 f"只列出前 {row_limit} 行，共 {len(rows)} 行；"
-                "其余行见 `analysis/business/grain-candidates.json`。"
+                "其余行见 `analysis/understanding/business/grain-candidates.json`。"
             )
             lines.append("")
 
@@ -2617,15 +2577,12 @@ def render_grain_review_checklist(
                 row.get("grain_pattern"),
                 "、".join(keys) if keys else "-",
                 row.get("strength"),
-                ", ".join(str(item) for item in row.get("unresolved_reasons") or [])
-                or "-",
+                ", ".join(str(item) for item in row.get("unresolved_reasons") or []) or "-",
                 previous.get("human_grain_name", "").strip(),
                 "true" if _flag(previous.get("confirmed", "")) else "false",
                 previous.get("note", "").strip(),
             ]
-            lines.append(
-                "| " + " | ".join(str(item).replace("|", "\\|") for item in cells) + " |"
-            )
+            lines.append("| " + " | ".join(str(item).replace("|", "\\|") for item in cells) + " |")
 
         lines.append("")
 
@@ -2641,7 +2598,7 @@ def render_review_checklist(
     rows: Sequence[QualityChecklistRow],
     row_limit: int,
 ) -> str:
-    """生成 analysis/business/review-checklist.md。
+    """生成 analysis/understanding/business/review-checklist.md。
 
     human domain / human object 留空待人工填写，status 初始为 pending；
     每个分区最多 row_limit 行并注明总数。
@@ -2684,7 +2641,7 @@ def render_review_checklist(
             lines += [
                 "",
                 f"只列出前 {row_limit} 条，共 {len(section_rows)} 条；"
-                "完整样本见 `analysis/business/quality-assessment.json`。",
+                "完整样本见 `analysis/understanding/business/quality-assessment.json`。",
             ]
 
         lines += [""]
@@ -2693,7 +2650,7 @@ def render_review_checklist(
 
 
 def render_analysis_summary(context: SummaryContext) -> str:
-    """生成 analysis/Summary.md。"""
+    """生成 analysis/summary.md。"""
 
     inventory = context.inventory
     status_counts = Counter(item.parse_status for item in context.statements)
@@ -2861,7 +2818,7 @@ def render_analysis_summary(context: SummaryContext) -> str:
         ),
         "",
         "排序依据 downstream_count 降序，属于候选，不代表业务优先级。",
-        "完整列表见 `analysis/lineage/core-table-candidates.json`。",
+        "完整列表见 `analysis/evidence/lineage/core-table-candidates.json`。",
         "",
         "## 9. Data Profiling",
         "",
@@ -2891,26 +2848,19 @@ def render_analysis_summary(context: SummaryContext) -> str:
                 ["未配置 workspace 的表", unconfigured_table_count],
                 [
                     "跨层命名提示",
-                    sum(
-                        1
-                        for item in context.layer_assessments
-                        if item.cross_layer_hits
-                    ),
+                    sum(1 for item in context.layer_assessments if item.cross_layer_hits),
                 ],
             ],
         ),
         "",
         _table(
             ["candidate_layer", "table_count"],
-            [
-                [layer, count]
-                for layer, count in sorted(layer_candidate_counts.items())
-            ],
+            [[layer, count] for layer, count in sorted(layer_candidate_counts.items())],
         ),
         "",
         "workspace_layer 是配置事实，candidate_layer 是子层候选；UNKNOWN 只表示证据不足，",
         "不代表命名违规。跨层命名提示只提示表名带其他层前缀，不改变 candidate。",
-        "完整明细见 `analysis/layer/summary.md`。",
+        "完整明细见 `analysis/evidence/layer/summary.md`。",
         "",
         "## 11. 错误摘要",
         "",
@@ -2922,7 +2872,10 @@ def render_analysis_summary(context: SummaryContext) -> str:
             ],
         ),
         "",
-        "完整错误见 `analysis/errors.json`，SQL 解析错误见 `analysis/sql/parse-errors.json`。",
+        (
+            "完整错误见 `analysis/evidence/errors.json`，"
+            "SQL 解析错误见 `analysis/evidence/sql/parse-errors.json`。"
+        ),
         "",
         "## 12. Analysis Limitations",
         "",
@@ -2947,7 +2900,7 @@ LIMITATION_BULLETS: tuple[str, ...] = (
 
 @dataclass
 class SummaryContext:
-    """生成 analysis/Summary.md 所需的全部输入。"""
+    """生成 analysis/summary.md 所需的全部输入。"""
 
     inventory: Inventory
     lineage: LineageResult
@@ -2975,7 +2928,7 @@ def render_model_summary(
     profiling: Mapping[str, Any],
     analysis_dir: Path | str,
 ) -> str:
-    """生成 analysis/model/model-summary.md（8 节）。
+    """生成 analysis/understanding/modeling/model-summary.md（8 节）。
 
     只做纯渲染：所有数字都来自 M3.5 构建结果。措辞停留在
     「fact / dimension / relationship candidate + 证据 + 未决问题」，
@@ -2990,9 +2943,7 @@ def render_model_summary(
 
     gate = fact_candidates.get("gate") or {}
     gate_reasons = gate.get("rejected_reason_counts") or {}
-    validated_process_count = sum(
-        1 for row in processes if row.get("human_validated")
-    )
+    validated_process_count = sum(1 for row in processes if row.get("human_validated"))
 
     fact_status = fact_candidates.get("status_counts") or {}
     fact_strength = fact_candidates.get("strength_counts") or {}
@@ -3027,15 +2978,10 @@ def render_model_summary(
     }
 
     def status_text(counts: Mapping[str, Any], order: Sequence[str]) -> str:
-        return "，".join(
-            f"{status}={int(counts.get(status) or 0)}" for status in order
-        )
+        return "，".join(f"{status}={int(counts.get(status) or 0)}" for status in order)
 
     def unresolved_cell(row: Mapping[str, Any]) -> str:
-        return (
-            ", ".join(str(item) for item in row.get("unresolved_reasons") or [])
-            or "-"
-        )
+        return ", ".join(str(item) for item in row.get("unresolved_reasons") or []) or "-"
 
     def joined_cell(value: Any) -> str:
         items = [str(item) for item in value or []]
@@ -3053,15 +2999,13 @@ def render_model_summary(
             "",
             f"- Inventory 表数量：{inventory_table_count}",
             f"- 输入 grain candidate 数量：{grain_candidate_count}",
-            f"- Process candidate 数量：{len(processes)}"
-            f"（人工已确认 {validated_process_count}）",
+            f"- Process candidate 数量：{len(processes)}（人工已确认 {validated_process_count}）",
             f"- Fact Gate：通过 {int(gate.get('qualified_count') or 0)}，"
             f"未通过 {int(gate.get('rejected_count') or 0)}"
             + (
                 "（"
                 + "，".join(
-                    f"{reason}={int(count or 0)}"
-                    for reason, count in sorted(gate_reasons.items())
+                    f"{reason}={int(count or 0)}" for reason, count in sorted(gate_reasons.items())
                 )
                 + "）"
                 if gate_reasons
@@ -3224,10 +3168,7 @@ def render_model_summary(
             "",
             _table(
                 ["fact evidence", "total"],
-                [
-                    [source, fact_evidence_totals[source]]
-                    for source in FACT_EVIDENCE_ORDER
-                ],
+                [[source, fact_evidence_totals[source]] for source in FACT_EVIDENCE_ORDER],
             ),
             "",
             _table(
@@ -3243,12 +3184,7 @@ def render_model_summary(
                 [
                     [
                         source,
-                        int(
-                            (relationships.get("evidence_source_counts") or {}).get(
-                                source
-                            )
-                            or 0
-                        ),
+                        int((relationships.get("evidence_source_counts") or {}).get(source) or 0),
                     ]
                     for source in MODEL_REL_EVIDENCE_ORDER
                 ],
@@ -3319,9 +3255,9 @@ def render_model_summary(
             "",
             "## 7. Human Review",
             "",
-            "回填 `analysis/model/model-review-checklist.md` 的 "
+            "回填 `analysis/understanding/modeling/model-review-checklist.md` 的 "
             "human_status / human_name / note 后重跑本阶段即可保留人工输入；"
-            "机器列由 `analyze-business-model` 生成，重跑会被覆盖。",
+            "机器列由 `analyze --stage understanding` 生成，重跑会被覆盖。",
             "",
             "- human_status → status 映射：pending → candidate，"
             "confirmed → confirmed，rejected → rejected，"
@@ -3344,7 +3280,7 @@ def render_model_summary(
             "",
             "- 每个优先级分区最多列出 "
             f"{MODEL_CHECKLIST_ROW_LIMIT} 行，"
-            "完整明细见 `analysis/model/model-review-checklist.md`。",
+            "完整明细见 `analysis/understanding/modeling/model-review-checklist.md`。",
             f"- 证据强度为 weak 的候选：fact {weak_fact}，"
             f"dimension {weak_dimension}，relationship {weak_relationship}。",
             "",
@@ -3359,8 +3295,7 @@ def render_model_summary(
             "不是 Fact / Dimension / DWD / DWS 结论。",
             "- layer 只作 candidate_layer 结构证据；core_candidate 只作证据覆盖与"
             "复核优先级，不是业务价值判断。",
-            "- 多角色与 UNKNOWN / AMBIGUOUS 一律保留，不合并不拆分不删表，"
-            "不挑 winner。",
+            "- 多角色与 UNKNOWN / AMBIGUOUS 一律保留，不合并不拆分不删表，不挑 winner。",
             "- relationship 是候选关系，不是业务关系；确认前必须核对 source_id。",
             "- 本阶段只读既有产物：不重解析原始数据，不重做 Object / Process / "
             "Grain classifier，不读 `source/`，不调用 LLM / 外部 API。",
@@ -3373,10 +3308,10 @@ def _truncated_note(total: int, name: str) -> str:
     if total > MODEL_REPORT_ROW_LIMIT:
         return (
             f"只列出前 {MODEL_REPORT_ROW_LIMIT} 条，共 {total} 条；"
-            f"完整明细见 `analysis/model/{name}`。"
+            f"完整明细见 `analysis/understanding/modeling/{name}`。"
         )
 
-    return f"完整明细见 `analysis/model/{name}`。"
+    return f"完整明细见 `analysis/understanding/modeling/{name}`。"
 
 
 def render_model_review_checklist(
@@ -3385,10 +3320,10 @@ def render_model_review_checklist(
     carry_over: Mapping[str, Mapping[str, str]] | None = None,
     row_limit: int,
 ) -> str:
-    """生成 analysis/model/model-review-checklist.md（人工回填清单）。
+    """生成 analysis/understanding/modeling/model-review-checklist.md（人工回填清单）。
 
     按优先级 P1 → P4 分区；每区最多 row_limit 行并注明总数。
-    机器列由 `analyze-business-model` 生成、重跑会被覆盖；
+    机器列由 `analyze --stage understanding` 生成、重跑会被覆盖；
     human_status / human_name / note 三列保留上一次的人工回填。
     """
 
@@ -3401,17 +3336,19 @@ def render_model_review_checklist(
         "未回填的行一律保持 candidate，candidate 不会自动变成 confirmed。",
         "",
         "candidate_key 起到 unresolved_reasons 为止的机器列由 "
-        "`analyze-business-model` 生成，重跑会被覆盖；"
+        "`analyze --stage understanding` 生成，重跑会被覆盖；"
         "human_status / human_name / note 三列会被保留。",
         "",
     ]
 
-    if not rows:
-        lines.extend(["_（无候选）_", ""])
-        return "\n".join(lines)
-
     header = "| " + " | ".join(MODEL_CHECKLIST_HEADERS) + " |"
     separator = "| " + " | ".join("---" for _ in MODEL_CHECKLIST_HEADERS) + " |"
+
+    if not rows:
+        lines.extend([header, separator, "_（无候选）_", ""])
+        return "\n".join(lines)
+
+    lines.extend([header, separator])
 
     for priority in MODEL_PRIORITY_ORDER:
         section = [row for row in rows if row.priority == priority]
@@ -3427,7 +3364,7 @@ def render_model_review_checklist(
         if len(section) > row_limit:
             lines.append(
                 f"只列出前 {row_limit} 行，共 {len(section)} 行；"
-                "其余行见 `analysis/model/fact-candidates.json`、"
+                "其余行见 `analysis/understanding/modeling/fact-candidates.json`、"
                 "`dimension-candidates.json` 与 `fact-dimension-relationships.json`。"
             )
             lines.append("")
@@ -3448,11 +3385,7 @@ def render_model_review_checklist(
                 str(previous.get("human_name", "") or "").strip(),
                 str(previous.get("note", "") or "").strip(),
             ]
-            lines.append(
-                "| "
-                + " | ".join(str(cell).replace("|", "\\|") for cell in cells)
-                + " |"
-            )
+            lines.append("| " + " | ".join(str(cell).replace("|", "\\|") for cell in cells) + " |")
 
         lines.append("")
 
@@ -3490,9 +3423,6 @@ def render_current_state_summary(
     def count_text(counts: Mapping[str, Any], order: Sequence[str]) -> str:
         return "，".join(f"{key}={int(counts.get(key) or 0)}" for key in order)
 
-    def relation_counts(mapping: Mapping[str, Any], keys: Sequence[str]) -> str:
-        return "，".join(f"{key}={int(mapping.get(key) or 0)}" for key in keys)
-
     gate_reasons = gate.get("rejected_reason_counts") or {}
     strength_counts = strength.get("strength_counts") or {}
     dimension_role_status = dimension.get("role_status_counts") or {}
@@ -3528,18 +3458,12 @@ def render_current_state_summary(
             "",
             _table(
                 ["current_role", "tables"],
-                [
-                    [role, int(role_counts.get(role) or 0)]
-                    for role in CURRENT_MODEL_ROLE_ORDER
-                ],
+                [[role, int(role_counts.get(role) or 0)] for role in CURRENT_MODEL_ROLE_ORDER],
             ),
             "",
             _table(
                 ["model_shape", "tables"],
-                [
-                    [shape, int(shape_counts.get(shape) or 0)]
-                    for shape in CURRENT_MODEL_SHAPE_ORDER
-                ],
+                [[shape, int(shape_counts.get(shape) or 0)] for shape in CURRENT_MODEL_SHAPE_ORDER],
             ),
             "",
             "- `current_role` / `model_shape` 只描述当前平台已经存在的形态，"
@@ -3559,8 +3483,7 @@ def render_current_state_summary(
             + (
                 "（"
                 + "，".join(
-                    f"{reason}={int(count or 0)}"
-                    for reason, count in sorted(gate_reasons.items())
+                    f"{reason}={int(count or 0)}" for reason, count in sorted(gate_reasons.items())
                 )
                 + "）"
                 if gate_reasons
@@ -3593,9 +3516,7 @@ def render_current_state_summary(
                 ["relationship evidence", "rows"],
                 [
                     [source, int(count or 0)]
-                    for source, count in (
-                        relationship.get("evidence_source_counts") or {}
-                    ).items()
+                    for source, count in (relationship.get("evidence_source_counts") or {}).items()
                 ],
             ),
             "",
@@ -3618,10 +3539,7 @@ def render_current_state_summary(
             "",
             _table(
                 ["review group", "findings"],
-                [
-                    [group, int(group_counts.get(group) or 0)]
-                    for group in REVIEW_GROUP_ORDER
-                ],
+                [[group, int(group_counts.get(group) or 0)] for group in REVIEW_GROUP_ORDER],
             ),
             "",
             _table(
@@ -3665,7 +3583,7 @@ def render_current_state_summary(
             "",
             "回填 `analysis/review/current-state-review-checklist.md` 的 "
             "human_status / human_name / note 后重跑本阶段即可保留人工输入；"
-            "机器列由 `analyze-current-state-model` 生成，重跑会被覆盖。",
+            "机器列由 `analyze --stage review` 生成，重跑会被覆盖。",
             "",
             "- human_status → status 映射：pending → candidate，"
             "confirmed → confirmed，rejected → rejected，"
@@ -3682,24 +3600,20 @@ def render_current_state_summary(
             "",
             "可以带入 M4 的输入：",
             "",
-            "- current-state 分类（role / shape）与逐表明细"
-            "（`current-state-model-tables.json`）。",
-            "- 带证据的 review finding 与优先级"
-            "（`current-state-findings.json`）。",
+            "- current-state 分类（role / shape）与逐表明细（`current-state-model-tables.json`）。",
+            "- 带证据的 review finding 与优先级（`current-state-findings.json`）。",
             "- 回填后的人工结论（`current-state-review-checklist.md`）。",
             "",
             "不能带入 M4 的内容：",
             "",
             "- 未经人工裁决的 fact / dimension 最终角色；"
             "本阶段不合并、不拆分、不删表、不挑 winner。",
-            "- 只有技术引用（SQL / 血缘 / 共现）的关系，"
-            "不能直接当成业务维度关系。",
+            "- 只有技术引用（SQL / 血缘 / 共现）的关系，不能直接当成业务维度关系。",
             "- `evidence_strength=strong` 不等于该表确定是事实表。",
             "",
             "- 建议顺序：先回答 P0（Fact Gate 排除、粒度冲突、多形态、角色歧义），"
             "再处理 P1（重复 / 重叠 / 关系证据），最后看 P2 / P3。",
-            f"- 进入 M4 前至少需要：{FINDING_CANDIDATE_NOTE}；"
-            "P0 finding 必须有人工结论。",
+            f"- 进入 M4 前至少需要：{FINDING_CANDIDATE_NOTE}；P0 finding 必须有人工结论。",
             "",
         ]
     )
@@ -3729,7 +3643,7 @@ def render_current_state_review_checklist(
 
     按 review group（Fact / Dimension / Grain / Relationship / Model Issue）
     分区；每区最多 row_limit 行并注明总数。机器列由
-    `analyze-current-state-model` 生成、重跑会被覆盖；
+    `analyze --stage review` 生成、重跑会被覆盖；
     human_status / human_name / note 三列保留上一次的人工回填。
     """
 
@@ -3742,7 +3656,7 @@ def render_current_state_review_checklist(
         "未回填的行一律保持 candidate，finding 不会自动变成 confirmed。",
         "",
         "finding_id 起到 human_question 为止的机器列由 "
-        "`analyze-current-state-model` 生成，重跑会被覆盖；"
+        "`analyze --stage review` 生成，重跑会被覆盖；"
         "human_status / human_name / note 三列会被保留。",
         "",
         "scope_key 起到 human_question 的内容是机器观测，"
@@ -3751,7 +3665,9 @@ def render_current_state_review_checklist(
     ]
 
     if not findings:
-        lines.extend(["_（无 finding）_", ""])
+        header = "| " + " | ".join(REVIEW_CHECKLIST_HEADERS) + " |"
+        separator = "| " + " | ".join("---" for _ in REVIEW_CHECKLIST_HEADERS) + " |"
+        lines.extend([header, separator, "_（无 finding）_", ""])
         return "\n".join(lines)
 
     header = "| " + " | ".join(REVIEW_CHECKLIST_HEADERS) + " |"
@@ -3765,7 +3681,7 @@ def render_current_state_review_checklist(
         lines.append("")
 
         if not section:
-            lines.extend(["_（本区无 finding）_", ""])
+            lines.extend([header, separator, "_（本区无 finding）_", ""])
             continue
 
         if len(section) > row_limit:
@@ -3793,11 +3709,7 @@ def render_current_state_review_checklist(
                 str(previous.get("human_name", "") or "").strip(),
                 str(previous.get("note", "") or "").strip(),
             ]
-            lines.append(
-                "| "
-                + " | ".join(str(cell).replace("|", "\\|") for cell in cells)
-                + " |"
-            )
+            lines.append("| " + " | ".join(str(cell).replace("|", "\\|") for cell in cells) + " |")
 
         lines.append("")
 
@@ -3879,10 +3791,7 @@ def render_current_state_problem_summary(
             "",
             _table(
                 ["status", "problems"],
-                [
-                    [status, int(status_counts.get(status) or 0)]
-                    for status in PROBLEM_STATUS_ORDER
-                ],
+                [[status, int(status_counts.get(status) or 0)] for status in PROBLEM_STATUS_ORDER],
             ),
             "",
             f"- 当前状态分布：{count_text(status_counts, PROBLEM_STATUS_ORDER)}；"
@@ -4007,7 +3916,7 @@ def render_current_state_problem_summary(
             "",
             "回填 `analysis/review/current-state-problem-review-checklist.md` 的 "
             "human_status / human_name / note 后重跑本阶段即可保留人工输入；"
-            "机器列由 `analyze-current-state-model` 生成，重跑会被覆盖。",
+            "机器列由 `analyze --stage review` 生成，重跑会被覆盖。",
             "",
             "- human_status → status 映射：pending → candidate，"
             "confirmed → confirmed，rejected → rejected，"
@@ -4023,23 +3932,19 @@ def render_current_state_problem_summary(
             "（`current-state-problems.json`）。"
             "每条含 evidence / impact / root_cause / rationale。",
             "- 逐条证据明细（`current-state-problem-evidence.json`）。",
-            "- 回填后的人工结论"
-            "（`current-state-problem-review-checklist.md`）。",
+            "- 回填后的人工结论（`current-state-problem-review-checklist.md`）。",
             "",
             "不能带入 M4 的内容：",
             "",
-            "- 未经人工确认的 problem；finding ≠ problem ≠ confirmed，"
-            "三者计数互不等价。",
-            "- 机器推导的 root_cause 与 impact：它们是候选，"
-            "不是已确认的业务根因。",
+            "- 未经人工确认的 problem；finding ≠ problem ≠ confirmed，三者计数互不等价。",
+            "- 机器推导的 root_cause 与 impact：它们是候选，不是已确认的业务根因。",
             "- 任何 Target DWD / DWS / Semantic Layer 结论：本阶段不设计目标模型。",
             "",
             f"- 建议顺序：先处理 "
             f"{count_text(priority_counts, REVIEW_PRIORITY_ORDER)} 中的 P0"
             "（粒度、角色、覆盖缺口），再处理 P1（重复 / 重叠 / 聚合），"
             "最后看 P2 / P3。",
-            f"- 进入 M4 前至少需要：{PROBLEM_CANDIDATE_NOTE}；"
-            "P0 problem 必须有人工结论。",
+            f"- 进入 M4 前至少需要：{PROBLEM_CANDIDATE_NOTE}；P0 problem 必须有人工结论。",
             "",
         ]
     )
@@ -4053,7 +3958,7 @@ def render_current_state_problem_review_checklist(
     """生成 analysis/review/current-state-problem-review-checklist.md（人工回填清单）。
 
     按 problem_type（13 类）分区；每区最多 PROBLEM_CHECKLIST_ROW_LIMIT 行并注明总数。
-    机器列由 `analyze-current-state-model` 生成、重跑会被覆盖；
+    机器列由 `analyze --stage review` 生成、重跑会被覆盖；
     human_status / human_name / note 三列保留上一次的人工回填。
     """
 
@@ -4065,11 +3970,10 @@ def render_current_state_problem_review_checklist(
         "needs_discussion）、human_name 与 note；"
         "未回填的行一律保持机器阶段的 status，problem 不会自动变成 confirmed。",
         "",
-        f"{PROBLEM_CANDIDATE_NOTE}；"
-        f"Finding Count ≠ Problem Count ≠ Confirmed Problem Count。",
+        f"{PROBLEM_CANDIDATE_NOTE}；Finding Count ≠ Problem Count ≠ Confirmed Problem Count。",
         "",
         "problem_id 起到 human_question 为止的机器列由 "
-        "`analyze-current-state-model` 生成，重跑会被覆盖；"
+        "`analyze --stage review` 生成，重跑会被覆盖；"
         "human_status / human_name / note 三列会被保留。",
         "",
         "scope_key 起到 human_question 的内容是机器观测，"
@@ -4077,12 +3981,14 @@ def render_current_state_problem_review_checklist(
         "",
     ]
 
-    if not rows:
-        lines.extend(["_（无 problem）_", ""])
-        return "\n".join(lines)
-
     header = "| " + " | ".join(PROBLEM_CHECKLIST_HEADERS) + " |"
     separator = "| " + " | ".join("---" for _ in PROBLEM_CHECKLIST_HEADERS) + " |"
+
+    if not rows:
+        lines.extend([header, separator, "_（无 problem）_", ""])
+        return "\n".join(lines)
+
+    lines.extend([header, separator])
 
     for problem_type in PROBLEM_TYPE_ORDER:
         section = [row for row in rows if row.get("problem_type") == problem_type]
@@ -4128,11 +4034,7 @@ def render_current_state_problem_review_checklist(
                 str(previous.get("human_name", "") or "").strip(),
                 str(previous.get("note", "") or "").strip(),
             ]
-            lines.append(
-                "| "
-                + " | ".join(str(cell).replace("|", "\\|") for cell in cells)
-                + " |"
-            )
+            lines.append("| " + " | ".join(str(cell).replace("|", "\\|") for cell in cells) + " |")
 
         lines.append("")
 
@@ -4155,7 +4057,18 @@ def _table(
         rows = rows[:limit]
 
     if not rows:
-        return "_（无数据）_"
+        # 即使没有数据也生成表头，确保必需列存在
+        cells = [
+            "---:"
+            if alignments is not None
+            and index < len(alignments)
+            and str(alignments[index]).lower() == "right"
+            else "---"
+            for index, _ in enumerate(headers)
+        ]
+        header = "| " + " | ".join(str(item) for item in headers) + " |"
+        separator = "| " + " | ".join(cells) + " |"
+        return "\n".join([header, separator, "_（无数据）_"])
 
     cells = [
         "---:"

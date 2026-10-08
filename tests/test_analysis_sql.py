@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from helpers import write_snapshot
+from helpers import assert_sandbox, write_snapshot
 
 
 def _read(path: Path) -> Any:
@@ -48,13 +48,13 @@ def test_split_and_reference_extraction(
 
     assert run_cli("analyze") == 0
 
-    statements = _read(Path("analysis/sql/statements.json"))
+    statements = _read(Path("analysis/evidence/sql/statements.json"))
     assert statements["count"] == 4
     assert [item["statement_id"] for item in statements["statements"]] == [1, 2, 3, 4]
     assert {item["parse_status"] for item in statements["statements"]} == {"success"}
     assert {item["dialect"] for item in statements["statements"]} == {"odps"}
 
-    references = _read(Path("analysis/sql/table-references.json"))
+    references = _read(Path("analysis/evidence/sql/table-references.json"))
 
     by_statement = {item["statement_id"]: item for item in references["references"]}
 
@@ -78,7 +78,7 @@ def test_split_and_reference_extraction(
     # CTE 名称 src 不算 source。
     assert by_statement[4]["source_tables"] == ["ws_a.ods_order"]
 
-    assert _read(Path("analysis/sql/parse-errors.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/sql/parse-errors.json"))["count"] == 0
 
 
 def test_parse_error_isolation(
@@ -113,7 +113,7 @@ def test_parse_error_isolation(
 
     assert run_cli("analyze") == 0
 
-    statements = _read(Path("analysis/sql/statements.json"))
+    statements = _read(Path("analysis/evidence/sql/statements.json"))
     status_by_id = {
         (item["file_id"], item["statement_id"]): item["parse_status"]
         for item in statements["statements"]
@@ -122,20 +122,20 @@ def test_parse_error_isolation(
     assert status_by_id[("301", 2)] == "success"
     assert status_by_id[("302", 1)] == "unsupported"
 
-    parse_errors = _read(Path("analysis/sql/parse-errors.json"))
+    parse_errors = _read(Path("analysis/evidence/sql/parse-errors.json"))
     assert parse_errors["count"] == 2
     assert {item["error_type"] for item in parse_errors["errors"]} == {
         "SQL_PARSE_ERROR",
         "SQL_UNSUPPORTED_STATEMENT",
     }
 
-    references = _read(Path("analysis/sql/table-references.json"))["references"]
+    references = _read(Path("analysis/evidence/sql/table-references.json"))["references"]
     good = [item for item in references if item["file_id"] == "301" and item["statement_id"] == 2]
     assert len(good) == 1
     assert good[0]["target_tables"] == ["ws_a.t2"]
     assert good[0]["source_tables"] == ["ws_a.t1"]
 
-    errors = _read(Path("analysis/errors.json"))
+    errors = _read(Path("analysis/evidence/errors.json"))
     assert errors["count"] == 2
     assert {item["stage"] for item in errors["errors"]} == {"sql"}
 
@@ -169,14 +169,16 @@ def test_non_sql_file_and_missing_content(
         ],
     )
 
-    missing = Path("source/dataworks/workspaces/9001/content/402__missing_content.sql")
+    missing = assert_sandbox(
+        Path("source/dataworks/workspaces/9001/content/402__missing_content.sql")
+    )
     missing.unlink()
 
     assert run_cli("analyze") == 0
 
-    assert _read(Path("analysis/sql/statements.json"))["count"] == 0
+    assert _read(Path("analysis/evidence/sql/statements.json"))["count"] == 0
 
-    errors = _read(Path("analysis/errors.json"))
+    errors = _read(Path("analysis/evidence/errors.json"))
     assert errors["count"] == 1
     assert errors["errors"][0]["error_type"] == "CONTENT_FILE_MISSING"
     assert errors["errors"][0]["file_id"] == "402"

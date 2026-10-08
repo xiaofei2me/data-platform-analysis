@@ -42,6 +42,7 @@ __pycache__/
 
 /analysis/*
 !/analysis/.gitkeep
+!/analysis/README.md
 
 /output/*
 !/output/.gitkeep

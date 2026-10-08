@@ -140,16 +140,19 @@ uv run data-platform-analysis export --limit 10
 # 查看当前生效的非敏感配置
 uv run data-platform-analysis config
 
-# 分析链（只读已有 Snapshot / 上一阶段产物，写 analysis/）
+# 分析链（只读已有 Snapshot / 上一阶段产物，写 `analysis/`）
+
+一次性完整分析：
 uv run data-platform-analysis analyze
-uv run data-platform-analysis analyze-layer
-uv run data-platform-analysis analyze-business
-uv run data-platform-analysis analyze-business-quality
-uv run data-platform-analysis analyze-business-objects
-uv run data-platform-analysis analyze-business-processes
-uv run data-platform-analysis analyze-business-grain
-uv run data-platform-analysis analyze-business-model   # M3.5 Fact / Dimension Candidate
-uv run data-platform-analysis analyze-current-state-model  # M3.6 Current-State Model Review + v2 Problem Assessment
+
+分阶段执行（不推荐，仅用于重跑单阶段）：
+uv run data-platform-analysis analyze --stage inventory      # Stage 01 (Inventory)
+uv run data-platform-analysis analyze --stage evidence       # Stage 02-05 (Evidence)
+uv run data-platform-analysis analyze --stage understanding # Stage 06-11 (Understanding)
+uv run data-platform-analysis analyze --stage review         # Stage 12-14 (Review)
+
+M3.6 评审（一次性完整分析或单独执行 review 阶段）：
+uv run data-platform-analysis analyze --stage review
 ```
 
 退出码：
@@ -212,7 +215,7 @@ data-platform-analysis/
 │           └── naming.py       # 表名 / 引用工具
 │
 ├── source/                     # Snapshot 输出目录（gitignore）
-├── analysis/                   # Analysis 产物（M2 ~ M3.6，gitignore）
+├── analysis/                   # Analysis 产物（四阶段：inventory / evidence / understanding / review，gitignore）
 ├── output/                     # 导出产物
 │
 ├── docs/
@@ -273,7 +276,7 @@ python3 -m http.server 8787        # 在仓库根目录启动静态服务
 open http://localhost:8787/workbench/
 ```
 
-- 读取 `analysis/review/current-state-problems.json`、`current-state-problem-evidence.json`（必需）与 `current-state-model-tables.json`、`analysis/layer/assessments.json`（可降级），**不写回任何产物**。
+- 读取 `analysis/review/problems.json`、`problem-evidence.json`（必需）与 `analysis/understanding/modeling/current-state-model-tables.json`、`analysis/evidence/layer/assessments.json`（可降级），**不写回任何产物**。
 - 人工裁决写入浏览器 `localStorage`（key `m36-human-adjudication`），通过「导出裁决」导出 `m36-human-adjudication.json`，再按 [人工裁决指南](docs/M36_HUMAN_ADJUDICATION_GUIDE.md) 回填。
 - 无构建、无运行时依赖，界面为中文（保留 `problem_id` / 类型枚举 / `P0`–`P3` 等技术标识）；测试：`cd workbench && npm test`（Node 内置 `node --test`）。
 

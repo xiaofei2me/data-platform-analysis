@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from sqlglot import exp
 
-from ..naming import normalize_scheduler_variables
+from ...naming import normalize_scheduler_variables
 from ..sql.dialect import DIALECT, register_dialect
 
 register_dialect()
