@@ -52,6 +52,7 @@ TASK_TYPE_EMR_TRINO = "EMR_TRINO"
 
 TASK_TYPE_OSS_OBJECT_CHECK = "OSS_OBJECT_CHECK"
 TASK_TYPE_REALTIME_SYNC = "REALTIME_SYNC"
+TASK_TYPE_OFFLINE_SYNC = "OFFLINE_SYNC"
 TASK_TYPE_CROSS_TENANT = "CROSS_TENANT"
 
 TASK_TYPE_HOLOGRES_DEVELOPMENT = "HOLOGRES_DEVELOPMENT"
@@ -291,6 +292,15 @@ FILE_TYPE_REGISTRY: dict[int, FileTypeInfo] = {
         content_format=CONTENT_JSON,
         extension="json",
         description="实时同步任务。",
+    ),
+    23: FileTypeInfo(
+        file_type=23,
+        name="OFFLINE_SYNC",
+        task_type=TASK_TYPE_OFFLINE_SYNC,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_JSON,
+        extension="json",
+        description="离线同步任务。",
     ),
     1089: FileTypeInfo(
         file_type=1089,
