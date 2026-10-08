@@ -29,7 +29,37 @@ DataWorks + MaxCompute
 - Raw 响应与 Content 原样保存为本地 Snapshot
 - Snapshot 索引（files-index / tables-index）与重复采集清理
 
-**Analysis** 阶段（`analyze` 子命令与 4 种 `--stage` 变体，只读已有 Snapshot / 上一阶段产物，写 `analysis/`）已实现：M2 证据链（inventory → layer → sql → lineage → profiling）、M3 业务候选（Domain / Object / Quality / Process / Grain / Fact-Dimension Candidate，M3 ～ M3.5）与 M3.6 Current-State Model Review（当前形态分类 + 结构化 finding + 人工清单），以及 M3.6 v2 Problem Assessment（finding 聚合成 problem candidate + 证据 / 影响 / 根因 / 重构理由 + 人工清单），只产出候选、证据与评审发现，不产出结论模型、不设计 Target DWD，详见 [docs/CODE_LOGIC_ANALYSIS.md](docs/CODE_LOGIC_ANALYSIS.md)。
+**Analysis** 阶段（`analyze` 子命令与 4 种 `--stage` 变体，只读已有 Snapshot / 上一阶段产物，写 `analysis/`）按 Milestone 划分已实现内容：M2 证据链（inventory → layer → sql → lineage → profiling）、M3 业务候选（Domain / Object / Quality / Process / Grain / Fact-Dimension Candidate，M3 ～ M3.5）与 M3.6 Current-State Model Review（当前形态分类 + 结构化 finding + 人工清单），以及 M3.6 v2 Problem Assessment（finding 聚合成 problem candidate + 证据 / 影响 / 根因 / 重构理由 + 人工清单），只产出候选、证据与评审发现，不产出结论模型、不设计 Target DWD，详见 [docs/CODE_LOGIC_ANALYSIS.md](docs/CODE_LOGIC_ANALYSIS.md)。
+
+### Analysis 四阶段
+
+按阶段（Stage 01 ～ 14）划分，与 `--stage` 一一对应，阶段职责以 [src/data_platform_analysis/analysis/README.md](src/data_platform_analysis/analysis/README.md) 为准：
+
+```text
+Inventory
+    ↓
+Evidence
+    ↓
+Understanding
+    ↓
+Review
+```
+
+对应职责：
+
+```text
+Inventory
+    统一盘点数据资产和元数据
+
+Evidence
+    基于 SQL、Lineage、Profiling、Layer 等证据进行分析
+
+Understanding
+    从证据进一步形成业务理解和建模理解
+
+Review
+    汇总当前问题、证据、模型判断，并进入人工审查
+```
 
 要理解 `M3.6 → M3.6 v2 → 人工裁决 → 重构证据 → M4` 的方法论（Finding ≠ Problem、13 类 Problem Taxonomy、四条原则、裁决优先级、重构证据模板），见 [docs/M36_PROBLEM_ASSESSMENT.md](docs/M36_PROBLEM_ASSESSMENT.md)——人工裁决从那份文档开始。
 
@@ -96,6 +126,7 @@ DataWorks Workspace.name
 ```
 source/
 ├── manifest.json                              # 仅全量 export 写入
+├── Summary.md                                 # 人工阅读的 Snapshot 目录说明（summary 子命令生成，非 Source of Truth）
 ├── dataworks/
 │   ├── workspaces-index.json                  # Workspace 注册表（upsert）
 │   └── workspaces/<workspace_id>/
@@ -140,12 +171,15 @@ uv run data-platform-analysis export --limit 10
 # 查看当前生效的非敏感配置
 uv run data-platform-analysis config
 
+# 重新生成 source/Summary.md（人工阅读的 Snapshot 目录说明）
+uv run data-platform-analysis summary
+
 # 分析链（只读已有 Snapshot / 上一阶段产物，写 `analysis/`）
 
-一次性完整分析：
+# 一次性完整分析：
 uv run data-platform-analysis analyze
 
-分阶段执行（不推荐，仅用于重跑单阶段）：
+# 分阶段执行（不推荐，仅用于重跑单阶段）：
 uv run data-platform-analysis analyze --stage inventory      # Stage 01 (Inventory)
 uv run data-platform-analysis analyze --stage evidence       # Stage 02-05 (Evidence)
 uv run data-platform-analysis analyze --stage understanding  # Stage 06-11 (Understanding)
@@ -155,9 +189,30 @@ uv run data-platform-analysis analyze --stage review         # Stage 12-14 (Revi
 # （含 understanding/、review/ 与两份人工回填清单）；--stage understanding /
 # --stage review 不清场，但 evidence/ 缺失时会自动先补跑 evidence。
 
-M3.6 评审（一次性完整分析或单独执行 review 阶段）：
+# M3.6 评审（一次性完整分析或单独执行 review 阶段）：
 uv run data-platform-analysis analyze --stage review
 ```
+
+Analysis 输出目录（`ANALYSIS_DIR` 默认为 `analysis/`，gitignore；完整契约见 [src/data_platform_analysis/analysis/README.md](src/data_platform_analysis/analysis/README.md)）：
+
+```text
+analysis/
+├── summary.md                     # 根入口报告（12 节）
+├── inventory/                     # Inventory · Stage 01
+│   └── workspaces / files / tables / columns.json + summary.md
+├── evidence/                      # Evidence · Stage 02–05
+│   ├── errors.json                # 正式 Error Ledger（跨阶段错误账本）
+│   ├── layer/                     #   02 层级判定
+│   ├── sql/                       #   03 语句 / 表引用 / 解析错误
+│   ├── lineage/                   #   04 表引用与血缘
+│   └── profiling/                 #   05 元数据画像
+├── understanding/                 # Understanding · Stage 06–11
+│   ├── business/                  #   06–10 业务理解（quality / objects / processes / grain）
+│   └── modeling/                  #   11 Fact / Dimension 候选
+└── review/                        # Review · Stage 12–14（评审产物 + 两份人工回填清单）
+```
+
+已废弃的旧产物 `analysis/errors.json`、`analysis/Summary.md` 在重跑时由 `pipeline._reset_outputs()` 删除；`analysis/business/` 等旧布局残留由各阶段的 `io_utils.relocate_legacy_artifacts()` 清理或搬迁（回填清单会保留人工列）。当前实现不再写出扁平的 `layer/`、`sql/`、`lineage/`、`profiling/`、`business/`、`model/` 目录。
 
 退出码：
 
@@ -189,6 +244,8 @@ data-platform-analysis/
 ├── README.md
 ├── .env.example
 ├── .gitignore
+├── config/                      # Analysis 规则配置（layer-rules / business-rules / process-rules）
+├── CONTEXT.md                   # 领域词汇与 ADR 索引
 │
 ├── src/
 │   └── data_platform_analysis/
@@ -202,6 +259,7 @@ data-platform-analysis/
 │       ├── dataworks_types.py  # DataWorks FileType 注册表
 │       ├── maxcompute.py       # MaxCompute 只读元数据客户端
 │       ├── export.py           # Snapshot 导出与 Cleanup
+│       ├── summary.py          # 生成 source/Summary.md（人工阅读的目录说明）
 │       └── analysis/           # 分析链源码（与根目录 analysis/ 产物目录同名不同物，四阶段目录同构）
 │           ├── README.md       # 包内说明（四阶段目录地图 / 模块导览 / 入口与重跑顺序 / 错误模型）
 │           ├── pipeline.py     # 四阶段编排（inventory → evidence → understanding → review）
