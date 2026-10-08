@@ -26,11 +26,11 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from ...dataworks_types import get_file_type
+from ...dataworks_types import FILE_TYPE_REGISTRY, get_file_type
 from ..models import (
     ColumnInventory,
     FileInventory,
@@ -603,14 +603,19 @@ SEVERITY_HIGH = "High"
 SEVERITY_MEDIUM = "Medium"
 SEVERITY_LOW = "Low"
 
-STAGE_DISCOVERED = "Discovered"
-STAGE_ELIGIBLE = "Eligible"
-STAGE_ANALYZED = "Analyzed"
-STAGE_EXCLUDED = "Excluded"
-STAGE_EXCEPTION = "Exception"
+CASE_SHOW_ALL_LIMIT = 10
+"""案例总数少于该值时全部展示。"""
 
-REASON_MISSING_NODE_ID = "Missing Node ID"
-"""当前实现里唯一真实存在的排除原因（见 is_analysis_eligible）。"""
+CASE_REPRESENTATIVE_LIMIT = 5
+"""案例总数超过全量展示阈值时的代表案例数量上限（3～5）。"""
+
+NODE_ID_CASE_LIMIT = 3
+"""缺失 / 无效 Node ID 的代表案例数量（大批量异常只展示少量定位案例）。"""
+
+REASON_UNKNOWN_FORMAT = "content_format = UNKNOWN（类型未识别）"
+REASON_MISSING_NODE_ID = "未提供 Node ID（node_id 为空）"
+REASON_CONTENT_FILE_EMPTY = "未提供 Content（content_file 为空）"
+REASON_CONTENT_PATH_MISSING = "content_file 指向的 Snapshot 文件缺失"
 
 ERROR_TYPE_FILES_INDEX = ("FILES_INDEX_MISSING", "FILES_INDEX_INVALID")
 ERROR_TYPE_TABLES_INDEX = ("TABLES_INDEX_MISSING", "TABLES_INDEX_INVALID")
@@ -622,29 +627,60 @@ ERROR_TYPE_WORKSPACE_INDEX = ("WORKSPACE_INDEX_INVALID", "MANIFEST_INVALID")
 
 
 @dataclass(frozen=True)
-class StatusCount:
-    """一个「标签 → 计数」事实行。"""
+class AssetCase:
+    """一条可回溯到 Snapshot 真实资产的代表案例。
 
-    label: str
-    count: int
+    只保留定位所需的字段，不重新解释资产，也不生成虚构案例。
+    """
 
-
-@dataclass(frozen=True)
-class ExclusionReason:
-    """一条排除原因及其数量（只统计代码中真实存在的 reason）。"""
-
+    workspace_id: int
+    workspace_name: str
+    file_id: str | None
+    node_id: int | str | None
+    file_name: str | None
+    file_type: int | None
+    file_type_name: str
+    content_format: str
+    content_file: str | None
     reason: str
+
+
+@dataclass(frozen=True)
+class UnknownFormatGroup:
+    """content_format = UNKNOWN 的一组文件（按 file_type 分类）。
+
+    UNKNOWN ≠ 一定是错误：这里只按可观测特征分组，
+    registered=False 表示该 file_type 未在类型注册表登记（类型映射缺口候选）。
+    """
+
+    file_type: int | None
+    file_type_name: str
+    task_type: str
+    category: str
+    registered: bool
     count: int
 
 
 @dataclass(frozen=True)
-class CollectionException:
-    """一条技术采集 / 处理异常（不含 Excluded，不含业务问题）。"""
+class ExceptionCase:
+    """一条技术异常的代表案例（只提供定位信息）。"""
+
+    workspace_id: int | None
+    file_id: str | None
+    table: str | None
+    path: str | None
+    reason: str
+
+
+@dataclass(frozen=True)
+class TechnicalException:
+    """一条技术异常检查项（只含技术异常，不含范围限制与正常形态）。"""
 
     severity: str
     exception: str
     count: int
     impact: str
+    cases: list[ExceptionCase] = field(default_factory=list)
 
 
 @dataclass
@@ -676,14 +712,16 @@ class DataWorksInventorySummary:
     content_unavailable_count: int = 0
     content_path_missing_count: int = 0
     collect_failure_count: int = 0
-    asset_exception_count: int = 0
     unrecognized_format_count: int = 0
     eligible_count: int = 0
-    excluded_count: int = 0
     eligible_sql_format_count: int = 0
     eligible_content_available_count: int = 0
     eligible_sql_content_count: int = 0
-    exclusion_reasons: list[ExclusionReason] = field(default_factory=list)
+    unknown_format_groups: list[UnknownFormatGroup] = field(default_factory=list)
+    unknown_format_cases: list[AssetCase] = field(default_factory=list)
+    missing_node_id_cases: list[AssetCase] = field(default_factory=list)
+    content_unavailable_cases: list[AssetCase] = field(default_factory=list)
+    content_path_missing_cases: list[AssetCase] = field(default_factory=list)
 
 
 @dataclass
@@ -701,22 +739,13 @@ class MaxComputeInventorySummary:
 
 
 @dataclass
-class CollectionCompleteness:
-    """采集完整性：DataWorks 与 MaxCompute 各自的状态计数行。"""
-
-    dataworks: list[StatusCount] = field(default_factory=list)
-    maxcompute: list[StatusCount] = field(default_factory=list)
-
-
-@dataclass
 class InventorySummary:
-    """当前 Snapshot 的技术资产盘点与采集覆盖报告输入。"""
+    """当前 Snapshot 的数据资产基线与异常报告输入。"""
 
     workspaces: list[WorkspaceInventorySummary] = field(default_factory=list)
     dataworks: DataWorksInventorySummary = field(default_factory=DataWorksInventorySummary)
     maxcompute: MaxComputeInventorySummary = field(default_factory=MaxComputeInventorySummary)
-    completeness: CollectionCompleteness = field(default_factory=CollectionCompleteness)
-    exceptions: list[CollectionException] = field(default_factory=list)
+    technical_exceptions: list[TechnicalException] = field(default_factory=list)
     inventory_error_count: int = 0
 
 
@@ -735,28 +764,26 @@ def build_inventory_summary(
       以及读取 index 里的采集失败条目；
     - ``errors``：可恢复错误记录，默认取当前 ledger。
 
-    只统计，不判断：Excluded（规则不满足）与 Exception（技术失败）
-    分开计数，Content 缺失不记作采集失败。
+    只统计，不判断：范围限制（缺 Node ID）与技术异常（采集失败 / 元数据缺失）
+    分开计数，Content 缺失不记作采集失败；代表案例全部回指真实 Snapshot 资产。
     """
 
     records = reader.ledger.records() if errors is None else list(errors)
+    inventory_errors = [record for record in records if record.get("stage") == "inventory"]
     error_counts = Counter(
-        str(record.get("error_type") or "UNKNOWN")
-        for record in records
-        if record.get("stage") == "inventory"
+        str(record.get("error_type") or "UNKNOWN") for record in inventory_errors
     )
 
-    dataworks, files_by_workspace = _summarize_files(inventory, reader)
+    workspace_names = {
+        workspace.workspace_id: workspace.workspace_name for workspace in inventory.workspaces
+    }
+
+    dataworks, files_by_workspace = _summarize_files(inventory, reader, workspace_names)
     maxcompute, tables_by_workspace = _summarize_tables(inventory, error_counts)
 
-    dataworks.collect_failure_count, maxcompute.collect_failure_count = _collect_failures(
-        inventory, reader
-    )
-    dataworks.asset_exception_count = (
-        dataworks.collect_failure_count
-        + dataworks.content_path_missing_count
-        + _count_error_types(error_counts, ERROR_TYPE_FILE_IDENTITY)
-    )
+    failed_files, failed_tables = _collect_failures(inventory, reader)
+    dataworks.collect_failure_count = len(failed_files)
+    maxcompute.collect_failure_count = len(failed_tables)
 
     workspace_summaries = [
         _workspace_summary(
@@ -776,20 +803,16 @@ def build_inventory_summary(
         workspaces=workspace_summaries,
         dataworks=dataworks,
         maxcompute=maxcompute,
-        exceptions=_collection_exceptions(
+        technical_exceptions=_technical_exceptions(
             dataworks=dataworks,
             maxcompute=maxcompute,
             error_counts=error_counts,
-            failed_files_total=dataworks.collect_failure_count,
-            failed_tables_total=maxcompute.collect_failure_count,
-            content_path_missing=dataworks.content_path_missing_count,
+            inventory_errors=inventory_errors,
+            failed_files=failed_files,
+            failed_tables=failed_tables,
+            content_path_missing=dataworks.content_path_missing_cases,
         ),
         inventory_error_count=sum(error_counts.values()),
-    )
-
-    summary.completeness = CollectionCompleteness(
-        dataworks=_dataworks_completeness(dataworks),
-        maxcompute=_maxcompute_completeness(maxcompute),
     )
 
     return summary
@@ -827,8 +850,9 @@ def _workspace_summary(
 def _summarize_files(
     inventory: Inventory,
     reader: SnapshotReader,
+    workspace_names: Mapping[int, str],
 ) -> tuple[DataWorksInventorySummary, list[tuple[int, int, int]]]:
-    """统计 DataWorks File 侧指标。
+    """统计 DataWorks File 侧指标，并挑选代表案例。
 
     返回 (汇总, 每个 Workspace 的 (registered, eligible, content_available))，
     Workspace 顺序与 inventory.workspaces 一致。
@@ -841,6 +865,10 @@ def _summarize_files(
     registered_by_workspace: Counter[int] = Counter()
     eligible_by_workspace: Counter[int] = Counter()
     content_by_workspace: Counter[int] = Counter()
+    unknown_files: list[FileInventory] = []
+    missing_node_files: list[FileInventory] = []
+    content_unavailable: list[tuple[FileInventory, str]] = []
+    content_path_missing: list[FileInventory] = []
 
     for file in inventory.files:
         registered_by_workspace[file.workspace_id] += 1
@@ -851,18 +879,26 @@ def _summarize_files(
 
         if str(file.content_format or "").upper() == "UNKNOWN":
             summary.unrecognized_format_count += 1
+            unknown_files.append(file)
 
         content_available = _has_content(reader, file)
 
         if content_available:
             summary.content_available_count += 1
             content_by_workspace[file.workspace_id] += 1
+
         elif file.content_file:
             # content_file 指向的文件在 Snapshot 中不存在，属于技术异常。
             summary.content_path_missing_count += 1
+            content_path_missing.append(file)
+            content_unavailable.append((file, REASON_CONTENT_PATH_MISSING))
+
+        else:
+            # content_file 为空是采集结果事实，不是技术异常。
+            content_unavailable.append((file, REASON_CONTENT_FILE_EMPTY))
 
         if not is_analysis_eligible(file):
-            summary.excluded_count += 1
+            missing_node_files.append(file)
             continue
 
         summary.eligible_count += 1
@@ -878,9 +914,32 @@ def _summarize_files(
                 summary.eligible_sql_content_count += 1
 
     summary.valid_node_id_count = summary.eligible_count
-    summary.missing_node_id_count = summary.excluded_count
+    summary.missing_node_id_count = len(missing_node_files)
     summary.content_unavailable_count = summary.registered_count - summary.content_available_count
-    summary.exclusion_reasons = _exclusion_reasons(summary)
+    summary.unknown_format_groups = _unknown_format_groups(unknown_files)
+    summary.unknown_format_cases = _trim_examples(
+        [_file_case(item, workspace_names, reason=REASON_UNKNOWN_FORMAT) for item in unknown_files],
+        key=lambda case: case.file_type,
+    )
+    summary.missing_node_id_cases = _trim_examples(
+        [
+            _file_case(item, workspace_names, reason=REASON_MISSING_NODE_ID)
+            for item in missing_node_files
+        ],
+        key=lambda case: case.file_type,
+        limit=NODE_ID_CASE_LIMIT,
+    )
+    summary.content_unavailable_cases = _trim_examples(
+        [_file_case(item, workspace_names, reason=reason) for item, reason in content_unavailable],
+        key=lambda case: case.file_type,
+    )
+    summary.content_path_missing_cases = _trim_examples(
+        [
+            _file_case(item, workspace_names, reason=REASON_CONTENT_PATH_MISSING)
+            for item in content_path_missing
+        ],
+        key=lambda case: case.file_type,
+    )
 
     file_stats = [
         (
@@ -937,147 +996,277 @@ def _summarize_tables(
 def _collect_failures(
     inventory: Inventory,
     reader: SnapshotReader,
-) -> tuple[int, int]:
-    """读取 index 中的采集失败条目，返回 (failed_files, failed_tables)。"""
+) -> tuple[list[tuple[int, Mapping[str, Any]]], list[tuple[int, Mapping[str, Any]]]]:
+    """读取 index 中的采集失败条目，返回 (failed_files, failed_tables)。
 
-    failed_files_total = 0
-    failed_tables_total = 0
+    每个元素是 ``(workspace_id, index 条目)``，供技术异常代表案例定位。
+    """
+
+    failed_files: list[tuple[int, Mapping[str, Any]]] = []
+    failed_tables: list[tuple[int, Mapping[str, Any]]] = []
 
     for workspace in inventory.workspaces:
-        failed_files, failed_tables = reader.load_collection_failures(workspace.workspace_id)
-        failed_files_total += len(failed_files)
-        failed_tables_total += len(failed_tables)
+        files, tables = reader.load_collection_failures(workspace.workspace_id)
+        failed_files.extend((workspace.workspace_id, entry) for entry in files)
+        failed_tables.extend((workspace.workspace_id, entry) for entry in tables)
 
-    return failed_files_total, failed_tables_total
+    return failed_files, failed_tables
 
 
-def _collection_exceptions(
+def _technical_exceptions(
     *,
     dataworks: DataWorksInventorySummary,
     maxcompute: MaxComputeInventorySummary,
     error_counts: Counter[str],
-    failed_files_total: int,
-    failed_tables_total: int,
-    content_path_missing: int,
-) -> list[CollectionException]:
-    """组装 Collection Exceptions（只含技术异常，不含 Excluded）。"""
+    inventory_errors: Sequence[Mapping[str, Any]],
+    failed_files: Sequence[tuple[int, Mapping[str, Any]]],
+    failed_tables: Sequence[tuple[int, Mapping[str, Any]]],
+    content_path_missing: Sequence[AssetCase],
+) -> list[TechnicalException]:
+    """组装技术异常检查项（只含技术异常，不含范围限制与正常形态）。
+
+    缺失 Node ID（范围限制）与 content_format = UNKNOWN（正常但需要关注）
+    不在本列表，它们由报告单独成节展示。
+    """
+
+    getfile_cases = _trim_examples(
+        [
+            ExceptionCase(
+                workspace_id=workspace_id,
+                file_id=_first_str(entry.get("file_id")),
+                table=None,
+                path=None,
+                reason=str(entry.get("error") or "GetFile 采集失败"),
+            )
+            for workspace_id, entry in failed_files
+        ],
+        key=lambda case: case.workspace_id if case.workspace_id is not None else -1,
+    )
+
+    gettable_cases = _trim_examples(
+        [
+            ExceptionCase(
+                workspace_id=workspace_id,
+                file_id=None,
+                table=_first_str(entry.get("table"), entry.get("name")),
+                path=None,
+                reason=str(entry.get("error") or "GetTable 采集失败"),
+            )
+            for workspace_id, entry in failed_tables
+        ],
+        key=lambda case: case.workspace_id if case.workspace_id is not None else -1,
+    )
+
+    content_path_cases = _trim_examples(
+        [
+            ExceptionCase(
+                workspace_id=case.workspace_id,
+                file_id=case.file_id,
+                table=None,
+                path=case.content_file,
+                reason=REASON_CONTENT_PATH_MISSING,
+            )
+            for case in content_path_missing
+        ],
+        key=lambda case: case.workspace_id if case.workspace_id is not None else -1,
+    )
 
     rows = [
         (
             SEVERITY_HIGH,
             "GetFile 采集失败（files-index.failed_files）",
-            failed_files_total,
+            len(failed_files),
             "该 File 没有 raw JSON 与 Content，无法进入任何分析",
+            getfile_cases,
         ),
         (
             SEVERITY_HIGH,
             "GetTable 采集失败（tables-index.failed_tables）",
-            failed_tables_total,
+            len(failed_tables),
             "该表没有元数据，不进入 Table / Column 清单",
+            gettable_cases,
         ),
         (
             SEVERITY_HIGH,
             "DataWorks files-index 缺失或解析失败",
             _count_error_types(error_counts, ERROR_TYPE_FILES_INDEX),
             "该 Workspace 不产出 File 清单",
+            _ledger_exception_cases(inventory_errors, ERROR_TYPE_FILES_INDEX),
         ),
         (
             SEVERITY_HIGH,
             "MaxCompute tables-index 缺失或解析失败",
             _count_error_types(error_counts, ERROR_TYPE_TABLES_INDEX),
             "该 Workspace 不产出 Table / Column 清单",
+            _ledger_exception_cases(inventory_errors, ERROR_TYPE_TABLES_INDEX),
         ),
         (
             SEVERITY_MEDIUM,
             "files-index 条目缺少 file_id",
             _count_error_types(error_counts, ERROR_TYPE_FILE_IDENTITY),
             "无法建立稳定身份，该条目不进 File 清单",
+            _ledger_exception_cases(inventory_errors, ERROR_TYPE_FILE_IDENTITY),
         ),
         (
             SEVERITY_MEDIUM,
             "tables-index 条目缺少 table",
             _count_error_types(error_counts, ERROR_TYPE_TABLE_IDENTITY),
             "无法建立稳定身份，该条目不进 Table 清单",
+            _ledger_exception_cases(inventory_errors, ERROR_TYPE_TABLE_IDENTITY),
         ),
         (
             SEVERITY_MEDIUM,
             "Table raw 元数据缺失或解析失败",
             _count_error_types(error_counts, ERROR_TYPE_TABLE_RAW),
             "该表只有 index 侧字段，列清单缺失",
+            _ledger_exception_cases(inventory_errors, ERROR_TYPE_TABLE_RAW),
         ),
         (
             SEVERITY_MEDIUM,
             "Table raw 缺少 columns 数组",
             _count_error_types(error_counts, ERROR_TYPE_TABLE_COLUMNS),
             "该表不产出列清单",
+            _ledger_exception_cases(inventory_errors, ERROR_TYPE_TABLE_COLUMNS),
         ),
         (
             SEVERITY_MEDIUM,
             "Workspace 索引 / manifest 解析失败",
             _count_error_types(error_counts, ERROR_TYPE_WORKSPACE_INDEX),
             "Workspace 名称或身份可能退化",
+            _ledger_exception_cases(inventory_errors, ERROR_TYPE_WORKSPACE_INDEX),
         ),
         (
             SEVERITY_MEDIUM,
             "content_file 指向的 Snapshot 文件缺失",
-            content_path_missing,
+            len(content_path_missing),
             "该 File 无法做内容级分析",
-        ),
-        (
-            SEVERITY_LOW,
-            "File 类型未登记（content_format = UNKNOWN）",
-            dataworks.unrecognized_format_count,
-            "无法判定内容格式，SQL Analysis 不处理该类 File；非采集失败",
+            content_path_cases,
         ),
     ]
 
     return [
-        CollectionException(
+        TechnicalException(
             severity=severity,
             exception=exception,
             count=count,
             impact=impact,
+            cases=cases,
         )
-        for severity, exception, count, impact in rows
+        for severity, exception, count, impact, cases in rows
     ]
 
 
-def _dataworks_completeness(dataworks: DataWorksInventorySummary) -> list[StatusCount]:
-    """DataWorks 采集完整性状态行。"""
+def _unknown_format_groups(files: Sequence[FileInventory]) -> list[UnknownFormatGroup]:
+    """把 content_format = UNKNOWN 的文件按 file_type 分类。
 
-    return [
-        StatusCount("Files discovered（files-index 条目）", dataworks.discovered_count),
-        StatusCount("Files registered in inventory", dataworks.registered_count),
-        StatusCount("Files with raw JSON", dataworks.raw_available_count),
-        StatusCount("Files with valid Node ID", dataworks.valid_node_id_count),
-        StatusCount("Files with content available", dataworks.content_available_count),
-        StatusCount("Files without content", dataworks.content_unavailable_count),
-        StatusCount("Files with content_file 指向文件缺失", dataworks.content_path_missing_count),
-        StatusCount("GetFile 采集失败", dataworks.collect_failure_count),
+    只按可观测特征分组：file_type 是否已在类型注册表登记（registered）
+    决定「已登记类型映射为 UNKNOWN」与「类型映射缺口候选」两类初步判断，
+    具体判断留给人工。分组按数量降序、file_type 升序，确定性可复现。
+    """
+
+    buckets: dict[int | None, list[FileInventory]] = {}
+
+    for file in files:
+        buckets.setdefault(file.file_type, []).append(file)
+
+    groups = [
+        UnknownFormatGroup(
+            file_type=file_type,
+            file_type_name=bucket[0].file_type_name,
+            task_type=bucket[0].task_type,
+            category=bucket[0].category,
+            registered=file_type in FILE_TYPE_REGISTRY,
+            count=len(bucket),
+        )
+        for file_type, bucket in buckets.items()
     ]
 
+    groups.sort(key=lambda item: (-item.count, item.file_type is None, item.file_type or 0))
 
-def _maxcompute_completeness(maxcompute: MaxComputeInventorySummary) -> list[StatusCount]:
-    """MaxCompute 采集完整性状态行。"""
-
-    return [
-        StatusCount("Tables discovered（tables-index 条目）", maxcompute.discovered_count),
-        StatusCount("Tables registered in inventory", maxcompute.registered_count),
-        StatusCount("Tables with raw metadata", maxcompute.tables_with_raw_metadata),
-        StatusCount("Tables with column metadata", maxcompute.tables_with_columns),
-        StatusCount("Tables without column metadata", maxcompute.tables_without_columns),
-        StatusCount("Columns registered", maxcompute.column_count),
-        StatusCount("GetTable 采集失败", maxcompute.collect_failure_count),
-    ]
+    return groups
 
 
-def _exclusion_reasons(summary: DataWorksInventorySummary) -> list[ExclusionReason]:
-    """按代码中真实存在的 reason 汇总排除数量。"""
+def _ledger_exception_cases(
+    inventory_errors: Sequence[Mapping[str, Any]],
+    error_types: tuple[str, ...],
+) -> list[ExceptionCase]:
+    """从 ledger 记录生成技术异常代表案例。"""
 
-    if not summary.excluded_count:
-        return []
+    return _trim_examples(
+        [
+            ExceptionCase(
+                workspace_id=to_int(record.get("workspace_id")),
+                file_id=_first_str(record.get("file_id")),
+                table=_first_str(record.get("table")),
+                path=_first_str(record.get("path")),
+                reason=str(record.get("message") or record.get("error_type") or ""),
+            )
+            for record in inventory_errors
+            if str(record.get("error_type") or "") in error_types
+        ],
+        key=lambda case: case.workspace_id if case.workspace_id is not None else -1,
+    )
 
-    return [ExclusionReason(REASON_MISSING_NODE_ID, summary.excluded_count)]
+
+def _file_case(
+    file: FileInventory,
+    workspace_names: Mapping[int, str],
+    *,
+    reason: str,
+) -> AssetCase:
+    """把 File 转成可回溯到 Snapshot 的代表案例。"""
+
+    return AssetCase(
+        workspace_id=file.workspace_id,
+        workspace_name=workspace_names.get(file.workspace_id) or str(file.workspace_id),
+        file_id=str(file.file_id),
+        node_id=file.node_id,
+        file_name=file.file_name,
+        file_type=file.file_type,
+        file_type_name=file.file_type_name,
+        content_format=file.content_format,
+        content_file=file.content_file,
+        reason=reason,
+    )
+
+
+def _trim_examples[ExampleT](
+    examples: list[ExampleT],
+    *,
+    key: Callable[[ExampleT], object],
+    limit: int = CASE_REPRESENTATIVE_LIMIT,
+) -> list[ExampleT]:
+    """按统一规则截断代表案例（确定性，不随机抽样）。
+
+    - 总数少于 CASE_SHOW_ALL_LIMIT：全部保留，不隐藏少量异常；
+    - 其余：先按 key 分类（数量多的类别优先），再轮转取样，
+      保证代表案例覆盖不同类别。
+    """
+
+    if len(examples) < CASE_SHOW_ALL_LIMIT:
+        return examples
+
+    buckets: dict[object, list[ExampleT]] = {}
+
+    for example in examples:
+        buckets.setdefault(key(example), []).append(example)
+
+    ordered = sorted(buckets.items(), key=lambda item: (-len(item[1]), str(item[0])))
+    target = min(limit, len(examples))
+    selected: list[ExampleT] = []
+
+    while len(selected) < target:
+        progressed = False
+
+        for _, bucket in ordered:
+            if bucket and len(selected) < target:
+                selected.append(bucket.pop(0))
+                progressed = True
+
+        if not progressed:
+            break
+
+    return selected
 
 
 def _has_content(reader: SnapshotReader, file: FileInventory) -> bool:
