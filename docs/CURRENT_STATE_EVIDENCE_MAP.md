@@ -462,9 +462,9 @@ Does Not Prove:
 | **Fact（观测事实）** | `source/`、M2.1、M2.3 原文 | 平台上客观存在、可回指原始位置的内容：表 / 列 / 注释 / SQL 原文 | 表 3719、列 102603、语句 1963 | 不等于「正确」，只等于「存在」 |
 | **Signal（信号）** | M3.3 `process-signals.json`、M3.4 `grain-signals.json`、M2.5 元数据特征 | 某条**规则**在字段 / 表上被命中（有 event_time 列、有 amount 列、命名含 dwd_ 等） | process signal 12712、grain signal 22436 | 不等于对象、不等于过程、不等于 grain |
 | **Candidate（候选）** | M2.2 `candidate_layer`、M3 / M3.2–M3.5 各 candidate 文件 | 机器按规则 / 证据推断出的**待确认结论**，`status = candidate` | 层级 3719、domain 表 3285、object 5、process 17、grain 5679、fact 3364、dimension 5、关系 15979 | 不等于 confirmed，不等于架构事实 |
-| **Finding（评审发现）** | M3.6 `findings.json` | 机器对**已存在形态**的一次异常观测，每条都带 evidence、`status = candidate` | 4439（P0 696） | 不等于问题，不等于「错了」 |
-| **Problem（候选问题）** | M3.6 `problems.json` | 同一根因下 finding 的**聚合**（一个根因 + 一组证据 + 一个 human_question） | 1190（candidate 1148 / review_required 42 / confirmed 0） | 不等于 Finding Count，不等于 Confirmed Problem |
-| **Evidence（证据行）** | M3.6 `problem-evidence.json` | 每条 problem 的**可回溯证据行**（指向 finding / table / column / process / grain / lineage …） | 1190 条 problem、30201 行、单条上限 50 行 | 不等于结论，只是「为什么会被提出」 |
+| **Finding（评审发现）** | M3.6 `current-state-findings.json` | 机器对**已存在形态**的一次异常观测，每条都带 evidence、`status = candidate` | 4439（P0 696） | 不等于问题，不等于「错了」 |
+| **Problem（候选问题）** | M3.6 `current-state-problems.json` | 同一根因下 finding 的**聚合**（一个根因 + 一组证据 + 一个 human_question） | 1190（candidate 1148 / review_required 42 / confirmed 0） | 不等于 Finding Count，不等于 Confirmed Problem |
+| **Evidence（证据行）** | M3.6 `current-state-problem-evidence.json` | 每条 problem 的**可回溯证据行**（指向 finding / table / column / process / grain / lineage …） | 1190 条 problem、30201 行、单条上限 50 行 | 不等于结论，只是「为什么会被提出」 |
 | **Human Decision（人工裁决）** | 清单 `human_status / human_name / note` 回填 → 重跑 | 人对某条 candidate 给出的受支持取值，经确定性映射写回 `status` | 当前 **0 条**（所有清单全 pending / false） | 不是自动生成，不是 Workbench 里的按钮状态 |
 
 **确定性映射（代码事实，`models.py`）**
@@ -492,7 +492,7 @@ Evidence Strength（证据强弱）≠ Confidence（置信度）≠ 业务正确
 
 ### 6.1 Input
 
-**必需输入（缺失即报错，不自动回退跑前置阶段）**——`M2_INPUT_FILES`：
+**必需输入（缺失即报错，模块自身不回退跑前置阶段；唯一例外是流水线：`evidence/layer/assessments.json` 缺失时 `run_stage_understanding()` 会先自动补跑 `run_stage_evidence()`）**——`M2_INPUT_FILES`：
 
 | 文件 | 提供什么 |
 | --- | --- |
@@ -980,10 +980,10 @@ fact 已成立、被拒者不是事实表、strong = 可信、关系是业务关
 
 | 文件 | 内容 | 数量 |
 | --- | --- | --- |
-| `understanding/modeling/current-state-model.json` | 现状形态总览 + gate / strength / dimension / relationship 复算 | `count 3719` |
-| `understanding/modeling/current-state-model-tables.json` | 每表 `current_role` / `model_shape` / `fact_keys` / `finding_ids` | **3719** |
-| `review/findings.json` | finding 全字段 + 各类计数 | **4439** |
-| `understanding/modeling/current-state-model-summary.md` | 6 节报告（Scope → Overview → Model Quality → Priority Findings → Human Review → M4 Input） | — |
+| `review/current-state-model.json` | 现状形态总览 + gate / strength / dimension / relationship 复算 | `count 3719` |
+| `review/current-state-model-tables.json` | 每表 `current_role` / `model_shape` / `fact_keys` / `finding_ids` | **3719** |
+| `review/current-state-findings.json` | finding 全字段 + 各类计数 | **4439** |
+| `review/current-state-model-summary.md` | 6 节报告（Scope → Overview → Model Quality → Priority Findings → Human Review → M4 Input） | — |
 | `review/current-state-review-checklist.md` | 5 个 review group 分区回填清单 | **5 区 / 157 行全 pending** |
 
 - `priority_counts`：**P0 696 / P1 3147 / P2 581 / P3 15**（`severity_by_priority`：P0=critical、P1=high、P2=medium、P3=info）。
@@ -1017,9 +1017,9 @@ fact 已成立、被拒者不是事实表、strong = 可信、关系是业务关
 
 | 文件 | 内容 | 数量 |
 | --- | --- | --- |
-| `review/problems.json` | problem 全字段 + 9 组顶层计数 | **1190** |
-| `review/problem-evidence.json` | 每条 problem 的证据行 | **1190 条 / 30201 行** |
-| `review/summary.md` | 7 节报告（含 Review Counts & Focus，confirmed=0） | — |
+| `review/current-state-problems.json` | problem 全字段 + 9 组顶层计数 | **1190** |
+| `review/current-state-problem-evidence.json` | 每条 problem 的证据行 | **1190 条 / 30201 行** |
+| `review/current-state-problem-summary.md` | 6 节报告（含 Human Review & M4 Input，confirmed=0） | — |
 | `review/current-state-problem-review-checklist.md` | 13 类分区回填清单 | **13 区 / 260 行全 pending** |
 
 - `problem_type_counts`（13 类）：`GRAIN_PROBLEM 559`、`MODEL_DUPLICATION 317`、`MIXED_RESPONSIBILITY 204`、`MODEL_OVERLAP 27`、`FACT_IDENTIFICATION_PROBLEM 26`、`AGGREGATION_MODEL_PROBLEM 22`、`PROCESS_MODEL_ALIGNMENT 15`、`MODEL_SELECTION_AMBIGUITY 8`、`MODEL_ROLE_AMBIGUITY 4`、`SEMANTIC_AMBIGUITY 3`、`MODEL_COVERAGE_GAP 2`、`UNKNOWN_MODEL 2`、`DIMENSION_IDENTIFICATION_PROBLEM 1`。
@@ -1037,11 +1037,11 @@ fact 已成立、被拒者不是事实表、strong = 可信、关系是业务关
 
 **Evidence / Limitations / Used By**：见 12.3；`rationale.why_change` 明确写「M4 必须先由人工裁决…未裁决前不能直接进 Target DWD」。Workbench 与 M4 的问题输入都来自这里。
 
-### 12.3 Evidence（`problem-evidence.json`）
+### 12.3 Evidence（`current-state-problem-evidence.json`）
 
 **Input**：problem 列表 + finding / table / column / process / grain / object / relationship 等只读索引（同一次运行内取得）。
 
-**Processing**：为每条 problem 展开证据行，按**固定顺序截断**，保留 `evidence_total` / `evidence_truncated` / `evidence_row_limit`；同时在 `problems.json` 内嵌 ≤5 条的 `evidence` 样例（`evidence_sample_limit = 5`）。
+**Processing**：为每条 problem 展开证据行，按**固定顺序截断**，保留 `evidence_total` / `evidence_truncated` / `evidence_row_limit`；同时在 `current-state-problems.json` 内嵌 ≤5 条的 `evidence` 样例（`evidence_sample_limit = 5`）。
 
 **Outputs（本轮实测）**：`count 1190`、`evidence_row_total 30201`、`evidence_row_limit 50`、`evidence_type_counts = {TABLE 9177, GRAIN 8059, FINDING 6313, COLUMN 4219, PROCESS 1210, LINEAGE 1202, RELATIONSHIP 12, OBJECT 9, SQL 0}`；单条 problem 的证据行 **3–50 行**，**53 条被截断**（`evidence_truncated = true`）。
 
@@ -1113,10 +1113,10 @@ M2 / M3 / M3.5 的 14 个必需 JSON + 可选 `understanding/modeling/model-revi
 （Finding 与 Problem 同一次运行，Problem 额外读回填清单）
 
 Produces:
-当前形态模型 3 个（`understanding/modeling/current-state-model{,-tables}.json`、
-`understanding/modeling/current-state-model-summary.md`）+ 评审发现 2 个（`review/findings.json`、
-`review/current-state-review-checklist.md`）+ Problem 侧 4 个（`review/problems.json`、`review/problem-evidence.json`、
-`review/summary.md`、`review/current-state-problem-review-checklist.md`）
+当前形态模型 3 个（`review/current-state-model{,-tables}.json`、
+`review/current-state-model-summary.md`）+ 评审发现 2 个（`review/current-state-findings.json`、
+`review/current-state-review-checklist.md`）+ Problem 侧 4 个（`review/current-state-problems.json`、`review/current-state-problem-evidence.json`、
+`review/current-state-problem-summary.md`、`review/current-state-problem-review-checklist.md`）
 （4439 finding / 1190 problem / 30201 evidence 行）
 
 Consumed By:
@@ -1162,7 +1162,7 @@ Does Not Prove:
 ### 13.2 通道二：Workbench（浏览器端裁决工作台，只读产物）
 
 - 启动：`python3 -m http.server 8787` → 打开 `http://localhost:8787/workbench/`；冒烟 `workbench/smoke.html` 期望 `PASS=true`。
-- 读取（**全部只读**）：`problems.json`（必需）、`problem-evidence.json`（必需）、`current-state-model-tables.json`（缺失降级）、`evidence/layer/assessments.json`（缺失降级）。加载失败会显式报错，**绝不显示「0 Problems」**。
+- 读取（**全部只读**）：`current-state-problems.json`（必需）、`current-state-problem-evidence.json`（必需）、`current-state-model-tables.json`（缺失降级）、`evidence/layer/assessments.json`（缺失降级）。加载失败会显式报错，**绝不显示「0 Problems」**。
 - 写入：只写浏览器 `localStorage["m36-human-adjudication"]`，导出 `m36-human-adjudication.json`；**不回写任何 Python 产物、不改 status、不改 taxonomy / Fact Gate / 规则**。
 - 因此：**Workbench 里点了 confirmed ≠ 产物里的 `status` 变成 confirmed**。要让机器认可，仍须把结论落到清单并重跑。
 

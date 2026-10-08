@@ -29,7 +29,7 @@ DataWorks + MaxCompute
 - Raw 响应与 Content 原样保存为本地 Snapshot
 - Snapshot 索引（files-index / tables-index）与重复采集清理
 
-**Analysis** 阶段（`analyze*` 子命令，只读已有 Snapshot / 上一阶段产物，写 `analysis/`）已实现：M2 证据链（inventory → layer → sql → lineage → profiling）、M3 业务候选（Domain / Object / Quality / Process / Grain / Fact-Dimension Candidate，M3 ～ M3.5）与 M3.6 Current-State Model Review（当前形态分类 + 结构化 finding + 人工清单），以及 M3.6 v2 Problem Assessment（finding 聚合成 problem candidate + 证据 / 影响 / 根因 / 重构理由 + 人工清单），只产出候选、证据与评审发现，不产出结论模型、不设计 Target DWD，详见 [docs/CODE_LOGIC_ANALYSIS.md](docs/CODE_LOGIC_ANALYSIS.md)。
+**Analysis** 阶段（`analyze` 子命令与 4 种 `--stage` 变体，只读已有 Snapshot / 上一阶段产物，写 `analysis/`）已实现：M2 证据链（inventory → layer → sql → lineage → profiling）、M3 业务候选（Domain / Object / Quality / Process / Grain / Fact-Dimension Candidate，M3 ～ M3.5）与 M3.6 Current-State Model Review（当前形态分类 + 结构化 finding + 人工清单），以及 M3.6 v2 Problem Assessment（finding 聚合成 problem candidate + 证据 / 影响 / 根因 / 重构理由 + 人工清单），只产出候选、证据与评审发现，不产出结论模型、不设计 Target DWD，详见 [docs/CODE_LOGIC_ANALYSIS.md](docs/CODE_LOGIC_ANALYSIS.md)。
 
 要理解 `M3.6 → M3.6 v2 → 人工裁决 → 重构证据 → M4` 的方法论（Finding ≠ Problem、13 类 Problem Taxonomy、四条原则、裁决优先级、重构证据模板），见 [docs/M36_PROBLEM_ASSESSMENT.md](docs/M36_PROBLEM_ASSESSMENT.md)——人工裁决从那份文档开始。
 
@@ -148,8 +148,12 @@ uv run data-platform-analysis analyze
 分阶段执行（不推荐，仅用于重跑单阶段）：
 uv run data-platform-analysis analyze --stage inventory      # Stage 01 (Inventory)
 uv run data-platform-analysis analyze --stage evidence       # Stage 02-05 (Evidence)
-uv run data-platform-analysis analyze --stage understanding # Stage 06-11 (Understanding)
+uv run data-platform-analysis analyze --stage understanding  # Stage 06-11 (Understanding)
 uv run data-platform-analysis analyze --stage review         # Stage 12-14 (Review)
+
+# 重跑前注意：--stage inventory / --stage evidence 会先清空整个 analysis/
+# （含 understanding/、review/ 与两份人工回填清单）；--stage understanding /
+# --stage review 不清场，但 evidence/ 缺失时会自动先补跑 evidence。
 
 M3.6 评审（一次性完整分析或单独执行 review 阶段）：
 uv run data-platform-analysis analyze --stage review
@@ -198,16 +202,19 @@ data-platform-analysis/
 │       ├── dataworks_types.py  # DataWorks FileType 注册表
 │       ├── maxcompute.py       # MaxCompute 只读元数据客户端
 │       ├── export.py           # Snapshot 导出与 Cleanup
-│       └── analysis/           # 分析链源码（与根目录 analysis/ 产物目录同名不同物）
-│           ├── pipeline.py     # M2 编排（M2.1 → M2.5 执行顺序）
-│           ├── inventory/      # M2.1 资产清单
-│           ├── layer/          # M2.2 层级判定（唯一口径）
-│           ├── sql/            # M2.3 SQL 解析 / 归一化 / 方言 / CTAS 兜底
-│           ├── lineage/        # M2.4 表引用与血缘
-│           ├── profiling/      # M2.5 元数据画像
-│           ├── business/       # M3 ～ M3.4 业务理解候选（Understand → Object → Process → Grain）
-│           ├── model/          # M3.5 Fact / Dimension 候选
-│           ├── review/         # M3.6 Finding / Current-State Problem 评审
+│       └── analysis/           # 分析链源码（与根目录 analysis/ 产物目录同名不同物，四阶段目录同构）
+│           ├── README.md       # 包内说明（四阶段目录地图 / 模块导览 / 入口与重跑顺序 / 错误模型）
+│           ├── pipeline.py     # 四阶段编排（inventory → evidence → understanding → review）
+│           ├── inventory/      # Stage 01 资产清单
+│           ├── evidence/       # Stage 02–05 技术证据
+│           │   ├── layer/      #   Stage 02 层级判定（唯一口径）
+│           │   ├── sql/        #   Stage 03 SQL 解析 / 归一化 / 方言 / CTAS 兜底
+│           │   ├── lineage/    #   Stage 04 表引用与血缘
+│           │   └── profiling/  #   Stage 05 元数据画像
+│           ├── understanding/  # Stage 06–11 业务 / 模型候选
+│           │   ├── business/   #   Stage 06–10 业务理解（Understand → Object → Process → Grain）
+│           │   └── modeling/   #   Stage 11 Fact / Dimension 候选
+│           ├── review/         # Stage 12–14 Finding / Current-State Problem 评审
 │           ├── models.py       # 数据结构（analysis = 如何分析，models = 数据结构是什么）
 │           ├── reports.py      # JSON / Markdown 报告渲染
 │           ├── snapshot.py     # Snapshot 只读访问
@@ -276,7 +283,7 @@ python3 -m http.server 8787        # 在仓库根目录启动静态服务
 open http://localhost:8787/workbench/
 ```
 
-- 读取 `analysis/review/problems.json`、`problem-evidence.json`（必需）与 `analysis/understanding/modeling/current-state-model-tables.json`、`analysis/evidence/layer/assessments.json`（可降级），**不写回任何产物**。
+- 读取 `analysis/review/current-state-problems.json`、`current-state-problem-evidence.json`（必需）与 `analysis/review/current-state-model-tables.json`、`analysis/evidence/layer/assessments.json`（可降级），**不写回任何产物**。
 - 人工裁决写入浏览器 `localStorage`（key `m36-human-adjudication`），通过「导出裁决」导出 `m36-human-adjudication.json`，再按 [人工裁决指南](docs/M36_HUMAN_ADJUDICATION_GUIDE.md) 回填。
 - 无构建、无运行时依赖，界面为中文（保留 `problem_id` / 类型枚举 / `P0`–`P3` 等技术标识）；测试：`cd workbench && npm test`（Node 内置 `node --test`）。
 

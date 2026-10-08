@@ -28,14 +28,17 @@ analysis/
 ├── understanding/                  # Stage 06–11 · Understanding（业务/模型候选）
 │   ├── business/    quality-assessment.json  objects*.json  process*.json
 │   │                grain*.json  summary.md  object-graph.md  ...
-│   └── modeling/    current-state-model.json  current-state-model-tables.json
-│                    model-*.json  dimension-*.json  fact-*.json  ...
+│   └── modeling/    fact-*.json  dimension-*.json  model-*.json
+│                    model-summary.md  model-review-checklist.md  ...
 ├── review/                         # Stage 12–14 · Review（评审输入 + 人工台账）
-│   ├── findings.json  problems.json  problem-evidence.json
-│   ├── summary.md
-│   ├── current-state-review-checklist.md          # Finding 裁决台账
-│   └── current-state-problem-review-checklist.md  # Problem 裁决台账
-└── summary.md                      # 根入口报告（8 节，纯磁盘重建）
+│   ├── current-state-model.json  current-state-model-tables.json
+│   ├── current-state-findings.json  current-state-problems.json
+│   ├── current-state-problem-evidence.json
+│   ├── current-state-model-summary.md              # M3.6 报告
+│   ├── current-state-problem-summary.md            # M3.6 v2 报告
+│   ├── current-state-review-checklist.md           # Finding 裁决台账
+│   └── current-state-problem-review-checklist.md   # Problem 裁决台账
+└── summary.md                      # 根入口报告（12 节，纯磁盘重建）
 ```
 
 要点：
@@ -64,11 +67,13 @@ analysis/
 
 ## 3. 入口与重跑顺序
 
-| `analyze` | Stage 01–14 | 全量清空 `inventory/`、`evidence/`、`understanding/`、`review/` 与根 `summary.md`（含旧布局残留） |
-| `analyze --stage inventory` | Stage 01 | 只覆盖 `inventory/`，支持 `--workspace` |
-| `analyze --stage evidence` | Stage 02–05 | 先重建 `inventory/`，再覆盖 `evidence/` + 根 `summary.md`（共 18 个文件，与全量 `analyze` 的对应产物逐字节一致）；**不产出** `understanding/`、`review/`；不支持 `--workspace` |
-| `analyze --stage understanding` | Stage 06–11 | 只覆盖 `understanding/`，不支持 `--workspace` |
-| `analyze --stage review` | Stage 12–14 | 只覆盖 `review/`，读两份 checklist 的 `human_*` 列并保留 |
+| `analyze` | Stage 01–14 | 先清空 `inventory/`、`evidence/`、`understanding/`、`review/` 与根 `summary.md`（含旧布局残留）再全量重建 |
+| `analyze --stage inventory` | Stage 01 | **同样先清空上述全部目录**，然后只重建 `inventory/`（5 个）+ 根 `summary.md`；跑完后 `evidence/`、`understanding/`、`review/` 已被删除，支持 `--workspace` |
+| `analyze --stage evidence` | Stage 02–05 | **同样先清空上述全部目录**，然后重建 `inventory/` + `evidence/` + 根 `summary.md`（共 18 个文件，与全量 `analyze` 的对应产物逐字节一致）；跑完后 `understanding/`、`review/` 已被删除；不支持 `--workspace` |
+| `analyze --stage understanding` | Stage 06–11 | **不清场**，只重建 `understanding/`；`evidence/layer/assessments.json` 缺失时先自动补跑 `run_stage_evidence()`（含清场），不支持 `--workspace` |
+| `analyze --stage review` | Stage 12–14 | **不清场**，重建 `understanding/`（review 依赖它，总是先重跑）与 `review/`，读两份 checklist 的 `human_*` 列并保留，不写根 `summary.md`；evidence 缺失时同上自动补跑，不支持 `--workspace` |
+
+人工回填的两份 checklist 位于 `review/`，因此重跑 `--stage inventory` / `--stage evidence` 会连同 `understanding/`、`review/` 一起被清掉——重跑前先备份这两份清单。
 
 推荐顺序（上游产物缺失时按此补齐）：
 ```
@@ -100,7 +105,7 @@ uv run -m mypy
 cd workbench && npm test               # 前端只读渲染测试
 ```
 
-当前基线：pytest 394 passed、ruff / format / mypy 全绿；workbench 38 passed · 10 failed（golden 期望值早于当前 source 快照，待刷新，见收口报告）；真实数据下 `analyze` 产出 table 3724 / statement 1917 / edge 3384 / finding 4425 / problem 1185 / error 0。
+当前基线：pytest 398 passed、ruff / format / mypy 全绿；workbench 38 passed · 10 failed（golden 期望值早于当前 source 快照，待刷新，见收口报告）；真实数据下 `analyze` 产出 table 3724 / statement 1917 / edge 3384 / finding 4425 / problem 1185 / error 0。
 
 ## 7. 相关约定
 

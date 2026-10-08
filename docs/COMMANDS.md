@@ -43,15 +43,16 @@ uv run data-platform-analysis [--log-level LEVEL] <command> [options]
 ### 人工裁决回填（M3.6 Human Adjudication）
 
 1. 编辑 `analysis/review/current-state-problem-review-checklist.md`（Problem 侧，13 分区）与 / 或 `analysis/review/current-state-review-checklist.md`（Finding 侧，5 分区），**只填 `human_status` / `human_name` / `note` 三列**，取值 `pending` / `confirmed` / `rejected` / `needs_review` / `needs_discussion`；
-2. 重跑 `uv run data-platform-analysis analyze --stage review`，人工三列原样保留，`problems.json` 的 `status` 与 `confirmed` 计数随之更新；机器列会被重新生成，勿手改列名或删列（必需列缺失 → 退出码 1）；
-3. 清单每分区最多渲染 50 行（Problem 侧合计 260 行 / 1190 条），全量见 `problems.json`，实操见 [M36_HUMAN_ADJUDICATION_GUIDE.md](M36_HUMAN_ADJUDICATION_GUIDE.md)。
+2. 重跑 `uv run data-platform-analysis analyze --stage review`，人工三列原样保留，`current-state-problems.json` 的 `status` 与 `confirmed` 计数随之更新；机器列会被重新生成，勿手改列名或删列（必需列缺失 → 退出码 1）；
+3. 清单每分区最多渲染 50 行（Problem 侧合计 260 行 / 1190 条），全量见 `current-state-problems.json`，实操见 [M36_HUMAN_ADJUDICATION_GUIDE.md](M36_HUMAN_ADJUDICATION_GUIDE.md)。
 
-分析命令共性：无参数、无专用配置，只读上游产物并写 `analysis/`；上游缺失或跨文件引用未知即退出码 1（不回退执行前置阶段）。等价入口：`uv run python -m data_platform_analysis.cli <子命令>`。
+分析命令共性：无参数、无专用配置，只读 Snapshot / 上一阶段产物并写 `analysis/`。阶段内模块缺输入（跨文件引用未知、必需 JSON 缺失、配置非法）→ 退出码 1 且不回退；但流水线层面 `analyze --stage understanding` / `--stage review` 在 `evidence/layer/assessments.json` 缺失时会先自动补跑 evidence，`--stage inventory` / `--stage evidence` 只依赖 `source/`、空 `analysis/` 下照常 exit 0。等价入口：`uv run python -m data_platform_analysis.cli <子命令>`。
 
 ## 分析命令共性
 
-- 无专用配置，只读上游产物并写 `analysis/`
-- 上游缺失 → 退出码 1、不回退执行前置阶段
+- 无专用配置，只读 Snapshot / 上游产物并写 `analysis/`
+- 阶段内模块缺必需输入 → 退出码 1、模块自身不回退执行前置阶段
+- 流水线层面：`understanding` / `review` 缺 `evidence/layer/assessments.json` → 自动先补跑 evidence；`inventory` / `evidence` 只读 `source/`
 - 等价入口：`uv run python -m data_platform_analysis.cli <子命令>`
 
 ## 采集命令参数
@@ -133,8 +134,8 @@ limit is not None → 部分集合 → 禁止 Cleanup（日志输出 Cleanup=SKI
 
 - 除采集阶段外，路径若无前缀均相对 `analysis/`（由 `ANALYSIS_DIR` 决定，默认 `analysis`）。
 - **`source/` 对第 4 阶段起的所有命令只读**：分析链只写 `analysis/`，不改写 Snapshot。
-- 每条命令只覆盖自己声明的产物；未涉及的上游产物保持原样（`understanding/`、`review/` 不在 `analyze` 的清理范围内）。
-- 任何阶段上游缺失 → 退出码 1、不回退执行前置阶段、不留下半成品文件。
+- 清场范围分两类：`analyze`、`analyze --stage inventory`、`analyze --stage evidence` 先执行 `pipeline._reset_outputs()`，清空 `inventory/`、`evidence/`、`understanding/`、`review/` 与根 `summary.md`（所以**未声明的 `understanding/`、`review/` 也会被删**，两份人工回填清单一并丢失）；`analyze --stage understanding`、`analyze --stage review` 不清场，上游产物保持原样。
+- 上游缺失的三种情况：阶段内模块缺必需输入 → 退出码 1、模块自身不回退、不留半成品；`understanding` / `review` 缺 `evidence/layer/assessments.json` → 流水线先自动补跑 `run_stage_evidence()`（该步会清场）；`inventory` / `evidence` 只依赖 `source/`，空 `analysis/` 下照常 exit 0。
 
 ## 阶段命令矩阵
 
@@ -145,11 +146,11 @@ Stage 号与 Milestone 的完整映射（含每阶段的代码模块、产物目
 | 1 | 00 | M1 DataWorks 采集 | `dataworks`（或 `export`） | `source/dataworks/workspaces/<id>/**`、`source/dataworks/workspaces/<id>/files-index.json`、`source/dataworks/workspaces-index.json` | — | 机器事实（Snapshot） |
 | 2 | 00 | M1 MaxCompute 采集 | `maxcompute`（或 `export`） | `source/maxcompute/workspaces/<id>/**`、`source/maxcompute/workspaces/<id>/tables-index.json`；全量 `export` 另写 `source/manifest.json` | — | 机器事实（Snapshot）+ 辅助（`manifest.json`） |
 | 3 | 00 | M1 Snapshot Summary | `summary` | `source/Summary.md` | 1 | 辅助（生成报告，含时间戳） |
-| 4 | 01–14 | M2–M3.6 完整 Analysis Chain | `analyze` | `inventory/{workspaces,files,tables,columns}.json`、`inventory/summary.md`、`evidence/{layer,sql,lineage,profiling}/*`、`understanding/business/*`、`understanding/modeling/current-state-model*.json`、`review/{findings,problems}*.{json,md}`、`summary.md` | **59** | 机器事实（inventory / sql / profiling）+ 规则推导（layer / lineage）+ 机器候选（business / modeling）+ 辅助（summary / errors） |
+| 4 | 01–14 | M2–M3.6 完整 Analysis Chain | `analyze` | `inventory/{workspaces,files,tables,columns}.json`、`inventory/summary.md`、`evidence/{layer,sql,lineage,profiling}/*`、`evidence/errors.json`、`understanding/business/*`、`understanding/modeling/*`、`review/*`、`summary.md` | **59** | 机器事实（inventory / sql / profiling）+ 规则推导（layer / lineage）+ 机器候选（business / modeling）+ 辅助（summary / errors） |
 | 5 | 01 | Inventory 单独重跑 | `analyze --stage inventory` | `inventory/{workspaces,files,tables,columns}.json`、`inventory/summary.md` | **5** | 机器事实（inventory） |
 | 6 | 02–05 | Evidence 单独重跑 | `analyze --stage evidence` | `evidence/{layer,sql,lineage,profiling}/*` + `errors.json` | **18** | 机器事实（sql / profiling）+ 规则推导（layer / lineage） |
-| 7 | 06–11 | Understanding 单独重跑 | `analyze --stage understanding` | `understanding/business/*` + `understanding/modeling/current-state-model*.json` | **23** | 机器候选（business / modeling）+ 辅助 |
-| 8 | 12–14 | Review 单独重跑 | `analyze --stage review` | `review/{findings,problems}*.{json,md}` + `summary.md` | **13** | 机器候选（finding / problem）+ 证据 + 辅助 |
+| 7 | 06–11 | Understanding 单独重跑 | `analyze --stage understanding` | `understanding/business/*` + `understanding/modeling/*` | **23** | 机器候选（business / modeling）+ 辅助 |
+| 8 | 12–14 | Review 单独重跑 | `analyze --stage review` | `review/*`（同时重跑 Stage 06–11 刷新 `understanding/**`，不写根 `summary.md`） | **13** | 机器候选（finding / problem）+ 证据 + 辅助 |
 
 `59 = 5 + 18 + 23 + 13`，即 `analysis/` 当前的 59 个产物文件。
 
@@ -169,13 +170,13 @@ Stage 号与 Milestone 的完整映射（含每阶段的代码模块、产物目
 
 ## 输入依赖（必需 / 可选）
 
-| 命令 | 必需输入（相对 `analysis/`） | 可选输入（重跑时带回人工状态） |
+| 命令 | 必需输入 | 可选输入（重跑时带回人工状态） |
 | --- | --- | --- |
-| `analyze` | `source/**` + `config/layer-rules.yaml` | — |
-| `analyze --stage inventory` | `source/**` + `config/layer-rules.yaml` | — |
-| `analyze --stage evidence` | `inventory/tables.json` + `config/layer-rules.yaml` | — |
-| `analyze --stage understanding` | `evidence/*/*` + `config/business-rules.yaml` | — |
-| `analyze --stage review` | `understanding/modeling/*.{json,md}` + `review/*.json` | `review/{current-state-review-checklist.md,current-state-problem-review-checklist.md}` |
+| `analyze` | `source/**` + `config/{layer-rules,business-rules,process-rules}.yaml` | — |
+| `analyze --stage inventory` | `source/**` + `config/layer-rules.yaml`（清场重建，不读已有 `analysis/`） | — |
+| `analyze --stage evidence` | `source/**` + `config/layer-rules.yaml`（清场后自行重建 `inventory/`，不读已有 `inventory/`） | — |
+| `analyze --stage understanding` | `inventory/{tables,columns}.json` + `evidence/{sql/statements,sql/table-references,lineage/table-lineage,lineage/core-table-candidates,layer/assessments}.json` + `config/{business-rules,process-rules}.yaml`；`evidence/layer/assessments.json` 缺失时流水线先自动补跑 evidence（此时改需 `source/**` + `config/layer-rules.yaml`） | `understanding/business/{process-review-checklist,grain-review-checklist}.md`、`understanding/modeling/model-review-checklist.md` |
+| `analyze --stage review` | 上一行的全部输入 + `understanding/modeling/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables}.json`（共 13 个必需 JSON，定义见 `review/findings.py::INPUT_FILES`） | `review/{current-state-review-checklist.md,current-state-problem-review-checklist.md}` |
 
 ## Recommended Execution Order
 
@@ -199,7 +200,17 @@ uv run data-platform-analysis analyze
 
 ### C. 只重跑单个阶段
 
-按「输入依赖」表确认上游产物齐备，只执行该命令即可；它仅覆盖自己的输出文件。想清空重跑 M2–M3.6 用 `analyze`（会删 `inventory/ evidence/ understanding/ review/ summary.md`，**不动 `source/`**）。
+按「输入依赖」表确认上游产物齐备，只执行该命令即可。清场范围不同：
+
+| 命令 | 是否清场 | 实际覆盖 |
+| --- | --- | --- |
+| `analyze` | 清空 `inventory/ evidence/ understanding/ review/ summary.md` | 全部 59 个产物 |
+| `analyze --stage inventory` | **同样清空**（连 `understanding/`、`review/` 一起删） | `inventory/**`（5）+ 根 `summary.md` |
+| `analyze --stage evidence` | **同样清空**（连 `understanding/`、`review/` 一起删） | `inventory/**` + `evidence/**` + 根 `summary.md`（18） |
+| `analyze --stage understanding` | 不清场 | `understanding/**` |
+| `analyze --stage review` | 不清场 | `understanding/**`（总是先重跑一遍）+ `review/**`，**不写**根 `summary.md` |
+
+清空重跑 M2–M3.6 用 `analyze`（**不动 `source/`**）。人工回填过的两份 checklist 位于 `review/`，因此**不要**在生产 `analysis/` 上用 `--stage inventory` / `--stage evidence` 重跑——那会连清单一起删掉。
 
 ### D. 人工清单回填之后
 
@@ -207,20 +218,20 @@ uv run data-platform-analysis analyze
 
 | 改动的清单 | 重跑 |
 | --- | --- |
-| `understanding/business/review-checklist.md`、`process-review-checklist.md`、`grain-review-checklist.md`、`model-review-checklist.md` | `analyze --stage understanding` → `analyze --stage review` |
+| `understanding/business/review-checklist.md`、`process-review-checklist.md`、`grain-review-checklist.md`、`understanding/modeling/model-review-checklist.md` | `analyze --stage understanding` → `analyze --stage review` |
 | `review/current-state-review-checklist.md`、`review/current-state-problem-review-checklist.md` | `analyze --stage review` |
 
 ## M3.6 Human Decision → Workbench
 
 1. **人工填清单**：`analysis/review/current-state-problem-review-checklist.md`（Problem 侧）与 / 或 `analysis/review/current-state-review-checklist.md`（Finding 侧），只填 `human_status` / `human_name` / `note` 三列。
-2. **重跑** `uv run data-platform-analysis analyze --stage review`，人工三列带回、`problems.json` 的 `status` 与 `confirmed` 计数更新；必需列缺失 → 退出码 1。
+2. **重跑** `uv run data-platform-analysis analyze --stage review`，人工三列带回、`current-state-problems.json` 的 `status` 与 `confirmed` 计数更新；必需列缺失 → 退出码 1。
 3. **Workbench 载入同一批产物**（只读，不写回任何文件）：
 
    | 文件 | 用途 | 必需 |
    | --- | --- | --- |
-   | `analysis/review/problems.json` | Problem 列表 / Detail / 汇总数字 | 是 |
-   | `analysis/review/problem-evidence.json` | Evidence Explorer 全量证据行 | 是 |
-   | `analysis/understanding/modeling/current-state-model-tables.json` | Affected Tables 的 role / shape / process / grain | 否（缺失降级） |
+   | `analysis/review/current-state-problems.json` | Problem 列表 / Detail / 汇总数字 | 是 |
+   | `analysis/review/current-state-problem-evidence.json` | Evidence Explorer 全量证据行 | 是 |
+   | `analysis/review/current-state-model-tables.json` | Affected Tables 的 role / shape / process / grain | 否（缺失降级） |
    | `analysis/evidence/layer/assessments.json` | Affected Tables 的 Layer | 否（缺失降级） |
 
    启动：`python3 -m http.server 8787`（仓库根）→ `http://localhost:8787/workbench/`；浏览器冒烟 `http://localhost:8787/workbench/smoke.html` 期望末行 `PASS=true`；Node 测试 `cd workbench && npm test`。
@@ -228,7 +239,7 @@ uv run data-platform-analysis analyze
 
 ## 实测验证
 
-> 验证环境：macOS，2026-10-08，`uv run data-platform-analysis`（HEAD = `c61fcb3`）。
+> 验证环境：macOS，2026-10-08，`uv run data-platform-analysis`（HEAD = `c61fcb3`）。其中「阶段清场范围」「上游缺失」「`uv run pytest`」三行已于 2026-10-09 在 HEAD = `cdff915` 重新实测并订正；其余行沿用 2026-10-08 的结果。
 
 | 检查项 | 结果 |
 | --- | --- |
@@ -236,10 +247,11 @@ uv run data-platform-analysis analyze
 | `config` | exit 0，打印非敏感配置，不发起采集 |
 | Clean-room 全链（`ANALYSIS_DIR=<临时目录>`，4 条分析命令） | 全部 exit 0，产出 59 个文件；与生产 `analysis/` 逐字节一致（唯一差异是报告里「输入」一行的路径写法，归一化后 **59/59 相同**） |
 | 生产 `analysis/` 原地重跑全链 | exit 0，**59/59 SHA256 与重跑前完全一致** |
-| 上游缺失（`ANALYSIS_DIR` 指向空目录） | 4 条下游命令全部 exit 1：`analyze --stage inventory/evidence/understanding/review` 报 `<上游> 产物缺失，无法执行 <阶段>：<文件列表>`；**残留文件数 = 0**（原子写出，无半成品） |
-| `analyze --stage inventory --workspace 466338` | exit 0，临时目录仅 5 个 Inventory 产物（无 `evidence/`），生产 `analysis/` 未受影响 |
+| 阶段清场范围 | `analyze` / `--stage inventory` / `--stage evidence` 先执行 `_reset_outputs()` 清空 `inventory/` `evidence/` `understanding/` `review/` 与根 `summary.md`：生产 `analysis/` 的副本跑 `--stage inventory` 只剩 **6** 个文件、跑 `--stage evidence` 只剩 **18** 个；`--stage understanding` / `--stage review` **不清场**，副本 59 个文件全部保留（根 `summary.md` 哈希不变） |
+| 上游缺失（`ANALYSIS_DIR` 指向空目录，`source/` 正常） | 4 条阶段命令**全部 exit 0 并补齐上游**：`--stage inventory` → 6 个文件、`--stage evidence` → 18 个、`--stage understanding` → 先打印 `Evidence 阶段未完成，执行 run_stage_evidence` 再产出 49 个、`--stage review` → 同样补跑后产出 59 个；只有阶段内模块缺必需输入时才报 `<上游> 产物缺失，无法执行 <阶段>` 并 exit 1 |
+| `analyze --stage inventory --workspace 466338` | exit 0，临时目录仅 5 个 Inventory 产物 + 根 `summary.md`（无 `evidence/`、`understanding/`、`review/`），生产 `analysis/` 未受影响 |
 | `summary` | exit 0，仅改写 `source/Summary.md`；其余 12998 个 Snapshot 文件哈希不变。注意：该文件含「Summary 生成时间」时间戳，**连续两次运行哈希不同**，属预期非确定性 |
-| `uv run pytest` | 394 passed |
+| `uv run pytest` | 398 passed |
 | `uv run ruff check src tests` / `uv run ruff format --check src tests` / `uv run -m mypy` | 全绿（0 errors） |
 | `cd workbench && npm test` | 38 passed · 10 failed（golden 期望值早于当前 source 快照，待刷新） |
 | `dataworks` / `maxcompute` / `export` | **未实际执行**（需阿里云凭证且会改写 `source/`）；仅验证 `--help` exit 0 与参数签名 |
