@@ -63,6 +63,17 @@ TASK_TYPE_TASK_FLOW = "TASK_FLOW"
 TASK_TYPE_ASSIGNMENT = "ASSIGNMENT"
 TASK_TYPE_FUNCTION_COMPUTE = "FUNCTION_COMPUTE"
 
+TASK_TYPE_VIRTUAL = "VIRTUAL"
+TASK_TYPE_CHECK = "CHECK"
+TASK_TYPE_BRANCH = "BRANCH"
+TASK_TYPE_DO_WHILE = "DO_WHILE"
+TASK_TYPE_FOR_EACH = "FOR_EACH"
+TASK_TYPE_PARAM_HUB = "PARAM_HUB"
+TASK_TYPE_MERGE = "MERGE"
+TASK_TYPE_HTTP_TRIGGER = "HTTP_TRIGGER"
+TASK_TYPE_DATA_QUALITY_MONITOR = "DATA_QUALITY_MONITOR"
+TASK_TYPE_DATA_COMPARISON = "DATA_COMPARISON"
+
 TASK_TYPE_RESOURCE = "RESOURCE"
 TASK_TYPE_UNKNOWN = "UNKNOWN"
 
@@ -375,6 +386,112 @@ FILE_TYPE_REGISTRY: dict[int, FileTypeInfo] = {
         content_format=CONTENT_JSON,
         extension="json",
         description="Function Compute 函数计算节点。",
+    ),
+    99: FileTypeInfo(
+        file_type=99,
+        name="VIRTUAL",
+        task_type=TASK_TYPE_VIRTUAL,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_NONE,
+        extension="txt",
+        description=(
+            "虚拟节点（Virtual Node），不产生数据的控制类空跑节点。"
+            "实际 GetFile Content 为空，个别节点仅含说明注释。"
+        ),
+    ),
+    241: FileTypeInfo(
+        file_type=241,
+        name="CHECK",
+        task_type=TASK_TYPE_CHECK,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_JSON,
+        extension="json",
+        description=(
+            "Check 检查节点。实际 GetFile Content 为检查配置 JSON，部分节点 Content 为空。"
+        ),
+    ),
+    1101: FileTypeInfo(
+        file_type=1101,
+        name="BRANCH",
+        task_type=TASK_TYPE_BRANCH,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_JSON,
+        extension="json",
+        description="分支节点。实际 GetFile Content 为分支条件 JSON。",
+    ),
+    1103: FileTypeInfo(
+        file_type=1103,
+        name="DO_WHILE",
+        task_type=TASK_TYPE_DO_WHILE,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_NONE,
+        extension="txt",
+        description=(
+            "do-while 循环控制节点。实际 GetFile Content 为空，循环参数位于 NodeConfiguration。"
+        ),
+    ),
+    1106: FileTypeInfo(
+        file_type=1106,
+        name="FOR_EACH",
+        task_type=TASK_TYPE_FOR_EACH,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_NONE,
+        extension="txt",
+        description=(
+            "for-each 遍历控制节点。实际 GetFile Content 为空，遍历参数位于 NodeConfiguration。"
+        ),
+    ),
+    1115: FileTypeInfo(
+        file_type=1115,
+        name="PARAM_HUB",
+        task_type=TASK_TYPE_PARAM_HUB,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_NONE,
+        extension="txt",
+        description=(
+            "参数节点（Parameter Hub）。实际 GetFile Content 为空，用于汇总上游参数并向下分发。"
+        ),
+    ),
+    # ------------------------------------------------------------------------
+    # 通用类节点：官方节点文档已登记编号，当前 Snapshot 无样本
+    # Content 形态没有官方定义也没有本地证据，content_format 保持 UNKNOWN，
+    # 不猜测为 SQL / JSON / NONE。
+    # ------------------------------------------------------------------------
+    1102: FileTypeInfo(
+        file_type=1102,
+        name="MERGE",
+        task_type=TASK_TYPE_MERGE,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_UNKNOWN,
+        extension="txt",
+        description="归并节点。官方节点类型已确认，Content 格式待样本确认。",
+    ),
+    1114: FileTypeInfo(
+        file_type=1114,
+        name="HTTP_TRIGGER",
+        task_type=TASK_TYPE_HTTP_TRIGGER,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_UNKNOWN,
+        extension="txt",
+        description="HTTP 触发器节点。官方节点类型已确认，Content 格式待样本确认。",
+    ),
+    1331: FileTypeInfo(
+        file_type=1331,
+        name="DATA_COMPARISON",
+        task_type=TASK_TYPE_DATA_COMPARISON,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_UNKNOWN,
+        extension="txt",
+        description="数据对比节点。官方节点类型已确认，Content 格式待样本确认。",
+    ),
+    1333: FileTypeInfo(
+        file_type=1333,
+        name="DATA_QUALITY_MONITOR",
+        task_type=TASK_TYPE_DATA_QUALITY_MONITOR,
+        category=CATEGORY_TASK,
+        content_format=CONTENT_UNKNOWN,
+        extension="txt",
+        description="数据质量监控节点。官方节点类型已确认，Content 格式待样本确认。",
     ),
     # ------------------------------------------------------------------------
     # Resource

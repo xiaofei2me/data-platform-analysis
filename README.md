@@ -256,7 +256,7 @@ data-platform-analysis/
 │       ├── logging_utils.py    # Rich 日志
 │       ├── io_utils.py         # 文件读写
 │       ├── dataworks.py        # DataWorks OpenAPI 客户端与字段提取
-│       ├── dataworks_types.py  # DataWorks FileType 注册表
+│       ├── dataworks_types.py  # DataWorks FileType 注册表（说明见 docs/DATAWORKS_FILE_TYPE_REGISTRY.md）
 │       ├── maxcompute.py       # MaxCompute 只读元数据客户端
 │       ├── export.py           # Snapshot 导出与 Cleanup
 │       ├── summary.py          # 生成 source/Summary.md（人工阅读的目录说明）
@@ -293,6 +293,7 @@ data-platform-analysis/
 │   ├── EVIDENCE_LAYER_AUDIT_CHECKLIST.md  # M2 证据层收尾审计清单
 │   ├── EVIDENCE_LAYER_FREEZE_REPORT.md    # M2 证据层冻结报告
 │   ├── SQL_ANALYSIS_LIMITATION.md  # M2.3 SQL 解析能力边界
+│   ├── DATAWORKS_FILE_TYPE_REGISTRY.md  # DataWorks FileType 注册表（编号依据 / 字段约定 / UNKNOWN 兜底 / 已核实映射）
 │   ├── adr/                    # 架构决策记录
 │   └── agents/                 # Agent 工作流说明
 │

@@ -382,7 +382,8 @@ def test_unknown_format_groups_registered_and_unregistered(
                 "file_id": "103",
                 "file_name": "job_b",
                 "node_id": "7003",
-                "file_type": 99,
+                # 99（虚拟节点）已注册；这里需要一个真正未注册的编号。
+                "file_type": 999,
                 "content": "job body",
             },
         ],
@@ -402,14 +403,14 @@ def test_unknown_format_groups_registered_and_unregistered(
         "FileType 已登记，内容格式映射为 UNKNOWN（通常为非 SQL 任务形态） |" in summary
     )
     assert (
-        "| file_type=99（UNKNOWN） | 1 | 33.3% | "
+        "| file_type=999（UNKNOWN） | 1 | 33.3% | "
         "FileType 未在类型注册表登记，需人工确认类型映射（类型映射缺口候选） |" in summary
     )
 
     # 代表案例：总数 < 10 全部展示
     assert "总数少于 10，全部案例均已展示" in summary
     assert "| ws_a | 102 | job_a | 11 | UNKNOWN | 7002 |" in summary
-    assert "| ws_a | 103 | job_b | 99 | UNKNOWN | 7003 |" in summary
+    assert "| ws_a | 103 | job_b | 999 | UNKNOWN | 7003 |" in summary
 
     # 不把 UNKNOWN 说成错误
     assert "UNKNOWN ≠ 一定是错误" in summary
@@ -431,7 +432,7 @@ def test_unknown_cases_round_robin_by_file_type(
             "file_id": str(200 + index),
             "file_name": f"job_{index}",
             "node_id": str(8000 + index),
-            "file_type": 99,
+            "file_type": 999,
             "content": "job body",
         }
         for index in range(1, 11)
@@ -459,12 +460,12 @@ def test_unknown_cases_round_robin_by_file_type(
     summary = _summary()
 
     assert "- 数量：12（占全部 DataWorks 文件 100.0%）" in summary
-    assert "| file_type=99（UNKNOWN） | 10 | 83.3% |" in summary
+    assert "| file_type=999（UNKNOWN） | 10 | 83.3% |" in summary
     assert "| file_type=11（ODPS_MR） | 2 | 16.7% |" in summary
 
     # 代表案例 = 5，且覆盖两个类别（轮转取样，确定性）
     assert "共 5 个代表案例，按 file_type 分类轮转选取" in summary
-    assert "| ws_a | 201 | job_1 | 99 | UNKNOWN |" in summary
+    assert "| ws_a | 201 | job_1 | 999 | UNKNOWN |" in summary
     assert "| ws_a | 301 | mr_1 | 11 | UNKNOWN |" in summary
     assert summary.count("UNKNOWN |") >= 5
 
