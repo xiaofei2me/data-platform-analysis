@@ -194,6 +194,7 @@ def print_config() -> None:
         "SOURCE_DIR": str(settings.source_dir),
         "ANALYSIS_DIR": str(settings.analysis_dir),
         "LAYER_RULES_PATH": str(settings.layer_rules_path),
+        "SCOPE_RULES_PATH": str(settings.scope_rules_path),
         "BUSINESS_RULES_PATH": str(settings.business_rules_path),
         "EXPORT_OVERWRITE": str(settings.export_overwrite),
     }
@@ -280,6 +281,7 @@ def run_analyze(
             source_dir=settings.source_dir,
             analysis_dir=settings.analysis_dir,
             layer_rules_path=settings.layer_rules_path,
+            scope_rules_path=settings.scope_rules_path,
             workspace_id=workspace_id,
         )
 

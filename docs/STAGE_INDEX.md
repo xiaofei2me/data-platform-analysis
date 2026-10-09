@@ -31,7 +31,7 @@
 | Stage | 名称 | Milestone | 命令 | 产物目录（相对 `analysis/`，采集为 `source/`） | 代码 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | **00** | Raw Snapshot | M1 | `export` / `dataworks` / `maxcompute` / `summary` | `dataworks/**`、`maxcompute/**`、`manifest.json`、`Summary.md` | `export.py`、`dataworks.py`、`maxcompute.py`、`summary.py` | 已实现 |
-| **01** | Inventory | M2.1 | `analyze --stage inventory` | `inventory/` | `analysis/pipeline.py` + `analysis/inventory/` | 已实现 |
+| **01** | Inventory | M2.1 | `analyze --stage inventory` | `inventory/` | `analysis/pipeline.py` + `analysis/inventory/` + `config/analysis-scope-rules.yaml` | 已实现 |
 | **02** | Layer Assessment | M2.2 | `analyze --stage evidence` | `evidence/layer/` | `analysis/evidence/layer/layer_assessment.py` + `config/layer-rules.yaml` | 已实现 |
 | **03** | SQL Analysis | M2.3 | `analyze --stage evidence` | `evidence/sql/` | `analysis/evidence/sql/` | 已实现 |
 | **04** | Lineage | M2.4 | `analyze --stage evidence` | `evidence/lineage/` | `analysis/evidence/lineage/` | 已实现 |
@@ -123,7 +123,7 @@ status = review_required    →     rejected             →   status = rejected
 ### 5.1 目录
 
 - **产物目录按语义四阶段划分**：`inventory/`（Stage 01 资产清单）、`evidence/{layer,sql,lineage,profiling}/`（Stage 02–05 技术证据）、`understanding/business/`（Stage 06–10 业务理解）、`understanding/modeling/`（Stage 11 与 Stage 12 的当前形态模型）、`review/`（Stage 12–14 评审发现与问题）；源码模块已随产物同步迁移为 `src/data_platform_analysis/analysis/{inventory,evidence/{layer,sql,lineage,profiling},understanding/{business,modeling},review}/`，**产物目录与源码模块同构**（引用时仍须区分根目录 `analysis/` 产物与 `src/.../analysis/` 源码）。Stage 15 无产物目录（回填工件与所属阶段同目录）。
-- **不给现有 59 个产物加 `NN-` 前缀**：全仓字面 `analysis/` 引用数百处，换不到顺序信息（`analysis/` 本身被 gitignore，真正入口是 §2.2 的阅读链）。
+- **不给现有 61 个产物加 `NN-` 前缀**：全仓字面 `analysis/` 引用数百处，换不到顺序信息（`analysis/` 本身被 gitignore，真正入口是 §2.2 的阅读链）。
 - **新增阶段**：新目录可带 Stage 号（如 `analysis/16-confirmed/`），**旧文件不补号**——避免混合风格蔓延。
 
 ### 5.2 文件名
@@ -148,7 +148,7 @@ status = review_required    →     rejected             →   status = rejected
 ### 5.3 明确不做的三件事
 
 1. 不给 `src/` 源码加数字前缀（按职责组织是正确设计）。
-2. 不给现有 59 个产物 basename 加 `NN-`（540 处引用，零算法收益）。
+2. 不给现有 61 个产物 basename 加 `NN-`（540 处引用，零算法收益）。
 3. 不预建 Stage 16–20 的目录或空文件（会把规划伪装成已实现）。
 
 ## 6. 已知不一致与待办

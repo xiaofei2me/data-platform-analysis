@@ -201,6 +201,18 @@ class Settings(BaseSettings):
     #   保持原路径不变。
     layer_rules_path: Path = Path("config/layer-rules.yaml")
 
+    # M2.1 Analysis Scope Rules 配置文件。
+    #
+    # Inventory 规则化分类（节点身份 / 内容状态 / 分析资格 / 非正式任务）的
+    # 唯一规则来源。只读配置，Analysis 不会修改该文件。
+    #
+    # 相对路径：
+    #   相对于项目根目录解析。
+    #
+    # 绝对路径：
+    #   保持原路径不变。
+    scope_rules_path: Path = Path("config/analysis-scope-rules.yaml")
+
     # M3 Business Rules 词典配置文件。
     #
     # 只读配置，Analysis 不会修改该文件。
@@ -363,6 +375,7 @@ class Settings(BaseSettings):
         self.source_dir = resolve_project_path(self.source_dir)
         self.analysis_dir = resolve_project_path(self.analysis_dir)
         self.layer_rules_path = resolve_project_path(self.layer_rules_path)
+        self.scope_rules_path = resolve_project_path(self.scope_rules_path)
         self.business_rules_path = resolve_project_path(self.business_rules_path)
         self.process_rules_path = resolve_project_path(self.process_rules_path)
 

@@ -110,7 +110,7 @@ source/
 
 执行顺序 `M2.1 → M2.2 → M2.3 → M2.4 → M2.5` 是刻意的：M2.2 只依赖表清单与规则配置，必须先于 M2.4 完成，血缘才能直接引用 `candidate_layer`（见 ADR-0003）。
 
-### 3.1 M2.1 Warehouse Inventory（`inventory/inventory.py`）
+### 3.1 M2.1 Warehouse Inventory（`inventory/inventory.py` + `inventory/scope.py`）
 
 **输入**：`files-index.json` / `tables-index.json` + raw JSON。
 
@@ -118,10 +118,11 @@ source/
 
 1. index 导航、raw 优先：`raw` 与 `index` 冲突时以 raw 为准（约定 2）。
 2. 身份与排序：workspaces 按 `workspace_id`；files 按 `(workspace_id, file_id)`；tables 按 workspace + table_key；columns 按 workspace + 表 + 序号，全部用 `numeric_id_sort_key`（数字 id 数值排序、字符串 id 其后字典序）。
-3. **Analysis Scope Filter**：`is_analysis_eligible(file)` = NodeId 有效。只有已提交的 DataWorks 节点才进入后续 SQL / Reference / Lineage；NodeId 缺失的 File 保留在 Inventory 但**不产生证据、也不记错误**。
+3. **Analysis Scope Rules（`inventory/scope.py` + `config/analysis-scope-rules.yaml`）**：对全量 File 做一次规则化分类，给出两个互不混用的口径——`overall_eligible`（资产身份维度：NodeId 有效，`is_analysis_eligible` 仍可用）与 `sql_eligible`（M2.3 输入维度：身份 + 非正式任务 + `content_format` 适用 SQL + Content 可用）。NodeId 缺失、格式无效、明确的非正式任务、类型不适用 SQL、Content 不可用都只被分类，File 保留在 Inventory，**不产生证据、也不记错误**（`CONTENT_FILE_MISSING` 这类 Snapshot 完整性问题归 inventory stage 记账）。同时产出 `inventory/excluded-tasks.json`（明确排除，含清理候选标记）与 `inventory/review-tasks.json`（弱证据待确认）——两者都是分析范围判定的产物，**不是删除清单**。
 4. 层级判定**不在** M2.1 范围（`layer_candidate` 字段已删除，见 ADR-0003），M2.1 回归纯清单。
 
 **产出字段（tables.json）**：`workspace_id / workspace_name / project / schema / table / table_key / comment / column_count / partition_count / size / is_virtual_view / lifecycle / creation_time / last_modified_time / raw_file`。
+**额外产物**：`excluded-tasks.json` / `review-tasks.json`（见上），`summary.md` 第 11 节给出规则分类统计（资格口径、节点身份与类型、内容状态与期望、规则命中、主因分布）。
 
 ### 3.2 M2.2 Layer Assessment（M2 层级判定，代码已实现）（`evidence/layer/layer_assessment.py`）——唯一的层级判定
 
@@ -483,7 +484,8 @@ content（只取 NodeId 有效 File）
 
 ## 6. 配置与运行
 
-- 配置中心：`config.py`（pydantic-settings + `.env`）。关键项：`WORKSPACES`（workspace_id/name/project 映射）、阿里云 AK、`DATAWORKS_*`、`MAXCOMPUTE_*`、`SOURCE_DIR=source`、`ANALYSIS_DIR=analysis`、`LAYER_RULES_PATH=config/layer-rules.yaml`、`BUSINESS_RULES_PATH=config/business-rules.yaml`、`PROCESS_RULES_PATH=config/process-rules.yaml`。
+- 配置中心：`config.py`（pydantic-settings + `.env`）。关键项：`WORKSPACES`（workspace_id/name/project 映射）、阿里云 AK、`DATAWORKS_*`、`MAXCOMPUTE_*`、`SOURCE_DIR=source`、`ANALYSIS_DIR=analysis`、`SCOPE_RULES_PATH=config/analysis-scope-rules.yaml`、`LAYER_RULES_PATH=config/layer-rules.yaml`、`BUSINESS_RULES_PATH=config/business-rules.yaml`、`PROCESS_RULES_PATH=config/process-rules.yaml`。
+- 分析范围规则：`config/analysis-scope-rules.yaml`（**唯一**范围判定来源：节点身份 / 内容状态 / 分析资格 / 非正式任务；只被 M2.1 读取，配置非法即 exit 1，不回退默认值）。
 - 层级规则：`config/layer-rules.yaml`（**唯一**层级规则来源，历史硬编码前缀已删除）。
 - 业务词典：`config/business-rules.yaml`（stopwords / domains / objects；**只被 `analyze --stage understanding` 读取**，关键词与 stopwords 冲突直接报错）。
 - 过程信号规则：`config/process-rules.yaml`（transaction_identifiers / transaction_measures / event_time / status；**只被 `analyze --stage understanding` 读取**，段缺失、空列表、跨段冲突直接报错，配置里不得出现业务过程命名）。
@@ -514,8 +516,9 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 | --- | --- |
 | Workspace | 3（dme_cdm / dme_ods / dme_ads） |
 | DataWorks File（快照总量） | 4651（TASK 2899、SQL 格式 2821） |
-| **参与分析的 File（NodeId 有效）** | **1449**（排除 3202） |
-| 读取到内容并解析的 File | 559 |
+| **参与分析的 File（overall_eligible，Node ID 有效）** | **1379**（排除 3272） |
+| **SQL 分析输入（sql_eligible）** | **541**（身份 + 任务 + 类型 + 内容四组规则全部通过） |
+| 读取到内容并解析的 File | 541 |
 | MaxCompute Table / Column | 3719 / 102603 |
 | SQL 语句 | 1963（success 100%） |
 | 表引用 / 去重血缘边 | 1273 / 3442（跨 Workspace 1560） |
@@ -547,7 +550,7 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 
 ## 8. 局限与风险（必须知道的边界）
 
-1. **分析覆盖率**：4651 个 File 中只有 1449 个（31%）有有效 NodeId 进入 SQL/血缘分析，559 个真正解析到内容。血缘只覆盖"已提交节点"，**不覆盖草稿/无节点文件**——引用现状时必须带上这个口径。
+1. **分析覆盖率**：4651 个 File 中只有 1379 个（29.6%）Node ID 有效，其中 541 个（11.6%）通过全部规则进入 SQL/血缘分析并解析到内容（口径见 `config/analysis-scope-rules.yaml`）。血缘只覆盖"已提交节点"，**不覆盖草稿/无节点文件**——引用现状时必须带上这个口径。
 2. **只有表级血缘**：无列级血缘、无调度任务级依赖、无字段级加工逻辑。
 3. **无行级数据**：Profiling 是 `metadata_only`，无法支撑唯一性/分布/质量判断。
 4. **解析能力**：ODPS 方言基于 Hive 注册，未覆盖的语法会走 unsupported/fallback；当前 unsupported=0 属健康状态，但新增 SQL 写法需回归 `test_golden_*`。

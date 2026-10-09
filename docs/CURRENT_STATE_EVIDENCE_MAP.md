@@ -175,9 +175,9 @@ M2 的共同性质：**只描述技术事实与技术推导，不含业务判断
 - `source/maxcompute/workspaces/<id>/tables-index.json`
 - `source/maxcompute/workspaces/<id>/tables/<table>.json`（与 index 冲突时 raw 优先）
 
-**Processing**：建立统一资产清单与**稳定身份**——`Workspace = workspace_id`、`File = workspace_id + file_id`、`Table = project.table`（`table_key`，不含 schema）。**不做层级判定**（归 M2.2），**不读 SQL 内容**（归 M2.3）。
+**Processing**：建立统一资产清单与**稳定身份**——`Workspace = workspace_id`、`File = workspace_id + file_id`、`Table = project.table`（`table_key`，不含 schema）。**不做层级判定**（归 M2.2），**不读 SQL 内容做解析**（归 M2.3）；同时按 `config/analysis-scope-rules.yaml` 对全量 File 做一次规则分类，产出整体分析资格、SQL 分析资格与排除 / 待确认清单。
 
-**Outputs**（本轮实测 5 个文件）
+**Outputs**（本轮实测 7 个文件）
 
 | 文件 | 内容 | 数量 |
 | --- | --- | --- |
@@ -185,7 +185,9 @@ M2 的共同性质：**只描述技术事实与技术推导，不含业务判断
 | `analysis/inventory/files.json` | `file_id` / `node_id` / `file_name` / `file_type` / `use_type` / `task_type` / `content_file` / `raw_file` | 4651 |
 | `analysis/inventory/tables.json` | `table_key` / `comment` / `column_count` / `partition_count` / `size` / `lifecycle` / `is_virtual_view` / `creation_time` / `last_modified_time` / `raw_file` | **3719** |
 | `analysis/inventory/columns.json` | `table_key` / `column_name` / `data_type` / `comment` / `is_partition` / `ordinal` | **102603** |
-| `analysis/inventory/summary.md` | 本阶段报告 | — |
+| `analysis/inventory/excluded-tasks.json` | 明确排除出正式业务分析的 File（身份不满足 / 非正式任务强证据），含命中规则与原因代码 | 3272 |
+| `analysis/inventory/review-tasks.json` | 非正式任务弱证据的待确认 File | 70 |
+| `analysis/inventory/summary.md` | 本阶段报告（含第 11 节规则分类统计） | — |
 
 **Meaning**：回答「**当前平台到底有哪些数据资产**」——表、字段、分区、表元数据、Workspace 与 MaxCompute project 对应关系。`table_key` 是**全链路主键**：Layer / SQL / Lineage / Profiling / M3 / M3.6 每条记录都用它对齐。
 
@@ -200,7 +202,7 @@ M2 的共同性质：**只描述技术事实与技术推导，不含业务判断
 - 只覆盖被采集的 Workspace；未配置 / 采集失败的资产不在清单里。
 - 层级、业务域、粒度**都不是** Inventory 的产出。
 
-**Used By**：M2.2 做层级规则匹配；M2.3 过滤 NodeId 有效的可分析文件；M2.4 补全 project 并判定 `in_inventory`；M2.5 直接以它为输入；M3 → M3.6 全部以 `tables.json` / `columns.json` 为字段与身份来源。
+**Used By**：M2.2 做层级规则匹配；M2.3 消费统一资格判定给出的 SQL 输入；M2.4 补全 project 并判定 `in_inventory`；M2.5 直接以它为输入；M3 → M3.6 全部以 `tables.json` / `columns.json` 为字段与身份来源。
 
 ```text
 Input:
@@ -278,7 +280,7 @@ Does Not Prove:
 
 ### 4.3 M2.3 SQL
 
-**Input**：`analysis/inventory/files.json` 中 NodeId 有效（`is_analysis_eligible`）的 File 及其 `content_file` 原文。
+**Input**：`analysis/inventory/files.json` 中被统一资格判定为 `sql_eligible` 的 File（`FileScope.sql_eligible_files`）及其 `content_file` 原文；节点身份、内容状态与格式适用性都在 Inventory 的规则分类中一次判定。
 
 **Processing**（`analysis/evidence/sql/`）：
 
@@ -317,7 +319,7 @@ Does Not Prove:
 
 ```text
 Input:
-analysis/inventory/files.json（NodeId 有效）+ source/ 中的 SQL 原文
+analysis/inventory/files.json（sql_eligible）+ source/ 中的 SQL 原文
 
 Produces:
 analysis/evidence/sql/{statements,table-references,parse-errors}.json

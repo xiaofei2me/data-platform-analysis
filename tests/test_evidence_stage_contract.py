@@ -79,6 +79,8 @@ INVENTORY_FILES = (
     "files.json",
     "tables.json",
     "columns.json",
+    "excluded-tasks.json",
+    "review-tasks.json",
     "summary.md",
 )
 

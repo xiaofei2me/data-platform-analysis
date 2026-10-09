@@ -17,6 +17,7 @@ source/  (只读 Snapshot，不在本包内生成)
 analysis/
 ├── inventory/                      # Stage 01 · Inventory（机器事实）
 │   ├── workspaces.json  files.json  tables.json  columns.json
+│   ├── excluded-tasks.json  review-tasks.json           # 规则分类产物（非删除清单）
 │   └── summary.md
 ├── evidence/                       # Stage 02–05 · Evidence（技术证据）
 │   ├── layer/       assessments.json + summary.md     # 02 Layer Assessment
@@ -53,9 +54,9 @@ analysis/
 | --- | --- |
 | `pipeline.py` | `AnalysisPipeline` 编排四阶段：`run_stage_inventory` → `run_stage_evidence` → `run_stage_understanding` → `run_stage_review`（清场 → Inventory → Layer → SQL → Lineage → Profiling → 业务/模型候选 → 评审 → 账本 → 报告）。`run()` 与 `run_stage_evidence()` 共用 `_write_reports()`，保证 Evidence 报告契约一致 |
 | `snapshot.py` | `SnapshotReader` 只读访问 `source/`；raw JSON 是 Source of Truth，index 只用于导航 |
-| `inventory/` | Stage 01：Workspace / File / Table / Column 清单 |
+| `inventory/` | Stage 01：Workspace / File / Table / Column 清单；`inventory/scope.py` 按 `config/analysis-scope-rules.yaml` 对全量 File 做一次规则分类（节点身份 / 内容状态 / 分析资格 / 非正式任务），产出排除与待确认清单及 Summary 统计 |
 | `evidence/layer/` | Stage 02：按 `config/layer-rules.yaml` 判定 `candidate_layer`（唯一层级来源，见 ADR-0003） |
-| `evidence/sql/` | Stage 03：语句切分 → 归一化 → AST 解析（`fallback.py` CTAS token scanner 承接 unsupported） |
+| `evidence/sql/` | Stage 03：语句切分 → 归一化 → AST 解析（`fallback.py` CTAS token scanner 承接 unsupported）；输入由 `FileScope.sql_eligible_files()` 统一给出，不重复过滤 |
 | `evidence/lineage/` | Stage 04：表引用归并与血缘边；层级标注直接引用 Stage 02 结果 |
 | `evidence/profiling/` | Stage 05：元数据画像，`profile_status` 恒为 `metadata_only`，不伪造行级统计 |
 | `understanding/business/` | Stage 06–10：业务理解（quality / objects / processes / grain） |
@@ -68,8 +69,8 @@ analysis/
 ## 3. 入口与重跑顺序
 
 | `analyze` | Stage 01–14 | 先清空 `inventory/`、`evidence/`、`understanding/`、`review/` 与根 `summary.md`（含旧布局残留）再全量重建 |
-| `analyze --stage inventory` | Stage 01 | **同样先清空上述全部目录**，然后只重建 `inventory/`（5 个）+ 根 `summary.md`；跑完后 `evidence/`、`understanding/`、`review/` 已被删除，支持 `--workspace` |
-| `analyze --stage evidence` | Stage 02–05 | **同样先清空上述全部目录**，然后重建 `inventory/` + `evidence/` + 根 `summary.md`（共 18 个文件，与全量 `analyze` 的对应产物逐字节一致）；跑完后 `understanding/`、`review/` 已被删除；不支持 `--workspace` |
+| `analyze --stage inventory` | Stage 01 | **同样先清空上述全部目录**，然后只重建 `inventory/`（7 个）+ 根 `summary.md`；跑完后 `evidence/`、`understanding/`、`review/` 已被删除，支持 `--workspace` |
+| `analyze --stage evidence` | Stage 02–05 | **同样先清空上述全部目录**，然后重建 `inventory/` + `evidence/` + 根 `summary.md`（共 20 个文件，与全量 `analyze` 的对应产物逐字节一致）；跑完后 `understanding/`、`review/` 已被删除；不支持 `--workspace` |
 | `analyze --stage understanding` | Stage 06–11 | **不清场**，只重建 `understanding/`；`evidence/layer/assessments.json` 缺失时先自动补跑 `run_stage_evidence()`（含清场），不支持 `--workspace` |
 | `analyze --stage review` | Stage 12–14 | **不清场**，重建 `understanding/`（review 依赖它，总是先重跑）与 `review/`，读两份 checklist 的 `human_*` 列并保留，不写根 `summary.md`；evidence 缺失时同上自动补跑，不支持 `--workspace` |
 
@@ -83,7 +84,7 @@ analyze
 
 ## 4. 错误模型（`errors.py`）
 
-- **Fatal Error**：`source/` 不存在、无法确定 Workspace identity、`--workspace` 不在 Snapshot 中、Layer 规则配置非法 → 立即非零退出。
+- **Fatal Error**：`source/` 不存在、无法确定 Workspace identity、`--workspace` 不在 Snapshot 中、Layer 规则配置非法、Analysis Scope Rules 配置非法（缺失 / 字段非法 / 必需规则组为空）→ 立即非零退出，不回退默认规则。
 - **Recoverable Error**：单个 index/raw 损坏、单条 SQL 解析失败、content 缺失、单表 metadata 缺失 → 记录后继续，最终写入 **`analysis/evidence/errors.json`**（常量 `ERROR_LEDGER_RELATIVE_PATH`）。
   - 账本 schema 固定为 `{"count", "errors"}`，`stage ∈ {inventory, sql, lineage, profiling}`，一次运行一份，是跨 Stage 的技术运行错误总账。
   - SQL 解析失败**同时**写入 `analysis/evidence/sql/parse-errors.json`：那是 SQL 专属的解析产物（无 `stage` 字段），与账本不合并。

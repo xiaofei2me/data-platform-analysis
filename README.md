@@ -199,7 +199,7 @@ Analysis 输出目录（`ANALYSIS_DIR` 默认为 `analysis/`，gitignore；完�
 analysis/
 ├── summary.md                     # 根入口报告（12 节）
 ├── inventory/                     # Inventory · Stage 01
-│   └── workspaces / files / tables / columns.json + summary.md
+│   └── workspaces / files / tables / columns / excluded-tasks / review-tasks.json + summary.md
 ├── evidence/                      # Evidence · Stage 02–05
 │   ├── errors.json                # 正式 Error Ledger（跨阶段错误账本）
 │   ├── layer/                     #   02 层级判定
@@ -244,7 +244,7 @@ data-platform-analysis/
 ├── README.md
 ├── .env.example
 ├── .gitignore
-├── config/                      # Analysis 规则配置（layer-rules / business-rules / process-rules）
+├── config/                      # Analysis 规则配置（analysis-scope-rules / layer-rules / business-rules / process-rules）
 ├── CONTEXT.md                   # 领域词汇与 ADR 索引
 │
 ├── src/

@@ -146,13 +146,13 @@ Stage 号与 Milestone 的完整映射（含每阶段的代码模块、产物目
 | 1 | 00 | M1 DataWorks 采集 | `dataworks`（或 `export`） | `source/dataworks/workspaces/<id>/**`、`source/dataworks/workspaces/<id>/files-index.json`、`source/dataworks/workspaces-index.json` | — | 机器事实（Snapshot） |
 | 2 | 00 | M1 MaxCompute 采集 | `maxcompute`（或 `export`） | `source/maxcompute/workspaces/<id>/**`、`source/maxcompute/workspaces/<id>/tables-index.json`；全量 `export` 另写 `source/manifest.json` | — | 机器事实（Snapshot）+ 辅助（`manifest.json`） |
 | 3 | 00 | M1 Snapshot Summary | `summary` | `source/Summary.md` | 1 | 辅助（生成报告，含时间戳） |
-| 4 | 01–14 | M2–M3.6 完整 Analysis Chain | `analyze` | `inventory/{workspaces,files,tables,columns}.json`、`inventory/summary.md`、`evidence/{layer,sql,lineage,profiling}/*`、`evidence/errors.json`、`understanding/business/*`、`understanding/modeling/*`、`review/*`、`summary.md` | **59** | 机器事实（inventory / sql / profiling）+ 规则推导（layer / lineage）+ 机器候选（business / modeling）+ 辅助（summary / errors） |
-| 5 | 01 | Inventory 单独重跑 | `analyze --stage inventory` | `inventory/{workspaces,files,tables,columns}.json`、`inventory/summary.md` | **5** | 机器事实（inventory） |
-| 6 | 02–05 | Evidence 单独重跑 | `analyze --stage evidence` | `evidence/{layer,sql,lineage,profiling}/*` + `errors.json` | **18** | 机器事实（sql / profiling）+ 规则推导（layer / lineage） |
+| 4 | 01–14 | M2–M3.6 完整 Analysis Chain | `analyze` | `inventory/{workspaces,files,tables,columns,excluded-tasks,review-tasks}.json`、`inventory/summary.md`、`evidence/{layer,sql,lineage,profiling}/*`、`evidence/errors.json`、`understanding/business/*`、`understanding/modeling/*`、`review/*`、`summary.md` | **61** | 机器事实（inventory / sql / profiling）+ 规则推导（layer / lineage）+ 机器候选（business / modeling）+ 辅助（summary / errors） |
+| 5 | 01 | Inventory 单独重跑 | `analyze --stage inventory` | `inventory/{workspaces,files,tables,columns,excluded-tasks,review-tasks}.json`、`inventory/summary.md` | **7** | 机器事实（inventory） |
+| 6 | 02–05 | Evidence 单独重跑 | `analyze --stage evidence` | `evidence/{layer,sql,lineage,profiling}/*` + `errors.json` | **20** | 机器事实（sql / profiling）+ 规则推导（layer / lineage） |
 | 7 | 06–11 | Understanding 单独重跑 | `analyze --stage understanding` | `understanding/business/*` + `understanding/modeling/*` | **23** | 机器候选（business / modeling）+ 辅助 |
 | 8 | 12–14 | Review 单独重跑 | `analyze --stage review` | `review/*`（同时重跑 Stage 06–11 刷新 `understanding/**`，不写根 `summary.md`） | **13** | 机器候选（finding / problem）+ 证据 + 辅助 |
 
-`59 = 5 + 18 + 23 + 13`，即 `analysis/` 当前的 59 个产物文件。
+`61 = 7 + 18 + 23 + 13`，即 `analysis/` 当前的 61 个产物文件。
 
 ### Evidence Stage Contract
 
@@ -160,11 +160,11 @@ Stage 号与 Milestone 的完整映射（含每阶段的代码模块、产物目
 
 | 检查 | 契约 |
 | --- | --- |
-| 产物范围 | 同一个 `ANALYSIS_DIR` 下，`evidence/**`（12 个文件）、`inventory/**`（5 个文件）、`summary.md` 与全量 `analyze` 的对应产物**逐文件字节一致**（18/18 相同） |
+| 产物范围 | 同一个 `ANALYSIS_DIR` 下，`evidence/**`（12 个文件）、`inventory/**`（7 个文件）、`summary.md` 与全量 `analyze` 的对应产物**逐文件字节一致**（20/20 相同） |
 | Evidence 报告 | `evidence/{layer,lineage,profiling}/summary.md` 是 Evidence 正式产物，由 `run_stage_evidence()` 与 `run()` 共用的 `_write_reports()` 写出 |
 | 数据来源 | 报告用 Evidence stage 刚算完的 Layer / SQL / Lineage / Profiling 结果渲染；**不制造空 `LineageResult`，不重复计算任何 M2 输入** |
 | 阶段边界 | 只产出 `inventory/` + `evidence/` + `summary.md`；**不产出** `understanding/**`、`review/**` |
-| 阶段链 | `--stage inventory → evidence → understanding → review` 四条命令跑完后，`analysis/` 与全量 `analyze` **59/59 SHA256 完全一致** |
+| 阶段链 | `--stage inventory → evidence → understanding → review` 四条命令跑完后，`analysis/` 与全量 `analyze` **61/61 SHA256 完全一致** |
 
 回归测试：`tests/test_evidence_stage_contract.py`。
 
@@ -172,9 +172,9 @@ Stage 号与 Milestone 的完整映射（含每阶段的代码模块、产物目
 
 | 命令 | 必需输入 | 可选输入（重跑时带回人工状态） |
 | --- | --- | --- |
-| `analyze` | `source/**` + `config/{layer-rules,business-rules,process-rules}.yaml` | — |
-| `analyze --stage inventory` | `source/**` + `config/layer-rules.yaml`（清场重建，不读已有 `analysis/`） | — |
-| `analyze --stage evidence` | `source/**` + `config/layer-rules.yaml`（清场后自行重建 `inventory/`，不读已有 `inventory/`） | — |
+| `analyze` | `source/**` + `config/{analysis-scope-rules,layer-rules,business-rules,process-rules}.yaml` | — |
+| `analyze --stage inventory` | `source/**` + `config/{layer-rules,analysis-scope-rules}.yaml`（清场重建，不读已有 `analysis/`） | — |
+| `analyze --stage evidence` | `source/**` + `config/{layer-rules,analysis-scope-rules}.yaml`（清场后自行重建 `inventory/`，不读已有 `inventory/`） | — |
 | `analyze --stage understanding` | `inventory/{tables,columns}.json` + `evidence/{sql/statements,sql/table-references,lineage/table-lineage,lineage/core-table-candidates,layer/assessments}.json` + `config/{business-rules,process-rules}.yaml`；`evidence/layer/assessments.json` 缺失时流水线先自动补跑 evidence（此时改需 `source/**` + `config/layer-rules.yaml`） | `understanding/business/{process-review-checklist,grain-review-checklist}.md`、`understanding/modeling/model-review-checklist.md` |
 | `analyze --stage review` | 上一行的全部输入 + `understanding/modeling/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables}.json`（共 13 个必需 JSON，定义见 `review/findings.py::INPUT_FILES`） | `review/{current-state-review-checklist.md,current-state-problem-review-checklist.md}` |
 
@@ -190,7 +190,7 @@ uv run data-platform-analysis config        # 核对生效配置（不含密钥�
 uv run data-platform-analysis export        # 或分开跑 dataworks / maxcompute
 uv run data-platform-analysis summary       # 可选：重生成 source/Summary.md
 
-# 2) M2–M3.6 完整 Analysis Chain（59 个产物）
+# 2) M2–M3.6 完整 Analysis Chain（61 个产物）
 uv run data-platform-analysis analyze
 ```
 
@@ -204,9 +204,9 @@ uv run data-platform-analysis analyze
 
 | 命令 | 是否清场 | 实际覆盖 |
 | --- | --- | --- |
-| `analyze` | 清空 `inventory/ evidence/ understanding/ review/ summary.md` | 全部 59 个产物 |
-| `analyze --stage inventory` | **同样清空**（连 `understanding/`、`review/` 一起删） | `inventory/**`（5）+ 根 `summary.md` |
-| `analyze --stage evidence` | **同样清空**（连 `understanding/`、`review/` 一起删） | `inventory/**` + `evidence/**` + 根 `summary.md`（18） |
+| `analyze` | 清空 `inventory/ evidence/ understanding/ review/ summary.md` | 全部 61 个产物 |
+| `analyze --stage inventory` | **同样清空**（连 `understanding/`、`review/` 一起删） | `inventory/**`（7）+ 根 `summary.md` |
+| `analyze --stage evidence` | **同样清空**（连 `understanding/`、`review/` 一起删） | `inventory/**` + `evidence/**` + 根 `summary.md`（20） |
 | `analyze --stage understanding` | 不清场 | `understanding/**` |
 | `analyze --stage review` | 不清场 | `understanding/**`（总是先重跑一遍）+ `review/**`，**不写**根 `summary.md` |
 
@@ -245,13 +245,13 @@ uv run data-platform-analysis analyze
 | --- | --- |
 | 5 个分析子命令 `--help` | 全部 exit 0；参数与本文件「子命令总览」一致（`analyze --stage inventory/evidence/understanding/review`：无参数；`dataworks` / `maxcompute` / `export`：`--workspace` `--limit`） |
 | `config` | exit 0，打印非敏感配置，不发起采集 |
-| Clean-room 全链（`ANALYSIS_DIR=<临时目录>`，4 条分析命令） | 全部 exit 0，产出 59 个文件；与生产 `analysis/` 逐字节一致（唯一差异是报告里「输入」一行的路径写法，归一化后 **59/59 相同**） |
-| 生产 `analysis/` 原地重跑全链 | exit 0，**59/59 SHA256 与重跑前完全一致** |
-| 阶段清场范围 | `analyze` / `--stage inventory` / `--stage evidence` 先执行 `_reset_outputs()` 清空 `inventory/` `evidence/` `understanding/` `review/` 与根 `summary.md`：生产 `analysis/` 的副本跑 `--stage inventory` 只剩 **6** 个文件、跑 `--stage evidence` 只剩 **18** 个；`--stage understanding` / `--stage review` **不清场**，副本 59 个文件全部保留（根 `summary.md` 哈希不变） |
-| 上游缺失（`ANALYSIS_DIR` 指向空目录，`source/` 正常） | 4 条阶段命令**全部 exit 0 并补齐上游**：`--stage inventory` → 6 个文件、`--stage evidence` → 18 个、`--stage understanding` → 先打印 `Evidence 阶段未完成，执行 run_stage_evidence` 再产出 49 个、`--stage review` → 同样补跑后产出 59 个；只有阶段内模块缺必需输入时才报 `<上游> 产物缺失，无法执行 <阶段>` 并 exit 1 |
-| `analyze --stage inventory --workspace 466338` | exit 0，临时目录仅 5 个 Inventory 产物 + 根 `summary.md`（无 `evidence/`、`understanding/`、`review/`），生产 `analysis/` 未受影响 |
+| Clean-room 全链（`ANALYSIS_DIR=<临时目录>`，4 条分析命令） | 全部 exit 0，产出 61 个文件；与生产 `analysis/` 逐字节一致（唯一差异是报告里「输入」一行的路径写法，归一化后 **61/61 相同**） |
+| 生产 `analysis/` 原地重跑全链 | exit 0，**61/61 SHA256 与重跑前完全一致** |
+| 阶段清场范围 | `analyze` / `--stage inventory` / `--stage evidence` 先执行 `_reset_outputs()` 清空 `inventory/` `evidence/` `understanding/` `review/` 与根 `summary.md`：生产 `analysis/` 的副本跑 `--stage inventory` 只剩 **8** 个文件、跑 `--stage evidence` 只剩 **20** 个；`--stage understanding` / `--stage review` **不清场**，副本 61 个文件全部保留（根 `summary.md` 哈希不变） |
+| 上游缺失（`ANALYSIS_DIR` 指向空目录，`source/` 正常） | 4 条阶段命令**全部 exit 0 并补齐上游**：`--stage inventory` → 8 个文件、`--stage evidence` → 20 个、`--stage understanding` → 先打印 `Evidence 阶段未完成，执行 run_stage_evidence` 再产出 52 个、`--stage review` → 同样补跑后产出 61 个；只有阶段内模块缺必需输入时才报 `<上游> 产物缺失，无法执行 <阶段>` 并 exit 1 |
+| `analyze --stage inventory --workspace 466338` | exit 0，临时目录仅 7 个 Inventory 产物 + 根 `summary.md`（无 `evidence/`、`understanding/`、`review/`），生产 `analysis/` 未受影响 |
 | `summary` | exit 0，仅改写 `source/Summary.md`；其余 12998 个 Snapshot 文件哈希不变。注意：该文件含「Summary 生成时间」时间戳，**连续两次运行哈希不同**，属预期非确定性 |
-| `uv run pytest` | 398 passed |
+| `uv run pytest` | 471 passed |
 | `uv run ruff check src tests` / `uv run ruff format --check src tests` / `uv run -m mypy` | 全绿（0 errors） |
 | `cd workbench && npm test` | 38 passed · 10 failed（golden 期望值早于当前 source 快照，待刷新） |
 | `dataworks` / `maxcompute` / `export` | **未实际执行**（需阿里云凭证且会改写 `source/`）；仅验证 `--help` exit 0 与参数签名 |

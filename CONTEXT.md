@@ -52,6 +52,10 @@ _Avoid_: 自动裁决、审核通过
 表的 `current_role` 无法判定的合法结果，分 `NO_ANCHOR`（无锚点无血缘）与 `NO_EVIDENCE`（血缘证据不足）两种解释；证据不足时 UNKNOWN 即正确答案。
 _Avoid_: 坏模型、无效模型、待修复
 
+**Analysis Scope Rules（分析范围规则）**:
+`config/analysis-scope-rules.yaml` 声明、由 M2.1 Inventory 对全量 File 执行一次的分类规则，产出 `overall_eligible`（Node ID 有效）与 `sql_eligible`（M2.3 输入）两个口径，以及 `excluded-tasks.json` / `review-tasks.json` 两份清单；被排除的对象仍完整保留在 `inventory/files.json`。
+_Avoid_: 删除清单、清理脚本、失效资产（分类结果不授权任何删除或修改操作）
+
 **Overlap / Duplication（重叠 / 重复）**:
 Overlap 只表示字段与结构重合；Duplication 还要求共享 process 与共享 grain 签名。二者是两类问题，重合度不是删除依据。
 _Avoid_: 把 overlap 说成重复表、可删除表

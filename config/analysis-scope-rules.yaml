@@ -1,0 +1,290 @@
+# M2.1 Inventory 分析范围规则配置（Analysis Scope Rules）。
+#
+# 用途：
+#   本文件定义 Inventory 内部的规则化分类，供 M2.1 对每个 DataWorks File 计算
+#   资产身份状态、内容状态、分析资格与非正式任务判定，并产出
+#   inventory/excluded-tasks.json、inventory/review-tasks.json 与 Summary 统计。
+#
+# 边界（重要）：
+# 1. 本文件是「范围判定规则」，不是删除清单：命中任何规则都只记录与分类，
+#    不调用 DataWorks 删除 / 禁用 / 修改接口，也不删除 Snapshot 或 Inventory 记录。
+# 2. 三个概念必须分开：
+#    - 资产有效性：对象是否是已知且可追溯的资产（Inventory 全量登记）；
+#    - 分析资格：对象是否适合某项具体分析（overall_eligible / sql_eligible）；
+#    - 清理候选资格：是否有充分证据值得后续人工核查（cleanup_candidate），
+#      比「排除分析」更严格，且永远不等于「可以删除」。
+# 3. 排除分类 ≠ 无效资产：NodeId 缺失、虚拟节点无内容、测试脚本
+#    都是分类结果，对应对象仍完整保留在 inventory/files.json。
+# 4. 未知类型（category / task_type / content_format = UNKNOWN）保持 unknown，
+#    不猜测内容期望，也不猜测是否适用 SQL 分析。
+# 5. 匹配一律忽略大小写；命名 token 按非字母数字字符切分后整词匹配，
+#    不做子串匹配，避免 test 命中 contest 这类误伤。
+#
+# 约束：
+# - 只被 M2.1 Inventory 读取；Evidence / Understanding / Review 不读取本文件。
+# - 配置缺失或非法时 analyze 直接以退出码 1 失败，不回退默认值，不静默忽略。
+# - 规则 ID 重复、字段缺失、条件 kind 不认识、必需规则组为空 → 视为配置错误。
+# - 修改本文件后重新执行 `analyze`（或 `analyze --stage inventory`）即可重算分类结果。
+#   代码本身不硬编码文件名关键词与正则；节点类型语义来自 dataworks_types 注册表。
+
+version: "1.0"
+
+# ============================================================
+# 内容期望（content_format → 该类型是否预期需要 Content）
+# ============================================================
+# 来源：dataworks_types.FILE_TYPE_REGISTRY 中已登记并核实的 content_format。
+#   not_required：虚拟节点 / 控制流节点等，Content 为空是正常形态；
+#   required    ：执行该节点需要脚本内容（SQL / Shell / Python / JSON 等）；
+#   unknown     ：官方与本地证据都不足以确认 Content 形态，不猜测。
+content_expectations:
+  NONE: not_required
+  SQL: required
+  SHELL: required
+  PYTHON: required
+  JSON: required
+  BINARY: required
+  UNKNOWN: unknown
+
+# 适用 SQL 分析的 content_format。
+# 只有这些格式的文件才可能进入 SQL Analysis；
+# 其余格式（NONE / JSON / SHELL / PYTHON / BINARY / UNKNOWN）不适用 SQL 分析，
+# 但不代表不适用于任务依赖、工作流或血缘证据分析。
+sql_capable_content_formats:
+  - SQL
+
+# ============================================================
+# 非正式任务命名规则（测试 / 临时 / 演示 / 调试）
+# ============================================================
+# strong：整名匹配，证据充分 → 直接排除出正式业务分析；
+#         只有「名称整体就是一个 informal token」（含 token + 纯数字后缀，
+#         例如 test / Test / test_ / test111）才算，避免误伤业务任务名。
+# weak  ：token 作为独立词出现在名称中（例如 imp_s_ka_data_stock_test），
+#         证据不足 → 只标记待确认（review），不排除分析、不算清理候选。
+# 注意：弱证据命中的对象不会被自动判定无效，也不会进入清理候选。
+informal_task_names:
+  tokens:
+    - test
+    - tmp
+    - temp
+    - demo
+    - debug
+
+# ============================================================
+# 判定规则
+# ============================================================
+# 每条规则字段：
+#   id          稳定规则 ID（重复即配置错误）
+#   description 规则说明
+#   type        规则类型：node_identity / informal_task / content_state / sql_eligibility
+#   scope       适用对象范围（当前固定 all_files = Inventory 登记的全部 DataWorks File）
+#   enabled     启用状态
+#   condition   判定条件（kind 由代码解释，未知 kind 视为配置错误）
+#   result      判定结果或处理动作（classification / reason_code / 资格开关 / 复核与清理策略）
+#
+# 处理顺序（确定性，同一文件不会得出互相矛盾的结论）：
+#   1. node_identity   → 资产身份状态
+#   2. informal_task   → 非正式任务分类（strong 排除 / weak 待确认）
+#   3. content_state   → 内容状态与类型期望的组合判定
+#   4. sql_eligibility → 最终 SQL 分析资格与首要原因
+rules:
+  # ---------- 1. NodeId 与节点身份 ----------
+  - id: NODE_ID_MISSING
+    description: NodeId 缺失（None 或空白字符串），无法定位已提交的调度节点。
+    type: node_identity
+    scope: all_files
+    enabled: true
+    condition:
+      kind: node_id_missing
+    result:
+      classification: excluded_identity
+      reason_code: NODE_ID_MISSING
+      overall_eligible: false
+      review_required: false
+
+  - id: NODE_ID_INVALID
+    description: NodeId 格式无效（非空白但不是正整数），无法确认节点身份。
+    type: node_identity
+    scope: all_files
+    enabled: true
+    condition:
+      kind: node_id_invalid
+    result:
+      classification: excluded_identity
+      reason_code: NODE_ID_INVALID
+      overall_eligible: false
+      review_required: false
+
+  - id: NODE_ID_VALID
+    description: NodeId 有效（正整数），节点身份成立。
+    type: node_identity
+    scope: all_files
+    enabled: true
+    condition:
+      kind: node_id_valid
+    result:
+      classification: identity_confirmed
+      reason_code: NODE_ID_VALID
+      overall_eligible: true
+      review_required: false
+
+  # ---------- 2. 测试、临时及演示任务 ----------
+  - id: INFORMAL_TASK_STRONG
+    description: 文件名整体命中 informal token，判定为明确的测试 / 临时 / 演示任务。
+    type: informal_task
+    scope: all_files
+    enabled: true
+    condition:
+      kind: informal_name_strong
+    result:
+      classification: excluded_informal
+      reason_code: INFORMAL_TASK_STRONG
+      overall_eligible: false
+      review_required: false
+      # 清理候选需要「非正式命名 + 未提交节点」两条独立证据，
+      # 仍只是待人工核查的候选，不构成删除指令。
+      cleanup_candidate: when_node_id_missing
+
+  - id: INFORMAL_TASK_WEAK
+    description: 文件名 token 命中 informal 词但名称仍含业务结构，标记为待确认。
+    type: informal_task
+    scope: all_files
+    enabled: true
+    condition:
+      kind: informal_name_weak
+    result:
+      classification: review
+      reason_code: INFORMAL_TASK_WEAK
+      overall_eligible: true
+      review_required: true
+      cleanup_candidate: never
+
+  # ---------- 3. 内容状态 ----------
+  - id: CONTENT_PRESENT
+    description: Content 在 Snapshot 中可读且非空白。
+    type: content_state
+    scope: all_files
+    enabled: true
+    condition:
+      kind: content_state
+      states:
+        - present
+    result:
+      classification: content_ok
+      reason_code: CONTENT_PRESENT
+      review_required: false
+
+  - id: CONTENT_GAP_NOT_REQUIRED
+    description: Content 缺失，但该节点类型不要求 Content（虚拟 / 控制流节点属正常形态）。
+    type: content_state
+    scope: all_files
+    enabled: true
+    condition:
+      kind: content_gap
+      expectations:
+        - not_required
+    result:
+      classification: content_allowed_empty
+      reason_code: CONTENT_GAP_ALLOWED
+      review_required: false
+
+  - id: CONTENT_GAP_REQUIRED
+    description: Content 缺失，但该节点类型预期需要 Content，记录内容缺失原因。
+    type: content_state
+    scope: all_files
+    enabled: true
+    condition:
+      kind: content_gap
+      expectations:
+        - required
+    result:
+      classification: content_missing
+      reason_code: CONTENT_GAP_REQUIRED
+      review_required: false
+
+  - id: CONTENT_EXPECTATION_UNKNOWN
+    description: Content 缺失且节点类型的内容期望未知，保持 unknown，不猜测。
+    type: content_state
+    scope: all_files
+    enabled: true
+    condition:
+      kind: content_gap
+      expectations:
+        - unknown
+    result:
+      classification: content_expectation_unknown
+      reason_code: CONTENT_EXPECTATION_UNKNOWN
+      review_required: false
+
+  # ---------- 4. SQL 分析资格 ----------
+  - id: SQL_BLOCKED_BY_IDENTITY
+    description: 节点身份不成立，不适合作为 SQL 分析输入。
+    type: sql_eligibility
+    scope: all_files
+    enabled: true
+    condition:
+      kind: sql_blocked
+      by:
+        - identity
+    result:
+      classification: not_sql_eligible
+      reason_code: NODE_ID_MISSING
+      sql_eligible: false
+      review_required: false
+
+  - id: SQL_BLOCKED_BY_INFORMAL
+    description: 明确的非正式任务不进入正式业务 SQL 分析。
+    type: sql_eligibility
+    scope: all_files
+    enabled: true
+    condition:
+      kind: sql_blocked
+      by:
+        - informal
+    result:
+      classification: not_sql_eligible
+      reason_code: INFORMAL_TASK_STRONG
+      sql_eligible: false
+      review_required: false
+
+  - id: SQL_BLOCKED_BY_TYPE
+    description: 节点类型 / content_format 不适用 SQL 分析（不代表不适用于其他分析）。
+    type: sql_eligibility
+    scope: all_files
+    enabled: true
+    condition:
+      kind: sql_blocked
+      by:
+        - node_type
+    result:
+      classification: not_sql_eligible
+      reason_code: SQL_FORMAT_NOT_APPLICABLE
+      sql_eligible: false
+      review_required: false
+
+  - id: SQL_BLOCKED_BY_CONTENT
+    description: 格式适用 SQL，但 Content 当前不可用，无法作为 SQL 分析输入。
+    type: sql_eligibility
+    scope: all_files
+    enabled: true
+    condition:
+      kind: sql_blocked
+      by:
+        - content
+    result:
+      classification: not_sql_eligible
+      reason_code: SQL_CONTENT_UNAVAILABLE
+      sql_eligible: false
+      review_required: false
+
+  - id: SQL_ANALYSIS_ELIGIBLE
+    description: 节点身份有效、非非正式任务、content_format 适用 SQL 且 Content 可用。
+    type: sql_eligibility
+    scope: all_files
+    enabled: true
+    condition:
+      kind: sql_eligible
+    result:
+      classification: sql_eligible
+      reason_code: SQL_ANALYSIS_ELIGIBLE
+      sql_eligible: true
+      review_required: false

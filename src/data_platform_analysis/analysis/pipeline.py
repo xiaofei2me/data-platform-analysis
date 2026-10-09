@@ -6,19 +6,24 @@
 执行顺序：
 
     1. 读取 Workspace identity（失败即 Fatal Error）
-    2. M2.1 Inventory（Snapshot 全量 File，不做 NodeId 过滤）
+    2. M2.1 Inventory（Snapshot 全量 File，不做任何过滤；同时执行
+       Analysis Scope Rules 分类，产出 excluded / review 清单与统计）
     3. M2.2 Layer Assessment（依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
        产出唯一层级判定 candidate_layer，供 Lineage 引用）
-    4. M2.3 SQL Analysis（只接受 NodeId 有效的 File）
+    4. M2.3 SQL Analysis（只接受统一资格判定 sql_eligible 的 File）
     5. M2.4 Table Reference / Lineage（层级标注取自 M2.2 candidate_layer）
     6. M2.5 Metadata Profiling
     7. 写出 Summary 与错误账本
 
-Analysis 输入范围（Analysis Scope Filter）：
+Analysis 输入范围（Analysis Scope Rules，规则在 Inventory 内部执行）：
 
-    只有 NodeId 有效的 File 才进入 SQL / Reference / Lineage Analysis；
-    NodeId 为空的 File 保留在 Snapshot Inventory，不产生 SQL Evidence，
-    也不记录为 Analysis Error。
+    Inventory 对每个 File 计算一次规则分类结果（FileScope），
+    SQL Analysis 只接受 sql_eligible = true 的 File；
+    NodeId 缺失、格式无效、明确的非正式任务、类型不适用 SQL、
+    Content 不可用都会记录明确的原因代码，保留在 Inventory 全量清单中，
+    不产生 SQL Evidence，也不记录为 Analysis Error。
+    整体分析资格（identity）与 SQL 分析资格（sql_eligible）分别统计，
+    分类规则配置在 config/analysis-scope-rules.yaml。
 """
 
 from __future__ import annotations
@@ -45,6 +50,14 @@ from .inventory.inventory import (
     InventoryBuilder,
     InventorySummary,
     build_inventory_summary,
+)
+from .inventory.scope import (
+    FileScope,
+    ScopeRulesError,
+    build_file_scope,
+    excluded_tasks_payload,
+    load_scope_rules,
+    review_tasks_payload,
 )
 from .models import (
     ColumnProfile,
@@ -111,11 +124,13 @@ class AnalysisPipeline:
         source_dir: Path,
         analysis_dir: Path,
         layer_rules_path: Path,
+        scope_rules_path: Path,
         workspace_id: int | None = None,
     ) -> None:
         self.source_dir = source_dir
         self.analysis_dir = analysis_dir
         self.layer_rules_path = layer_rules_path
+        self.scope_rules_path = scope_rules_path
         self.workspace_id = workspace_id
         self.ledger = ErrorLedger()
         self.reader = SnapshotReader(
@@ -138,21 +153,30 @@ class AnalysisPipeline:
             identities=identities,
         ).build()
 
-        self._write_inventory(inventory)
+        # 规则分类在 Inventory 内部执行一次，后续阶段只消费判定结果。
+        scope = self._build_scope(inventory)
+
+        self._write_inventory(inventory, scope)
 
         # 盘点统计只依赖刚构建的 Inventory 与只读 Snapshot，
         # 在 SQL / Lineage 之前算好，保证它只反映 M2.1 的事实。
-        inventory_summary = build_inventory_summary(inventory, reader=self.reader)
+        inventory_summary = build_inventory_summary(
+            inventory,
+            reader=self.reader,
+            scope=scope,
+        )
 
         # M2.2：只依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
         # 先于 SQL / Lineage 执行，Lineage 的层级标注直接引用其 candidate_layer。
         layer_result = self._run_layer_assessment()
 
-        # Analysis 输入范围：只有 NodeId 有效的 File 才进入 SQL Analysis。
+        # 资产身份口径（整体分析资格）与 SQL 分析口径分开：
+        # eligible_files 用于报告统计，sql_files 是 SQL Analysis 的实际输入。
         eligible_files = [item for item in inventory.files if is_analysis_eligible(item)]
         excluded_file_count = len(inventory.files) - len(eligible_files)
+        sql_files = scope.sql_eligible_files(inventory.files)
 
-        statements, references, parse_errors = self._analyze_sql(eligible_files)
+        statements, references, parse_errors = self._analyze_sql(sql_files)
 
         self._write_sql(statements, references, parse_errors)
 
@@ -246,9 +270,15 @@ class AnalysisPipeline:
             identities=identities,
         ).build()
 
-        self._write_inventory(inventory)
+        scope = self._build_scope(inventory)
 
-        inventory_summary = build_inventory_summary(inventory, reader=self.reader)
+        self._write_inventory(inventory, scope)
+
+        inventory_summary = build_inventory_summary(
+            inventory,
+            reader=self.reader,
+            scope=scope,
+        )
 
         errors = self.ledger.records()
 
@@ -258,12 +288,14 @@ class AnalysisPipeline:
             errors=errors,
         )
 
+        eligible_count = sum(1 for item in inventory.files if is_analysis_eligible(item))
+
         result = AnalysisResult(
             analysis_dir=self.analysis_dir,
             workspace_ids=[identity.workspace_id for identity in identities],
             file_count=len(inventory.files),
-            eligible_file_count=sum(1 for item in inventory.files if is_analysis_eligible(item)),
-            excluded_file_count=len(inventory.files),
+            eligible_file_count=eligible_count,
+            excluded_file_count=len(inventory.files) - eligible_count,
             table_count=len(inventory.tables),
             column_count=len(inventory.columns),
             statement_count=0,
@@ -328,17 +360,24 @@ class AnalysisPipeline:
             identities=identities,
         ).build()
 
-        self._write_inventory(inventory)
+        scope = self._build_scope(inventory)
+
+        self._write_inventory(inventory, scope)
 
         # 盘点统计
-        inventory_summary = build_inventory_summary(inventory, reader=self.reader)
+        inventory_summary = build_inventory_summary(
+            inventory,
+            reader=self.reader,
+            scope=scope,
+        )
 
         # 执行 M2.2
         layer_result = self._run_layer_assessment()
 
         eligible_files = [item for item in inventory.files if is_analysis_eligible(item)]
+        sql_files = scope.sql_eligible_files(inventory.files)
 
-        statements, references, parse_errors = self._analyze_sql(eligible_files)
+        statements, references, parse_errors = self._analyze_sql(sql_files)
         self._write_sql(statements, references, parse_errors)
 
         from .evidence.lineage.lineage import LineageBuilder
@@ -505,6 +544,34 @@ class AnalysisPipeline:
         return understanding_result
 
     # ==========================================================
+    # M2.1 Analysis Scope Rules
+    # ==========================================================
+
+    def _build_scope(self, inventory: Inventory) -> FileScope:
+        """执行 Inventory 内部的规则化分类（Analysis Scope Rules）。
+
+        分类只依赖 Inventory 全量清单与只读 Snapshot；
+        配置缺失或非法视为 Fatal Error，不回退默认规则，也不静默忽略。
+        """
+
+        try:
+            rules = load_scope_rules(self.scope_rules_path)
+
+        except ScopeRulesError as exc:
+            raise AnalysisFatalError(f"M2.1 Analysis Scope Rules 无法继续：{exc}") from exc
+
+        workspace_names = {
+            workspace.workspace_id: workspace.workspace_name for workspace in inventory.workspaces
+        }
+
+        return build_file_scope(
+            inventory.files,
+            workspace_names,
+            rules=rules,
+            reader=self.reader,
+        )
+
+    # ==========================================================
     # M2.3 SQL Analysis
     # ==========================================================
 
@@ -512,9 +579,10 @@ class AnalysisPipeline:
         self,
         files: list[FileInventory],
     ) -> tuple[list[StatementRecord], list[TableReference], list[ParseErrorRecord]]:
-        """分析全部 NodeId 有效的 SQL 文件。
+        """分析统一资格判定选出的 SQL 文件。
 
-        入参是已经通过 Analysis Scope Filter 的 File 列表。
+        入参由 FileScope.sql_eligible_files() 给出；
+        Inventory 不在此处再叠加任何范围规则。
         """
 
         analyzer = SqlAnalyzer(
@@ -585,8 +653,13 @@ class AnalysisPipeline:
     # 产物写出
     # ==========================================================
 
-    def _write_inventory(self, inventory: Inventory) -> None:
-        """写出 M2.1 产物。"""
+    def _write_inventory(self, inventory: Inventory, scope: FileScope) -> None:
+        """写出 M2.1 产物：全量资产清单 + 规则分类的排除 / 待确认清单。
+
+        files.json 始终包含全部登记文件，分类规则不会从中删除任何记录；
+        excluded-tasks.json 与 review-tasks.json 是分析范围判定的产物，
+        用 workspace_id + file_id 关联回 files.json，不是删除指令清单。
+        """
 
         self._write(
             "inventory/workspaces.json",
@@ -616,6 +689,8 @@ class AnalysisPipeline:
                 "columns": [item.to_dict() for item in inventory.columns],
             },
         )
+        self._write("inventory/excluded-tasks.json", excluded_tasks_payload(scope))
+        self._write("inventory/review-tasks.json", review_tasks_payload(scope))
 
     def _write_sql(
         self,

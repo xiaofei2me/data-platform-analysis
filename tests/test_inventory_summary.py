@@ -27,6 +27,7 @@ SECTION_HEADINGS = (
     "## 8. 需要关注的资产与异常",
     "## 9. 当前分析边界",
     "## 10. 关键指标定义",
+    "## 11. 分析范围规则分类",
 )
 
 HARD_CODED_SNAPSHOT_NUMBERS = (

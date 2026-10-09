@@ -1,0 +1,35 @@
+# 分析范围规则唯一来源：Inventory 内部一次分类，下游只消费判定结果
+
+## 背景
+
+「哪些 File 参与后续分析」此前不是一个统一的概念，而是散落在三处各自的过滤：
+
+- `models.is_analysis_eligible()`：只看 NodeId 是否有效（身份维度）；
+- `sql_analysis.SqlAnalyzer.analyze_file()`：再次检查 `is_analysis_eligible` 与 `content_format.upper() == "SQL"`，并把 Content 缺失记成 `stage=sql` 的可恢复错误；
+- `inventory` 的 Summary 各处自行统计 eligible / content_available，无法回答「某个 File 为什么不在分析范围内」。
+
+由此产生三个问题：
+
+1. **同一问题有多个答案**：M2.1 报告的「分析候选」、M2.3 实际输入、Content 可用统计口径互不一致，读者无法交叉核对。
+2. **范围不可解释**：没有产物记录被排除对象的身份、命中规则与原因代码，也没有「待确认」而非「确定排除」的出口。
+3. **Content 状态粒度不足**：`content_file` 为空、指向的文件不存在、读取失败混在一个「内容不可用」里，无法区分采集事实与 Snapshot 完整性问题；文件名匹配（测试 / 临时任务）没有规则来源，只能硬编码或事后人工筛。
+
+## 决定
+
+1. **`config/analysis-scope-rules.yaml` 是分析范围的唯一判定来源**：节点身份状态、内容状态与内容期望、非正式任务命名（强 / 弱证据）、`content_format` 是否适用 SQL、四个口径的资格结论，全部在该文件声明。配置缺失、字段非法、必需规则组为空 → 直接 Fatal Error（exit 1），**不回退默认规则、不静默忽略**。
+2. **分类在 M2.1 Inventory 内部执行一次**（`inventory/scope.py` → `FileScope`）：对全量登记 File 逐个产出 `FileScopeDecision`，输出与输入同序、数量一致，`inventory/files.json` 不因分类减少任何记录。
+3. **两个资格口径分开、互不混用**：
+   - `overall_eligible` = 资产身份维度（Node ID 有效），供节点级分析范围与报告统计；
+   - `sql_eligible` = M2.3 输入维度（身份 + 非正式任务 + 类型适用 + Content 可用）。
+   `is_analysis_eligible()` 保留为身份维度的兼容入口，不再承担 SQL 范围判断。
+4. **下游不再自行过滤**：`SqlAnalyzer.analyze_file()` 的 identity / 格式检查删除，SQL 输入统一由 `FileScope.sql_eligible_files()` 给出；SQL Analysis 只消费判定结果。
+5. **三个概念严格分开**：资产有效性（是否是可追溯资产）、分析资格（是否适合某项分析）、清理候选（`cleanup_candidate`，需「非正式命名 + 未提交节点」两条独立证据）。命中任何规则都只记录与分类，**不调用任何 DataWorks 删除 / 禁用 / 修改接口**，也不删除 Snapshot 或 Inventory 记录。
+6. **产物**：`inventory/excluded-tasks.json`（确定排除，含 `exclusion_class` / `matched_rule_ids` / `reason_code` / `cleanup_candidate`）、`inventory/review-tasks.json`（弱证据待确认，不计入排除、不进清理候选）、`inventory/summary.md` 第 11 节（资格口径、节点身份与类型、内容状态与期望、规则命中、主因分布）。规则命中可重叠，主因互斥，两者分开计数。
+
+## 后果
+
+- 口径保持不变（真实 Snapshot 实测）：4651 登记、1379 `overall_eligible`、541 `sql_eligible`、1917 语句——规则化分类解释并统一了既有过滤，不改变 SQL 输入集合。
+- 产物新增 2 个：`inventory/` 从 5 个文件变为 7 个，`analysis/` 全量从 59 变为 61（`61 = 7 + 18 + 23 + 13`），`--stage evidence` 从 18 变为 20。
+- `CONTENT_FILE_MISSING` 从 `stage=sql` 改为 `stage=inventory` 记账：Content 不可用的文件在分类阶段就被阻断，不再靠 SQL 阶段「顺带」暴露 Snapshot 完整性问题。
+- `inventory/summary.md` 从 10 节扩到 11 节，`is_analysis_eligible` 不再出现在 SQL 输入链路，测试契约同步更新（`SECTION_HEADINGS` / `INVENTORY_FILES`）。
+- 改范围规则只改 YAML、不改代码；规则 ID 重复、条件 `kind` 不认识、组内条件重复都会被加载器拒绝。

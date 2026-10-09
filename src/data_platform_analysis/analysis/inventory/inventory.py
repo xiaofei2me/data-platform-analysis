@@ -40,6 +40,7 @@ from ..models import (
     numeric_id_sort_key,
 )
 from ..snapshot import SnapshotReader, WorkspaceIdentity, to_int
+from .scope import FileScope, FileScopeStats
 
 logger = logging.getLogger(__name__)
 
@@ -747,6 +748,8 @@ class InventorySummary:
     maxcompute: MaxComputeInventorySummary = field(default_factory=MaxComputeInventorySummary)
     technical_exceptions: list[TechnicalException] = field(default_factory=list)
     inventory_error_count: int = 0
+    scope: FileScopeStats | None = None
+    """规则分类统计（Analysis Scope Rules）；未执行分类时为 None。"""
 
 
 def build_inventory_summary(
@@ -754,6 +757,7 @@ def build_inventory_summary(
     *,
     reader: SnapshotReader,
     errors: Sequence[Mapping[str, Any]] | None = None,
+    scope: FileScope | None = None,
 ) -> InventorySummary:
     """从 Inventory 与当前 Snapshot 计算结构化盘点统计。
 
@@ -762,10 +766,13 @@ def build_inventory_summary(
     - ``inventory``：M2.1 清单（File / Table / Column / Workspace）；
     - ``reader``：只读 Snapshot，用于确认 content_file 是否真实存在，
       以及读取 index 里的采集失败条目；
-    - ``errors``：可恢复错误记录，默认取当前 ledger。
+    - ``errors``：可恢复错误记录，默认取当前 ledger；
+    - ``scope``：规则分类结果，提供节点身份 / 内容状态 / 分析资格 /
+      非正式任务的统计口径，缺省时 Summary 不含规则分类节。
 
     只统计，不判断：范围限制（缺 Node ID）与技术异常（采集失败 / 元数据缺失）
     分开计数，Content 缺失不记作采集失败；代表案例全部回指真实 Snapshot 资产。
+    规则分类统计同样只计数：唯一对象数与规则命中数分开，避免重复计数。
     """
 
     records = reader.ledger.records() if errors is None else list(errors)
@@ -813,6 +820,7 @@ def build_inventory_summary(
             content_path_missing=dataworks.content_path_missing_cases,
         ),
         inventory_error_count=sum(error_counts.values()),
+        scope=scope.stats() if scope is not None else None,
     )
 
     return summary
@@ -889,6 +897,16 @@ def _summarize_files(
 
         elif file.content_file:
             # content_file 指向的文件在 Snapshot 中不存在，属于技术异常。
+            # 在 Inventory 阶段记录：Content 是否可用已由规则分类判定，
+            # 被排除出 SQL 分析的文件不再经过 SQL 阶段，也不能因此丢掉这条事实。
+            reader.ledger.add(
+                stage="inventory",
+                error_type="CONTENT_FILE_MISSING",
+                message="content_file 指向的文件在 Snapshot 中不存在",
+                workspace_id=file.workspace_id,
+                file_id=str(file.file_id),
+                path=file.content_file,
+            )
             summary.content_path_missing_count += 1
             content_path_missing.append(file)
             content_unavailable.append((file, REASON_CONTENT_PATH_MISSING))

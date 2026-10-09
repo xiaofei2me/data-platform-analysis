@@ -51,7 +51,6 @@ from ...models import (
     FileInventory,
     StatementRecord,
     TableReference,
-    is_analysis_eligible,
 )
 from ...snapshot import SnapshotReader
 from ..lineage.references import extract_table_references
@@ -184,15 +183,14 @@ class SqlAnalyzer:
         self.ledger = ledger
 
     def analyze_file(self, file: FileInventory) -> SqlFileResult:
-        """分析单个 DataWorks File，返回语句、表引用与解析错误。"""
+        """分析单个 DataWorks File，返回语句、表引用与解析错误。
+
+        输入契约：入参必须是 Inventory 规则分类判为 ``sql_eligible`` 的 File
+        （见 ``FileScope.sql_eligible_files``）。分析范围、Node 身份、内容可用性
+        与内容格式都由 Inventory 的规则分类一次判定，这里不重复过滤。
+        """
 
         result = SqlFileResult()
-
-        if not is_analysis_eligible(file):
-            return result
-
-        if file.content_format.upper() != "SQL":
-            return result
 
         content, ok = self.reader.load_file_content(
             workspace_id=file.workspace_id,
