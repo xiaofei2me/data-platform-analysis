@@ -16,6 +16,7 @@ from .evidence.lineage.lineage import LineageResult
 from .evidence.sql.sql_analysis import ParseErrorRecord
 from .inventory.inventory import (
     AssetCase,
+    DataWorksInventorySummary,
     Inventory,
     InventorySummary,
     UnknownFormatGroup,
@@ -127,11 +128,27 @@ from .models import (
 )
 from .scope import (
     CONTENT_STATE_EMPTY_TEXT,
+    CONTENT_STATE_NOT_CHECKED,
     CONTENT_STATE_NOT_COLLECTED,
     CONTENT_STATE_PATH_MISSING,
+    CONTENT_STATE_PRESENT,
     CONTENT_STATE_READ_ERROR,
+    CONTENT_STATES,
+    EXCLUSION_IDENTITY,
+    EXCLUSION_INFORMAL,
+    FINDINGS_STATUS_NOT_IMPLEMENTED,
     FileScopeStats,
 )
+
+CONTENT_STATE_MEANINGS: tuple[tuple[str, str], ...] = (
+    (CONTENT_STATE_PRESENT, "已检查，Content 存在且非空白"),
+    (CONTENT_STATE_NOT_CHECKED, "未启用 Content 检查，不读 Snapshot、不计为缺失"),
+    (CONTENT_STATE_EMPTY_TEXT, "已检查，Content 文件存在但内容为空白"),
+    (CONTENT_STATE_NOT_COLLECTED, "已检查，content_file 为空（API 未返回 Content）"),
+    (CONTENT_STATE_PATH_MISSING, "已检查，content_file 指向的文件在 Snapshot 中不存在"),
+    (CONTENT_STATE_READ_ERROR, "已检查，Content 存在但读取失败"),
+)
+"""Content 六态的展示顺序与含义（顺序与 scope/content.CONTENT_STATES 一致）。"""
 
 
 def render_inventory_summary(summary: InventorySummary) -> str:
@@ -141,7 +158,8 @@ def render_inventory_summary(summary: InventorySummary) -> str:
     不在这里推断业务结论，也不把「登记」写成「分析」，
     更不把 Inventory 越界成 Evidence / Understanding。
     资格判定、排除原因与规则命中属于 Scope Summary（scope/summary.md），
-    不进入本报告。
+    不进入本报告；内容状态只按 analysis/scope/content.py 的六态事实呈现，
+    不换算成任何候选或排除口径。
     """
 
     dataworks = summary.dataworks
@@ -161,7 +179,7 @@ def render_inventory_summary(summary: InventorySummary) -> str:
         "",
         "Inventory 不负责解释资产的业务含义，也不负责判断 SQL、血缘、",
         "数据质量或目标数仓模型。后续 Evidence、Understanding 和 Review",
-        "均以 Inventory 提供的资产身份和范围作为基础。",
+        "均以 Inventory 提供的资产身份与资产事实作为基础。",
         "",
         "```text",
         "Collection",
@@ -177,7 +195,7 @@ def render_inventory_summary(summary: InventorySummary) -> str:
         "Review",
         "```",
         "",
-        "Inventory 的输出是后续分析阶段的资产输入和范围基线，不是最终分析结论。",
+        "Inventory 的输出是后续分析阶段的资产输入与事实基线，不是最终分析结论。",
         "",
         "## 2. 核心职责",
         "",
@@ -188,8 +206,9 @@ def render_inventory_summary(summary: InventorySummary) -> str:
                 ["资产身份", "确定 Workspace、File、Table、Column 的稳定资产身份"],
                 ["资产覆盖", "统计 Snapshot 中发现、登记与缺失的资产"],
                 [
-                    "分析范围",
-                    "标明具备进入后续分析阶段基础条件的资产（当前规则 = 有效 Node ID）",
+                    "内容快照状态",
+                    "记录 Content 是否存在、是否空白、是否被检查过的采集事实"
+                    "（口径唯一实现：analysis/scope/content.py 的 content_state_of）",
                 ],
                 ["异常记录", "记录 Inventory 构建过程中发现的技术性异常"],
             ],
@@ -212,7 +231,7 @@ def render_inventory_summary(summary: InventorySummary) -> str:
                 [
                     "有效 Node ID 文件",
                     _num(dataworks.valid_node_id_count),
-                    "当前具备后续节点级分析基础的文件",
+                    "node_id 非 None 且去除空白后非空的文件（调度身份事实）",
                 ],
                 [
                     "内容可用文件",
@@ -248,15 +267,17 @@ def render_inventory_summary(summary: InventorySummary) -> str:
         "### Inventory 负责",
         "",
         "- 资产发现与登记",
-        "- 资产身份",
+        "- 资产身份（Workspace / File / Table / Column 与 Node ID 状态）",
         "- 资产规模",
         "- Workspace / Project 分布",
-        "- 基础内容可用性",
-        "- 后续分析候选范围",
+        "- 内容快照状态（Content 六态采集事实）",
         "- Inventory 技术异常",
         "",
         "### Inventory 不负责",
         "",
+        "- 整体分析资格 / SQL 分析资格判定",
+        "- 分析候选与资格排除清单",
+        "- 资格排除原因与规则命中统计（规则发现见 `scope/findings/`，当前未实现）",
         "- 业务域判断",
         "- 业务对象识别",
         "- 业务过程识别",
@@ -298,13 +319,16 @@ def render_inventory_summary(summary: InventorySummary) -> str:
                     "node_id 非 None 且去除空白后非空，表示该文件对应已提交的调度节点。",
                 ],
                 [
+                    "内容快照状态",
+                    "Content 的六态事实（present / not_checked / empty_text / not_collected / "
+                    "path_missing / read_error），互斥且合计等于已登记文件；"
+                    "由 analysis/scope/content.py 的 content_state_of() 唯一判定，"
+                    "Scope 与 Inventory 共用同一实现。",
+                ],
+                [
                     "内容可用",
                     "已启用 Content 检查的格式中，content_file 非空、指向的文件存在且内容非空白"
                     "（不判断可解析性）；未启用检查的格式状态为 not_checked，不计入可用。",
-                ],
-                [
-                    "分析候选（Eligible）",
-                    "满足后续分析前置条件的文件；当前实现 = 具备有效 Node ID。分析候选 ≠ 已分析。",
                 ],
                 [
                     "MaxCompute 表",
@@ -334,7 +358,8 @@ def render_inventory_summary(summary: InventorySummary) -> str:
         "",
         "- **发现 ≠ 登记 ≠ 分析**：发现是索引条目，登记是写入清单，分析属于后续阶段；",
         "- **内容可用 ≠ SQL 可解析**：内容可用只表示 Snapshot 中存在内容文件；",
-        "- **有效 Node ID ≠ SQL 分析成功**：它只是进入后续节点级分析的基础条件；",
+        "- **有效 Node ID ≠ 已分析**：它只是调度身份事实；"
+        "哪项分析接受哪些文件由 `analysis/scope/summary.md` 说明；",
         "- **Inventory 异常 ≠ DataWorks / MaxCompute 采集失败**："
         "前者是本阶段构建清单时发现的技术问题，采集失败记录在索引的 failed_* 条目；",
         "- **UNKNOWN ≠ 一定是错误**：UNKNOWN 可能是非 SQL 文件、"
@@ -353,11 +378,16 @@ def render_inventory_summary(summary: InventorySummary) -> str:
 
 
 def render_scope_summary(stats: FileScopeStats) -> str:
-    """生成 analysis/scope/summary.md：Scope 资格评估与规则分类报告（纯计数）。
+    """生成 analysis/scope/summary.md：Scope 资格评估与规则分类报告（9 节 · 纯计数）。
+
+    结构：1 评估概览 / 2 整体分析资格 / 3 SQL 分析范围 / 4 资格排除情况 /
+    5 弱证据待确认 / 6 内容状态与内容期望 / 7 规则命中 / 8 规则发现及实现状态 /
+    9 产物与边界。
 
     全部数字来自 FileScope.stats() 的既有计算结果；资格判定与规则匹配
     不在渲染层重算。规则发现（scope/findings/）尚未实现，本报告与
-    scope/summary.json 一样如实标注，不虚构整改问题。
+    scope/summary.json 共用 FINDINGS_STATUS_NOT_IMPLEMENTED 常量如实标注，
+    不虚构整改问题。
     """
 
     total = stats.total_count
@@ -383,12 +413,32 @@ def render_scope_summary(stats: FileScopeStats) -> str:
         ]
     )
 
+    # 分类主因：每个文件只计一次，互斥，合计 = 登记文件。
     reason_rows: list[list[object]] = [
-        ["分类主因", reason, _num(count)] for reason, count in stats.reason_counts.items()
+        ["分类主因", reason, _num(count), _pct(count, total)]
+        for reason, count in stats.reason_counts.items()
     ]
-    reason_rows.extend(
-        [["SQL 阻断原因", reason, _num(count)] for reason, count in stats.sql_reason_counts.items()]
-    )
+
+    # SQL 阻断原因：只描述 sql_eligible 的判定，含 SQL_ANALYSIS_ELIGIBLE（通过）。
+    sql_reason_rows: list[list[object]] = [
+        ["SQL 阻断原因", reason, _num(count), _pct(count, total)]
+        for reason, count in stats.sql_reason_counts.items()
+    ]
+
+    # 整体分析资格的排除构成（与 exclusion_class_counts 同源）。
+    exclusion_labels = {
+        EXCLUSION_IDENTITY: "身份不满足（NodeId 缺失）",
+        EXCLUSION_INFORMAL: "非正式任务（测试 / 临时 / 演示）",
+    }
+    exclusion_rows: list[list[object]] = [
+        [
+            "资格排除",
+            exclusion_labels.get(exclusion_class, exclusion_class),
+            _num(count),
+            _pct(count, total),
+        ]
+        for exclusion_class, count in stats.exclusion_class_counts.items()
+    ]
 
     # 内容状态（互斥，合计 = 登记文件）与内容期望（对缺口对象的第二维度）。
     content_rows: list[list[object]] = [
@@ -470,9 +520,10 @@ def render_scope_summary(stats: FileScopeStats) -> str:
         f"Scope 对 Inventory 全量登记文件执行一次 Analysis Scope Rules"
         f"（version {stats.rules_version}），",
         "只消费资产、不修改资产；后续 Evidence / Understanding / Review",
-        "只消费判定结果，不在此重复过滤。",
+        "只消费判定结果，不在此重复过滤。本报告的每个数字都直接来自",
+        "FileScope.stats()，渲染层不重新执行资格判断。",
         "",
-        "## 1. 资格与范围口径",
+        "## 1. 评估概览",
         "",
         _table(
             ["口径", "数量", "占比", "说明"],
@@ -482,7 +533,7 @@ def render_scope_summary(stats: FileScopeStats) -> str:
                     "整体分析资格",
                     _num(stats.overall_eligible_count),
                     _pct(stats.overall_eligible_count, total),
-                    "Node ID 有效，满足节点级分析的前置条件；分析资格 ≠ 已分析",
+                    "overall_eligible = true；分析资格 ≠ 已分析（明细见第 2 节）",
                 ],
                 [
                     "SQL 候选",
@@ -498,33 +549,40 @@ def render_scope_summary(stats: FileScopeStats) -> str:
                     "与 SQL 候选互斥且合计 = 登记文件",
                 ],
                 [
-                    "　其中：主分类为身份不满足",
-                    _num(stats.identity_excluded_count),
-                    _pct(stats.identity_excluded_count, total),
-                    "NodeId 缺失（优先于非正式任务计为主分类）",
-                ],
-                [
-                    "　其中：主分类为非正式任务",
-                    _num(stats.informal_excluded_count),
-                    _pct(stats.informal_excluded_count, total),
-                    "文件名整体命中非正式任务词；规则命中总数见第 4 节",
-                ],
-                [
                     "待确认",
                     _num(stats.review_count),
                     _pct(stats.review_count, total),
-                    "非正式任务弱证据，见 scope/review-tasks.json；"
-                    "弱证据不改变 sql_eligible，可与 SQL 候选同时存在",
+                    "非正式任务弱证据，见 scope/review-tasks.json；独立维度，不与资格清单相加",
                 ],
             ],
             alignments=["left", "right", "right", "left"],
         ),
         "",
-        "SQL 分析排除由 identity → informal → node_type → content 四组阻断给出，"
-        "两个「其中」行只覆盖前两类主分类；两份资格清单互斥且合计等于登记文件，",
-        "review-tasks.json 是独立的待确认维度，与资格清单可以重叠。",
+        "两份资格清单互斥且合计等于登记文件；review-tasks.json 是独立的待确认维度，"
+        "与两份资格清单都可以重叠，不参与上面的加总。",
         "",
-        "## 2. 节点身份与节点类型",
+        "## 2. 整体分析资格",
+        "",
+        _table(
+            ["口径", "数量", "占比", "说明"],
+            [
+                [
+                    "整体分析资格",
+                    _num(stats.overall_eligible_count),
+                    _pct(stats.overall_eligible_count, total),
+                    "身份有效且非明确非正式任务",
+                ],
+                [
+                    "未通过整体分析资格",
+                    _num(total - stats.overall_eligible_count),
+                    _pct(total - stats.overall_eligible_count, total),
+                    "构成见第 4 节「资格排除情况」",
+                ],
+            ],
+            alignments=["left", "right", "right", "left"],
+        ),
+        "",
+        "资格输入维度（资产事实，只列计数，不重复判定）：",
         "",
         _table(
             ["维度", "取值", "数量", "占比"],
@@ -532,7 +590,77 @@ def render_scope_summary(stats: FileScopeStats) -> str:
             alignments=["left", "left", "right", "right"],
         ),
         "",
-        "## 3. 内容状态与内容期望",
+        "## 3. SQL 分析范围",
+        "",
+        _table(
+            ["口径", "数量", "占比", "说明"],
+            [
+                [
+                    "SQL 候选",
+                    _num(stats.sql_eligible_count),
+                    _pct(stats.sql_eligible_count, total),
+                    "M2.3 SQL Analysis 的唯一输入来源",
+                ],
+                [
+                    "SQL 分析排除",
+                    _num(stats.sql_ineligible_count),
+                    _pct(stats.sql_ineligible_count, total),
+                    "只记录与分类，不删除、不禁用、不修改资产",
+                ],
+            ],
+            alignments=["left", "right", "right", "left"],
+        ),
+        "",
+        "阻断优先级：identity → informal → node_type → content，"
+        "同一文件只取首个阻断原因；SQL 候选与 SQL 分析排除互斥且合计 = 登记文件。",
+        "",
+        _table(
+            ["口径", "原因", "数量", "占比"],
+            sql_reason_rows,
+            alignments=["left", "left", "right", "right"],
+        ),
+        "",
+        "## 4. 资格排除情况",
+        "",
+        _table(
+            ["口径", "排除分类", "数量", "占比"],
+            exclusion_rows,
+            alignments=["left", "left", "right", "right"],
+        ),
+        "",
+        "排除分类描述的是整体分析资格（overall_eligible）的构成；"
+        "SQL 层面的阻断原因见第 3 节，两者是不同维度，不能互相替代。",
+        "",
+        "排除 ≠ 删除：命中任何规则都只记录与分类，不调用 DataWorks 删除 / 禁用 / 修改接口，"
+        "被排除的对象仍完整保留在 `inventory/files.json`。",
+        "",
+        "分类主因（互斥，每个文件只计一次，合计 = 登记文件）：",
+        "",
+        _table(
+            ["口径", "原因", "数量", "占比"],
+            reason_rows,
+            alignments=["left", "left", "right", "right"],
+        ),
+        "",
+        "## 5. 弱证据待确认",
+        "",
+        _table(
+            ["口径", "数量", "占比", "说明"],
+            [
+                [
+                    "待确认",
+                    _num(stats.review_count),
+                    _pct(stats.review_count, total),
+                    "命中弱证据规则（如 INFORMAL_TASK_WEAK），见 scope/review-tasks.json",
+                ],
+            ],
+            alignments=["left", "right", "right", "left"],
+        ),
+        "",
+        "弱证据只标记 review_required：不改变 overall_eligible，也不改变 sql_eligible，"
+        "不计入确定排除；可与 SQL 候选或 SQL 分析排除同时存在，需人工复核。",
+        "",
+        "## 6. 内容状态与内容期望",
         "",
         _table(
             ["维度", "取值", "数量", "占比", "含义"],
@@ -542,9 +670,10 @@ def render_scope_summary(stats: FileScopeStats) -> str:
         "",
         "内容状态六行互斥，合计等于登记文件（not_checked 未启用 Content 检查，"
         "既不计入可用也不计入缺口）；内容期望是对缺口对象的第二维度，"
-        "与状态行可能重叠，不参与合计。",
+        "与状态行可能重叠，不参与合计。同一组状态也出现在 Inventory Summary "
+        "第 5.4 节，两边共用 analysis/scope/content.py 的同一实现，数字必然一致。",
         "",
-        "## 4. 规则命中（可重叠）",
+        "## 7. 规则命中（可重叠）",
         "",
     ]
 
@@ -566,17 +695,32 @@ def render_scope_summary(stats: FileScopeStats) -> str:
                 alignments=["left", "left", "left", "right"],
             ),
             "",
-            "同一文件可能命中多条规则，命中数之和大于等于对象数；下表的主因分布每个文件只计一次。",
+            "同一文件可能命中多条规则，命中数之和大于等于对象数；"
+            "第 4 节的分类主因分布每个文件只计一次。",
             "",
-            "## 5. 主因分布（互斥）",
+            "## 8. 规则发现及实现状态",
             "",
             _table(
-                ["口径", "原因", "数量"],
-                reason_rows,
-                alignments=["left", "left", "right"],
+                ["项目", "状态 / 数量", "说明"],
+                [
+                    [
+                        "findings.status",
+                        FINDINGS_STATUS_NOT_IMPLEMENTED,
+                        "`scope/findings/` 尚未实现，如实标注而不是省略该字段",
+                    ],
+                    [
+                        "findings.count",
+                        _num(0),
+                        "未实现 = 无发现产物，不能解释为「已检查、无问题」",
+                    ],
+                ],
+                alignments=["left", "left", "left"],
             ),
             "",
-            "## 6. 产物与边界",
+            "当前规则只做资格分类与审核标记，不产出整改问题，因此不生成发现产物；"
+            "本行与 `scope/summary.json` 的 `findings.status` 共用同一常量，两边不会不一致。",
+            "",
+            "## 9. 产物与边界",
             "",
             "- `scope/inputs/sql-candidates.json`：通过 SQL 分析资格（sql_eligible = true）的资产，"
             "M2.3 SQL Analysis 的候选输入；",
@@ -589,8 +733,8 @@ def render_scope_summary(stats: FileScopeStats) -> str:
             "- 三份清单都是分析范围判定的产物，不是删除、禁用或修改 DataWorks 资产的指令；"
             "前两份互斥且合计覆盖全部登记文件；",
             "- 排除分类 ≠ 无效资产：被排除的对象仍完整保留在 `inventory/files.json`；",
-            "- 规则发现（`scope/findings/`）尚未实现：当前规则只做资格分类与审核标记，"
-            "不产出整改问题，因此不生成发现产物、不虚构发现数量。",
+            "- 规则发现（`scope/findings/`）状态见第 8 节，如实标注为"
+            f" {FINDINGS_STATUS_NOT_IMPLEMENTED}，不虚构发现数量。",
             "",
         ]
     )
@@ -634,7 +778,7 @@ def _workspace_distribution(
         [
             item.workspace_name,
             _num(item.discovered_file_count),
-            _num(item.eligible_file_count),
+            _num(item.valid_node_id_count),
             _num(item.content_available_count),
             _num(item.table_count),
             _num(item.column_count),
@@ -646,7 +790,7 @@ def _workspace_distribution(
         [
             "**合计**",
             _num(sum(item.discovered_file_count for item in workspaces)),
-            _num(sum(item.eligible_file_count for item in workspaces)),
+            _num(sum(item.valid_node_id_count for item in workspaces)),
             _num(sum(item.content_available_count for item in workspaces)),
             _num(sum(item.table_count for item in workspaces)),
             _num(sum(item.column_count for item in workspaces)),
@@ -675,11 +819,48 @@ def _workspace_distribution(
     ]
 
 
+def _content_state_table(dataworks: DataWorksInventorySummary) -> str:
+    """第 5.4 节：Content 六态快照表（互斥，合计 = 已登记文件）。
+
+    数字取自 InventorySummary.content_state_counts，
+    与 analysis/scope/content.py 的六态定义同源，渲染层不再重新判定。
+    """
+
+    counts = dataworks.content_state_counts
+    total = sum(counts.values())
+
+    rows: list[list[object]] = [
+        [
+            state,
+            _num(counts.get(state, 0)),
+            _pct(counts.get(state, 0), total),
+            meaning,
+        ]
+        for state, meaning in CONTENT_STATE_MEANINGS
+        if state in CONTENT_STATES
+    ]
+    rows.append(["**合计**", _num(total), _pct(total, total), "已登记文件"])
+
+    return _table(
+        ["内容状态", "数量", "占登记文件", "含义"],
+        rows,
+        alignments=["left", "right", "right", "left"],
+    )
+
+
 def _dataworks_sections(summary: InventorySummary) -> list[str]:
     """第 5 节：DataWorks 开发资产。"""
 
     dataworks = summary.dataworks
     total = dataworks.discovered_count
+    registered = dataworks.registered_count
+    raw = dataworks.raw_available_count
+    valid = dataworks.valid_node_id_count
+    missing = dataworks.missing_node_id_count
+    unknown = dataworks.unrecognized_format_count
+    available = dataworks.content_available_count
+    unavailable = dataworks.content_unavailable_count
+    not_checked = dataworks.content_not_checked_count
 
     return [
         "## 5. DataWorks 开发资产",
@@ -715,83 +896,54 @@ def _dataworks_sections(summary: InventorySummary) -> list[str]:
         "登记 = 成功写入 `analysis/inventory/files.json`。"
         "登记是 Inventory 本阶段的处理结果，与「已分析」无关。",
         "",
-        "### 5.3 后续分析资格",
+        "### 5.3 文件元数据完整性",
         "",
         _table(
-            ["指标", "数量"],
+            ["指标", "数量", "占登记文件"],
             [
-                ["文件总数", _num(total)],
-                ["有效 Node ID", _num(dataworks.valid_node_id_count)],
-                ["缺失 Node ID", _num(dataworks.missing_node_id_count)],
-                ["当前分析候选", _num(dataworks.eligible_count)],
-            ],
-            alignments=["left", "right"],
-        ),
-        "",
-        "Node ID 是 DataWorks 文件与后续节点级分析之间的重要身份信息，",
-        "但**有效 Node ID 不等于 SQL 分析一定成功**：解析是否成功由后续 SQL Analysis 阶段决定。",
-        "",
-        "缺失 Node ID 的文件是「当前不满足节点级后续分析条件的文件」，",
-        "不是无效资产：它们仍完整保留在 Inventory 清单中（见第 8.2 节）。",
-        "",
-        "### 5.4 内容可用",
-        "",
-        _table(
-            ["指标", "数量"],
-            [
-                ["内容可用", _num(dataworks.content_available_count)],
-                ["内容不可用", _num(dataworks.content_unavailable_count)],
-                ["未启用 Content 检查", _num(dataworks.content_not_checked_count)],
-            ],
-            alignments=["left", "right"],
-        ),
-        "",
-        "三桶互斥，合计等于已登记文件：内容可用 = Content 已检查且非空白；"
-        "内容不可用 = Content 已检查但存在缺口；"
-        "未启用 Content 检查的格式状态为 not_checked，既不计入可用也不计入不可用。",
-        "",
-        "内容可用不等同于内容一定可以被 SQL Parser 解析；"
-        "内容不可用是采集结果事实，不等于采集失败（见第 8.3 节）。",
-        "",
-        "### 5.5 后续分析候选",
-        "",
-        "当前 Inventory 的规则：**有效 Node ID 是当前定义的后续分析候选条件**"
-        "（`is_analysis_eligible`）。Content 是否可用、内容格式是否为 SQL "
-        "不改变这条候选判定，它们是下游阶段自己的前置条件。",
-        "",
-        "**分析候选 ≠ 已分析**：Inventory 只登记与标注候选范围，"
-        "不对任何文件做 SQL 解析、血缘或业务判断。",
-        "",
-        _table(
-            ["指标", "数量", "占分析候选"],
-            [
-                [
-                    "当前分析候选",
-                    _num(dataworks.eligible_count),
-                    _pct(dataworks.eligible_count, dataworks.eligible_count),
-                ],
-                [
-                    "分析候选且 content_format = SQL",
-                    _num(dataworks.eligible_sql_format_count),
-                    _pct(dataworks.eligible_sql_format_count, dataworks.eligible_count),
-                ],
-                [
-                    "分析候选且内容可用",
-                    _num(dataworks.eligible_content_available_count),
-                    _pct(dataworks.eligible_content_available_count, dataworks.eligible_count),
-                ],
-                [
-                    "分析候选且 SQL 格式且内容可用",
-                    _num(dataworks.eligible_sql_content_count),
-                    _pct(dataworks.eligible_sql_content_count, dataworks.eligible_count),
-                ],
+                ["文件总数", _num(total), _pct(total, total)],
+                ["Raw JSON 可用", _num(raw), _pct(raw, registered)],
+                ["有效 Node ID", _num(valid), _pct(valid, total)],
+                ["缺失 Node ID", _num(missing), _pct(missing, total)],
+                ["content_format = UNKNOWN", _num(unknown), _pct(unknown, total)],
             ],
             alignments=["left", "right", "right"],
         ),
         "",
-        f"后续 SQL 解析的实际输入还要求 `content_format = SQL` 且内容可用"
-        f"（当前为 {_num(dataworks.eligible_sql_content_count)} 个文件），"
-        "这是下游阶段的过滤行为，不属于 Inventory 的排除原因。",
+        "Node ID 是 DataWorks 文件的调度身份属性（models.node_id_state()），",
+        "本节只统计它存在与否，不判断它是否满足某项分析的前置条件——",
+        "哪些文件进入哪项分析由 Scope Summary（`analysis/scope/summary.md`）说明。",
+        "",
+        "缺失 Node ID 的文件不是无效资产：它们仍完整保留在 Inventory 清单中"
+        "（代表案例见第 8.2 节）。",
+        "",
+        "### 5.4 文件内容快照状态",
+        "",
+        _content_state_table(dataworks),
+        "",
+        "六个状态行互斥，合计等于已登记文件；状态由唯一权威实现"
+        "`analysis/scope/content.py` 的 `content_state_of()` 给出"
+        "（Scope 与 Inventory 共用同一实现，两边数字必然一致）。",
+        "",
+        "三桶口径（便于与历史统计对照）：",
+        "",
+        _table(
+            ["口径", "数量", "占登记文件"],
+            [
+                ["内容可用", _num(available), _pct(available, registered)],
+                ["内容不可用", _num(unavailable), _pct(unavailable, registered)],
+                ["未启用 Content 检查", _num(not_checked), _pct(not_checked, registered)],
+            ],
+            alignments=["left", "right", "right"],
+        ),
+        "",
+        "三桶互斥，合计等于已登记文件：内容可用 = 已检查且非空白；"
+        "内容不可用 = 已检查但存在缺口（empty_text / not_collected / path_missing / read_error）；"
+        "未启用 Content 检查的状态为 not_checked，既不计入可用也不计入不可用，"
+        "**不记作缺失**。",
+        "",
+        "内容可用不等同于内容一定可以被 SQL Parser 解析；"
+        "内容不可用是采集结果事实，不等于采集失败（见第 8.3 节）。",
         "",
     ]
 
@@ -949,8 +1101,8 @@ def _attention_sections(summary: InventorySummary) -> list[str]:
         "",
         "1. **正常但需要关注**：例如文件类型 UNKNOWN，"
         "可能是非 SQL 文件或合法但未映射的类型，不一定是错误（见 8.1）；",
-        "2. **当前不满足后续分析条件**：例如 Node ID 缺失、内容不可用，"
-        "这是范围限制或采集结果事实，不一定是采集失败（见 8.2、8.3）；",
+        "2. **资产状态事实**：例如 Node ID 缺失、内容不可用，"
+        "属于身份缺口或采集结果事实，不一定是采集失败（见 8.2、8.3）；",
         "3. **真正技术异常**：采集失败、元数据缺失、content_file 指向文件缺失等（见 8.4）。",
         "",
         "代表案例展示规则：总数少于 10 全部展示；10～100 展示 3～5 个代表案例；",
@@ -1077,13 +1229,15 @@ def _missing_node_id_section(summary: InventorySummary) -> list[str]:
     missing_node_pct = _pct(dataworks.missing_node_id_count, dataworks.discovered_count)
 
     return [
-        "### 8.2 缺失 Node ID（当前不满足节点级后续分析条件）",
+        "### 8.2 缺失 Node ID（调度身份缺口）",
         "",
         f"- 数量：{_num(dataworks.missing_node_id_count)}"
         f"（占全部 DataWorks 文件 {missing_node_pct}）",
         "",
-        "这些文件是「当前不满足节点级后续分析条件的文件」，不是无效资产：",
-        "它们仍完整保留在 Inventory 清单中，只是不进入后续节点级分析范围。",
+        "这些文件的 node_id 为 None 或空白，无法定位已提交的调度节点；"
+        "这是**资产身份事实**，不是无效资产：",
+        "它们仍完整保留在 Inventory 清单中，Inventory 只记录这个状态，",
+        "是否因此排除出某项分析由 Scope Summary 说明（`analysis/scope/summary.md`）。",
         "",
         _table(
             ["Workspace", "File ID", "文件名称", "Node ID", "文件类型", "说明"],
@@ -1213,7 +1367,7 @@ def _technical_exception_section(summary: InventorySummary) -> list[str]:
             "- 计数为 0 表示本次已检查、未发生该类异常；零异常时不会生成任何代表案例。",
             "- `content_file` 为空（API 未返回 Content）是采集结果事实，"
             "**不计入**本节异常；本节只统计 content_file 指向的文件在 Snapshot 中缺失。",
-            "- 因不满足后续分析条件而未进入后续分析的文件不属于本节，见第 8.2、8.3 节。",
+            "- Node ID 缺失与内容不可用是资产状态事实，不属于本节，见第 8.2、8.3 节。",
             "- 本节不是 M3.6 Problem，也不是数据质量或模型问题。",
             "",
             f"Inventory 阶段可恢复错误合计：{_num(summary.inventory_error_count)} 条，"

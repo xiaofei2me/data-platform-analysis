@@ -69,6 +69,7 @@ from .scope import (
     SCOPE_SUMMARY_MD_RELATIVE_PATH,
     SQL_CANDIDATES_RELATIVE_PATH,
     FileScope,
+    ScopeRules,
     ScopeRulesError,
     build_file_scope,
     excluded_tasks_payload,
@@ -174,24 +175,29 @@ class AnalysisPipeline:
 
         self._reset_outputs()
 
+        # 规则配置先加载（失败即 Fatal Error，此时不写任何产物）。
+        rules = self._load_scope_rules()
+
         inventory = InventoryBuilder(
             reader=self.reader,
             identities=identities,
         ).build()
 
-        # 规则分类在 Scope 内部执行一次，后续阶段只消费判定结果。
-        scope = self._build_scope(inventory)
-
         self._write_inventory(inventory)
-        self._write_scope(scope)
 
-        # 盘点统计只依赖刚构建的 Inventory 与只读 Snapshot，
-        # 在 SQL / Lineage 之前算好，保证它只反映 M2.1 的事实。
+        # 盘点统计只依赖刚构建的 Inventory 与只读 Snapshot：
+        # content_check 只是「哪些 content_format 会被实际读取」的客观配置，
+        # 因此不必先算 FileScope；资格判定留在下面的 Scope 阶段。
         inventory_summary = build_inventory_summary(
             inventory,
             reader=self.reader,
-            scope=scope,
+            content_check=rules.content_check,
         )
+
+        # 规则分类在 Scope 内部执行一次，后续阶段只消费判定结果。
+        scope = self._build_scope(inventory, rules)
+
+        self._write_scope(scope)
 
         # M2.2：只依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
         # 先于 SQL / Lineage 执行，Lineage 的层级标注直接引用其 candidate_layer。
@@ -293,21 +299,27 @@ class AnalysisPipeline:
 
         self._reset_outputs()
 
+        # 阶段契约：`--stage inventory` 同时产出 inventory/、scope/ 与根 summary.md
+        # （docs/STAGE_INDEX.md Stage 01），因此 Scope 规则配置在任何产物写出前
+        # 就必须合法；失败即 Fatal Error，不回退默认规则。
+        rules = self._load_scope_rules()
+
         inventory = InventoryBuilder(
             reader=self.reader,
             identities=identities,
         ).build()
 
-        scope = self._build_scope(inventory)
-
         self._write_inventory(inventory)
-        self._write_scope(scope)
 
         inventory_summary = build_inventory_summary(
             inventory,
             reader=self.reader,
-            scope=scope,
+            content_check=rules.content_check,
         )
+
+        scope = self._build_scope(inventory, rules)
+
+        self._write_scope(scope)
 
         errors = self.ledger.records()
 
@@ -390,22 +402,25 @@ class AnalysisPipeline:
 
         self._reset_outputs()
 
+        rules = self._load_scope_rules()
+
         inventory = InventoryBuilder(
             reader=self.reader,
             identities=identities,
         ).build()
 
-        scope = self._build_scope(inventory)
-
         self._write_inventory(inventory)
-        self._write_scope(scope)
 
         # 盘点统计
         inventory_summary = build_inventory_summary(
             inventory,
             reader=self.reader,
-            scope=scope,
+            content_check=rules.content_check,
         )
+
+        scope = self._build_scope(inventory, rules)
+
+        self._write_scope(scope)
 
         # 执行 M2.2
         layer_result = self._run_layer_assessment()
@@ -584,18 +599,27 @@ class AnalysisPipeline:
     # M2.1 Analysis Scope Rules
     # ==========================================================
 
-    def _build_scope(self, inventory: Inventory) -> FileScope:
-        """执行 Analysis Scope Rules 分类（Scope 阶段的资格评估）。
+    def _load_scope_rules(self) -> ScopeRules:
+        """加载 Analysis Scope Rules 配置。
 
-        分类只依赖 Inventory 全量清单与只读 Snapshot；
-        配置缺失或非法视为 Fatal Error，不回退默认规则，也不静默忽略。
+        配置缺失或非法视为 Fatal Error：不回退默认规则，也不静默忽略，
+        且必须在写出任何阶段产物之前调用。
         """
 
         try:
-            rules = load_scope_rules(self.scope_rules_path)
+            return load_scope_rules(self.scope_rules_path)
 
         except ScopeRulesError as exc:
             raise AnalysisFatalError(f"M2.1 Analysis Scope Rules 无法继续：{exc}") from exc
+
+    def _build_scope(self, inventory: Inventory, rules: ScopeRules) -> FileScope:
+        """执行 Analysis Scope Rules 分类（Scope 阶段的资格评估）。
+
+        分类只依赖 Inventory 全量清单与只读 Snapshot。
+        ``rules`` 由 ``_load_scope_rules()`` 提前加载：
+        配置的客观部分（content_check）已供 Inventory Summary 使用，
+        资格判定仍在本方法内一次性完成，后续阶段只消费判定结果。
+        """
 
         workspace_names = {
             workspace.workspace_id: workspace.workspace_name for workspace in inventory.workspaces

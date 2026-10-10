@@ -53,8 +53,12 @@ _Avoid_: 自动裁决、审核通过
 _Avoid_: 坏模型、无效模型、待修复
 
 **Analysis Scope Rules（分析范围规则）**:
-`config/analysis-scope-rules.yaml` 声明、由 Scope 阶段通过源码包 `analysis/scope/` 对 Inventory 全量 File 执行一次的分类规则，产出 `overall_eligible`（Node ID 有效）与 `sql_eligible`（M2.3 输入）两个口径；正式产物统一归属 `analysis/scope/`：`inputs/sql-candidates.json`（`sql_eligible = true`）、`inputs/excluded-tasks.json`（`sql_eligible = false`）、`review-tasks.json`（弱证据待确认）与 `summary.{json,md}`。前两份互斥且合计 = 登记文件，被排除的对象仍完整保留在 `inventory/files.json`；规则发现（`scope/findings/`）尚未实现，不产出整改问题。Content 是否读取由 `content_check` 开关控制，未启用的格式状态为 `not_checked`（既非可用也非缺口，不阻断资格）。
+`config/analysis-scope-rules.yaml` 声明、由 Scope 阶段通过源码包 `analysis/scope/` 对 Inventory 全量 File 执行一次的分类规则，产出 `overall_eligible`（Node ID 有效）与 `sql_eligible`（M2.3 输入）两个口径；正式产物统一归属 `analysis/scope/`：`inputs/sql-candidates.json`（`sql_eligible = true`）、`inputs/excluded-tasks.json`（`sql_eligible = false`）、`review-tasks.json`（弱证据待确认）与 `summary.{json,md}`。前两份互斥且合计 = 登记文件，被排除的对象仍完整保留在 `inventory/files.json`；规则发现（`scope/findings/`）尚未实现，不产出整改问题，Summary 标注 `status = not_implemented`、`count = 0`。Content 是否读取由 `content_check` 开关控制，未启用的格式状态为 `not_checked`（既非可用也非缺口，不阻断资格）。
 _Avoid_: 删除清单、清理脚本、清理候选（`cleanup_candidate`）、失效资产（分类结果不授权任何删除或修改操作）
+
+**Inventory Summary / Scope Summary（盘点报告 / 资格评估报告）**:
+两份 `summary.md` 职责互斥：Inventory Summary 只报**事实**（文件登记、元数据完整性、内容快照状态、缺失 Node ID、资产覆盖），不出现资格判定、排除分类与规则命中；Scope Summary 承接全部**资格口径**（整体分析资格、SQL 分析范围、资格排除、弱证据待确认、规则命中、规则发现状态）。内容状态由 `scope/content.py::content_state_of()` 单点实现，两份报告共用同一口径。
+_Avoid_: 在 Inventory 报告里谈「分析候选 / 资格排除」、两处各写一套内容状态统计
 
 **Overlap / Duplication（重叠 / 重复）**:
 Overlap 只表示字段与结构重合；Duplication 还要求共享 process 与共享 grain 签名。二者是两类问题，重合度不是删除依据。

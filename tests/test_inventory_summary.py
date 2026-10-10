@@ -4,7 +4,7 @@
 
 1. 所有数字来自当前 Snapshot 的动态计算，测试里不出现真实 Snapshot 的数字。
 2. 三类关注项分开断言：UNKNOWN（正常但需要关注）、Node ID 缺失 /
-   内容不可用（范围限制 / 采集结果事实）、技术异常（真正异常）。
+   内容不可用（资产状态事实 / 采集结果事实）、技术异常（真正异常）。
 3. Content 缺失不等于采集失败。
 4. Inventory Summary 只做资产盘点：资格判定、排除原因与规则命中
    属于 Scope Summary（analysis/scope/），不得出现在本报告。
@@ -152,16 +152,16 @@ def test_summary_totals_and_workspace_rows(
     assert "| 发现文件 | 3 |" in summary
     assert "| 登记缺口 | 0 |" in summary
 
-    # 第 5.3 节 · 后续分析资格
+    # 第 5.3 节 · 文件元数据完整性（分母：登记相关行用登记文件，其余用发现文件）
     assert "| 文件总数 | 3 |" in summary
-    assert "| 当前分析候选 | 2 |" in summary
+    assert "| Raw JSON 可用 | 3 | 100.0% |" in summary
+    assert "| 有效 Node ID | 2 | 66.7% |" in summary
+    assert "| 缺失 Node ID | 1 | 33.3% |" in summary
 
-    # 第 5.5 节 · 分析候选（分母 = 当前分析候选 = 2）
-    assert "| 当前分析候选 | 2 | 100.0% |" in summary
-    assert "| 分析候选且 content_format = SQL | 2 | 100.0% |" in summary
-    assert "| 分析候选且内容可用 | 2 | 100.0% |" in summary
-    assert "| 分析候选且 SQL 格式且内容可用 | 2 | 100.0% |" in summary
-    assert "当前为 2 个文件" in summary
+    # 第 5.4 节 · 内容快照状态（六态互斥，合计 = 已登记文件）
+    assert "| present | 3 | 100.0% |" in summary
+    assert "| not_checked | 0 | 0.0% |" in summary
+    assert "| **合计** | 3 | 100.0% | 已登记文件 |" in summary
 
     # 第 6 节 · MaxCompute
     assert "| 表总数 | 2 |" in summary
@@ -185,11 +185,11 @@ def test_summary_totals_and_workspace_rows(
     assert "登记缺口为 0" in summary
 
 
-def test_summary_registration_and_eligibility_tables(
+def test_summary_registration_and_node_id_tables(
     cli_env: Any,
     run_cli: Any,
 ) -> None:
-    """空白 Node ID 不算有效；登记与资格两张表分别计数。"""
+    """空白 Node ID 不算有效；登记与身份两张表分别计数。"""
 
     write_snapshot(
         Path("source"),
@@ -223,12 +223,14 @@ def test_summary_registration_and_eligibility_tables(
     assert "| 文件总数 | 2 |" in summary
     assert "| 有效 Node ID | 1 |" in summary
     assert "| 缺失 Node ID | 1 |" in summary
-    assert "| 当前分析候选 | 1 |" in summary
+    assert "| Raw JSON 可用 | 2 | 100.0% |" in summary
 
-    # 分析候选是范围标注，不写成「排除」。
-    assert "| 当前分析候选 | 1 | 100.0% |" in summary
+    # 分析候选 / 资格口径不属于 Inventory Summary，也不写成「排除」。
+    assert "| 当前分析候选 |" not in summary
+    assert "占分析候选" not in summary
+    assert "分析候选（Eligible）" not in summary
     assert "| Excluded |" not in summary
-    assert "分析候选 ≠ 已分析" in summary
+    assert "有效 Node ID ≠ 已分析" in summary
 
 
 def test_summary_empty_workspace_and_missing_snapshot(
@@ -301,7 +303,8 @@ def test_summary_without_files_or_tables(
     assert "| ws_a | 0 | 0 | 0 | 0 | 0 |" in summary
 
     # 百分比与平均值的分母为 0 → 占位符
-    assert "| 当前分析候选 | 0 | — |" in summary
+    assert "| 文件总数 | 0 | — |" in summary
+    assert "| **合计** | 0 | — |" in summary
     assert "| 平均字段数（有字段的表） | — |" in summary
 
     # 第 8 节零状态
@@ -417,9 +420,9 @@ def test_unknown_format_groups_registered_and_unregistered(
     # 不把 UNKNOWN 说成错误
     assert "UNKNOWN ≠ 一定是错误" in summary
 
-    # UNKNOWN 文件不影响「有效 Node ID」与候选口径
+    # UNKNOWN 文件不影响「有效 Node ID」，并在元数据完整性表里照实计数
     assert "| 有效 Node ID | 3 |" in summary
-    assert "| 分析候选且 content_format = SQL | 1 | 33.3% |" in summary
+    assert "| content_format = UNKNOWN | 2 | 66.7% |" in summary
 
 
 def test_unknown_cases_round_robin_by_file_type(
@@ -473,7 +476,7 @@ def test_unknown_cases_round_robin_by_file_type(
 
 
 # ============================================================
-# 3. Node ID 缺失与内容不可用（范围限制 / 采集结果事实）
+# 3. Node ID 缺失与内容不可用（资产状态事实 / 采集结果事实）
 # ============================================================
 
 
@@ -504,15 +507,15 @@ def test_missing_node_id_cases_trimmed_to_three(
 
     summary = _summary()
 
-    assert "### 8.2 缺失 Node ID（当前不满足节点级后续分析条件）" in summary
+    assert "### 8.2 缺失 Node ID（调度身份缺口）" in summary
     assert "- 数量：12（占全部 DataWorks 文件 100.0%）" in summary
     # 代表案例 3 个（按 file_type 轮转，本例同类型 → 取前 3 个）
     assert summary.count("未提供 Node ID（node_id 为空）") == 3
     # 不把它们写成无效资产，也不写成采集失败
     assert "不是无效资产" in summary
     assert "| High | GetFile 采集失败（files-index.failed_files） | 0 |" in summary
-    # 0 个分析候选 → 占位符
-    assert "| 当前分析候选 | 0 | — |" in summary
+    # 身份维度照实计数，不换算成任何候选口径
+    assert "| 缺失 Node ID | 12 |" in summary
 
 
 def test_content_file_missing_is_exception(
@@ -871,7 +874,7 @@ def test_summary_stays_within_inventory_scope(
     assert "不代表业务结论" in summary
     assert "本节不是 M3.6 Problem" in summary
     assert "资产覆盖检查，不是数据质量检查" in summary
-    assert "分析候选 ≠ 已分析" in summary
+    assert "有效 Node ID ≠ 已分析" in summary
     assert "发现 ≠ 登记 ≠ 分析" in summary
     assert "Workspace 名称本身不能作为业务建模结论" in summary
 
@@ -891,6 +894,10 @@ def test_summary_stays_within_inventory_scope(
     assert "| SQL 候选 |" not in summary
     assert "| SQL 分析排除 |" not in summary
     assert "sql_reason_counts" not in summary
+    assert "| 整体分析资格 |" not in summary
+    assert "| 资格排除 |" not in summary
+    assert "| 当前分析候选 |" not in summary
+    assert "占分析候选" not in summary
 
 
 def test_summary_is_deterministic(

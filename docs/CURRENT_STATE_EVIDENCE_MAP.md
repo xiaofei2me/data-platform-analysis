@@ -189,7 +189,7 @@ M2 的共同性质：**只描述技术事实与技术推导，不含业务判断
 | `analysis/scope/inputs/sql-candidates.json` | `sql_eligible = true` 的 File，M2.3 SQL Analysis 的候选输入 | 541 |
 | `analysis/scope/inputs/excluded-tasks.json` | `sql_eligible = false` 的 File（身份不满足 / 类型不适用 / 内容不可用），含命中规则与原因代码；与 SQL 候选互斥且合计 = 登记文件 | 4116 |
 | `analysis/scope/review-tasks.json` | 非正式任务弱证据的待确认 File | 70 |
-| `analysis/scope/summary.json` / `summary.md` | Scope Summary：资格口径、节点身份与类型、内容状态与期望、规则命中、主因分布（机器统计 + 人读报告；规则发现 `scope/findings/` 预留未实现，count = 0） | — |
+| `analysis/scope/summary.json` / `summary.md` | Scope Summary（9 节）：评估概览 / 整体分析资格 / SQL 分析范围 / 资格排除情况 / 弱证据待确认 / 内容状态与内容期望 / 规则命中 / 规则发现及实现状态 / 产物与边界（机器统计 + 人读报告；规则发现 `scope/findings/` 预留未实现，`status = not_implemented`、count = 0） | — |
 
 **Meaning**：回答「**当前平台到底有哪些数据资产**」——表、字段、分区、表元数据、Workspace 与 MaxCompute project 对应关系。`table_key` 是**全链路主键**：Layer / SQL / Lineage / Profiling / M3 / M3.6 每条记录都用它对齐。
 

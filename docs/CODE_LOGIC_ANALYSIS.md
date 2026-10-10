@@ -122,7 +122,9 @@ source/
 4. 层级判定**不在** M2.1 范围（`layer_candidate` 字段已删除，见 ADR-0003），M2.1 回归纯清单。
 
 **产出字段（tables.json）**：`workspace_id / workspace_name / project / schema / table / table_key / comment / column_count / partition_count / size / is_virtual_view / lifecycle / creation_time / last_modified_time / raw_file`。
-**额外产物**：`inventory/summary.md`（10 节资产盘点报告）+ `scope/inputs/sql-candidates.json`、`scope/inputs/excluded-tasks.json`、`scope/review-tasks.json`（见上）与 `scope/summary.{json,md}`（规则分类统计：资格口径、节点身份与类型、内容状态与期望、规则命中、主因分布；原 Inventory 第 11 节迁入）。规则发现（`scope/findings/`）预留未实现。
+**额外产物**：`inventory/summary.md`（10 节资产盘点报告：当前定位 / 核心职责 / 资产总览 / 工作区分布 / DataWorks 开发资产 / MaxCompute 数据资产 / 覆盖与完整性 / 需要关注的资产与异常 / 当前分析边界 / 关键指标定义——**只报事实，不含资格与规则统计**）+ `scope/inputs/sql-candidates.json`、`scope/inputs/excluded-tasks.json`、`scope/review-tasks.json`（见上）与 `scope/summary.{json,md}`（规则分类统计 9 节：评估概览 / 整体分析资格 / SQL 分析范围 / 资格排除情况 / 弱证据待确认 / 内容状态与内容期望 / 规则命中 / 规则发现及实现状态 / 产物与边界；原 Inventory 第 11 节迁入）。规则发现（`scope/findings/`）预留未实现，Summary 如实标注 `status = not_implemented`、`count = 0`。
+
+**职责边界（ADR-0006）**：`build_inventory_summary(inventory, *, reader, content_check, errors)` 不接收 `FileScope`，只用 `scope.content.content_state_of()` 与 `models.node_id_state()` 统计事实；内容状态的实现只有 `scope/content.py` 一份。规则配置由 `pipeline._load_scope_rules()` 在写盘前 fail-fast 加载：非法时 exit 1 且不写 `inventory/files.json`。
 
 ### 3.2 M2.2 Layer Assessment（M2 层级判定，代码已实现）（`evidence/layer/layer_assessment.py`）——唯一的层级判定
 

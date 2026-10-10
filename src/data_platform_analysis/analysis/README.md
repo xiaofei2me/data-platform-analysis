@@ -51,8 +51,8 @@ analysis/
 要点：
 
 - **一个 Stage 对应一个子目录**，不出现跨阶段共用文件；旧布局残留由重跑时的 legacy 清理逻辑删除（`pipeline.PRODUCTION_DIRS` / `LEGACY_PRODUCTION_FILES`）。
-- **Inventory 与 Scope 职责分离**：`inventory/` 只放资产索引与盘点报告（`summary.md` 10 节）；资格判定清单（`inputs/`）、待确认清单与 Scope Summary（`summary.json` / `summary.md`）统一归属 `scope/`。Scope 只消费 Inventory 全量资产，不反向修改或删减。
-- **`scope/inputs/` 与 `scope/findings/` 的区别**：`inputs/` 是后续分析的输入契约（候选 / 排除，互斥且合计覆盖评估集合）；`findings/` 预留给规则发现（对象级问题、规则命中事实、审核状态），当前规则只做资格分类与审核标记，未实现发现产物，Summary 如实标注 count = 0。
+- **Inventory 与 Scope 职责分离**：`inventory/` 只放资产索引与盘点报告（`summary.md` 10 节，只报事实——文件元数据完整性、内容快照状态、缺失 Node ID，不含资格判定与规则统计）；资格判定清单（`inputs/`）、待确认清单与 Scope Summary（`summary.json` / `summary.md` 9 节）统一归属 `scope/`。Scope 只消费 Inventory 全量资产，不反向修改或删减；`build_inventory_summary()` 不接收 `FileScope`。
+- **`scope/inputs/` 与 `scope/findings/` 的区别**：`inputs/` 是后续分析的输入契约（候选 / 排除，互斥且合计覆盖评估集合）；`findings/` 预留给规则发现（对象级问题、规则命中事实、审核状态），当前规则只做资格分类与审核标记，未实现发现产物，Summary 如实标注 `status = not_implemented`、count = 0。
 - **根 `summary.md` 不计算任何指标**：由 `reports.render_analysis_summary(SummaryContext(...))` 纯渲染，输入全部来自当前阶段刚产出的结果。上游阶段没跑时该段为空输入（血缘边渲染为 0）；Evidence stage 与全量 `analyze` 传入同一份真实 Layer / SQL / Lineage / Profiling 结果，因此两者根 `summary.md` 逐字节一致。旧 `Summary.md` 已废弃。本仓库没有 analysis 级 `manifest.json`（`source/manifest.json` 属于 Snapshot）。
 - `errors.json` 与 `parse-errors.json` 是**两个独立文件**，见第 4 节。
 

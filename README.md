@@ -199,12 +199,12 @@ Analysis 输出目录（`ANALYSIS_DIR` 默认为 `analysis/`，gitignore；完�
 analysis/
 ├── summary.md                     # 根入口报告（12 节）
 ├── inventory/                     # Inventory · Stage 01（资产索引）
-│   └── workspaces / files / tables / columns.json + summary.md（10 节盘点报告）
+│   └── workspaces / files / tables / columns.json + summary.md（10 节盘点报告，只报事实）
 ├── scope/                         # Scope · M2.1 资格评估（消费 Inventory 全量资产）
 │   ├── inputs/                    #   sql-candidates / excluded-tasks.json（互斥且合计 = 登记文件）
 │   ├── review-tasks.json          #   弱证据待确认（非删除清单）
-│   ├── summary.json + summary.md  #   Scope Summary（机器统计 + 人读报告）
-│   └── findings/                  #   规则发现预留（当前未实现，不生成产物）
+│   ├── summary.json + summary.md  #   Scope Summary（9 节，机器统计 + 人读报告）
+│   └── findings/                  #   规则发现预留（当前未实现 status = not_implemented，不生成产物）
 ├── evidence/                      # Evidence · Stage 02–05
 │   ├── errors.json                # 正式 Error Ledger（跨阶段错误账本）
 │   ├── layer/                     #   02 层级判定

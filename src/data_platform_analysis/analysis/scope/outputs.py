@@ -40,6 +40,13 @@ SCOPE_SUMMARY_JSON_RELATIVE_PATH = "scope/summary.json"
 SCOPE_SUMMARY_MD_RELATIVE_PATH = "scope/summary.md"
 """Scope Summary（人读报告）。"""
 
+FINDINGS_STATUS_NOT_IMPLEMENTED = "not_implemented"
+"""规则发现（scope/findings/）的实现状态；机器可读 Summary 与人读报告共用此常量。
+
+未实现不是「0 个发现」的同义词：它明确说明没有产出发现产物，
+因此 count 只能是 0，不能被解释成「已检查、无问题」。
+"""
+
 
 def _payload(scope: FileScope, records: list[Any], note: str) -> dict[str, Any]:
     return {
@@ -109,7 +116,8 @@ def scope_summary_payload(scope: FileScope) -> dict[str, Any]:
 
     全部数字来自 ``FileScope.stats()`` 的既有计算结果，
     不在此重复实现资格判定或规则匹配；findings 尚未实现时如实标注
-    count = 0，不虚构整改问题。
+    ``status = not_implemented`` 且 ``count = 0``，不虚构整改问题，
+    也不把「未实现」写成「已检查、无发现」。
     """
 
     stats = scope.stats()
@@ -156,6 +164,7 @@ def scope_summary_payload(scope: FileScope) -> dict[str, Any]:
             "descriptions": dict(stats.rule_descriptions),
         },
         "findings": {
+            "status": FINDINGS_STATUS_NOT_IMPLEMENTED,
             "count": 0,
             "note": (
                 "Scope 规则发现（scope/findings/）尚未实现："
