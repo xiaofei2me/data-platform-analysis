@@ -118,7 +118,7 @@ source/
 
 1. index 导航、raw 优先：`raw` 与 `index` 冲突时以 raw 为准（约定 2）。
 2. 身份与排序：workspaces 按 `workspace_id`；files 按 `(workspace_id, file_id)`；tables 按 workspace + table_key；columns 按 workspace + 表 + 序号，全部用 `numeric_id_sort_key`（数字 id 数值排序、字符串 id 其后字典序）。
-3. **Analysis Scope Rules（`analysis/scope/` + `config/analysis-scope-rules.yaml`，旧 `inventory/scope.py` 只是兼容层）**：对全量 File 做一次规则化分类，给出两个互不混用的口径——`overall_eligible`（资产身份维度：Node ID 有效，`is_analysis_eligible` 仍可用）与 `sql_eligible`（M2.3 输入维度：身份 + 非正式任务 + `content_format` 适用 SQL + Content 可用）。Node ID 缺失、明确的非正式任务、类型不适用 SQL、Content 不可用都只被分类，File 保留在 Inventory，**不产生证据、也不记错误**（`CONTENT_FILE_MISSING` 这类 Snapshot 完整性问题归 inventory stage 记账）。Content 是否读取由 `content_check.enabled` / `content_check.enabled_formats` 控制，未启用的格式状态恒为 `not_checked`：既不计内容可用、不计内容缺口，也不阻断 `sql_eligible`。Node ID 状态只有 `missing` / `valid` 两值，没有「格式无效」。正式产物写入 `analysis/scope/`：`scope/inputs/sql-candidates.json`（`sql_eligible = true`）与 `scope/inputs/excluded-tasks.json`（`sql_eligible = false`），两者互斥且合计 = 登记文件；`scope/review-tasks.json` 是弱证据待确认的独立维度——三份清单都是分析范围判定的产物，**不是删除清单**，`cleanup_candidate` 概念已全量删除。路径常量唯一来源是 `scope/outputs.py`（见 ADR-0005）。
+3. **Analysis Scope Rules（`analysis/scope/` + `config/analysis-scope-rules.yaml`，旧 `inventory/scope.py` 只是兼容层）**：对全量 File 做一次规则化分类，给出三个互不等价的口径——`identity_eligible`（节点身份维度）、`overall_eligible`（整体分析资格 = 身份且非非正式任务）、`sql_eligible`（M2.3 输入维度：身份 + 非正式任务 + 格式适用 SQL + Content 可用）（M2.3 输入维度：身份 + 非正式任务 + `content_format` 适用 SQL + Content 可用）。Node ID 缺失、明确的非正式任务、类型不适用 SQL、Content 不可用都只被分类，File 保留在 Inventory，**不产生证据、也不记错误**（`CONTENT_FILE_MISSING` 这类 Snapshot 完整性问题归 inventory stage 记账）。Content 是否读取由 `content_check.enabled` / `content_check.enabled_formats` 控制，未启用的格式状态恒为 `not_checked`：既不计内容可用、不计内容缺口，也不阻断 `sql_eligible`。Node ID 状态只有 `missing` / `valid` 两值，没有「格式无效」。正式产物写入 `analysis/scope/`：`scope/inputs/sql-candidates.json`（`sql_eligible = true`）与 `scope/inputs/excluded-tasks.json`（`sql_eligible = false`），两者互斥且合计 = 登记文件；`scope/review-tasks.json` 是弱证据待确认的独立维度——三份清单都是分析范围判定的产物，**不是删除清单**，`cleanup_candidate` 概念已全量删除。路径常量唯一来源是 `scope/outputs.py`（见 ADR-0005）。
 4. 层级判定**不在** M2.1 范围（`layer_candidate` 字段已删除，见 ADR-0003），M2.1 回归纯清单。
 
 **产出字段（tables.json）**：`workspace_id / workspace_name / project / schema / table / table_key / comment / column_count / partition_count / size / is_virtual_view / lifecycle / creation_time / last_modified_time / raw_file`。
@@ -416,7 +416,7 @@ content（只取 NodeId 有效 File）
 | 产物 | 内容 | 关键字段 / 说明 | 下游用途 |
 | --- | --- | --- | --- |
 | `inventory/workspaces.json` | 3 个 Workspace | workspace_id / project / file_count / table_count | 资产总账 |
-| `inventory/files.json` | 4657 个 DataWorks File | node_id、category、content_format、`is_analysis_eligible` | 任务目录、范围过滤依据 |
+| `inventory/files.json` | 4657 个 DataWorks File | node_id、category、content_format、| 任务目录、范围过滤依据 |
 | `scope/inputs/sql-candidates.json`、`inputs/excluded-tasks.json`、`scope/review-tasks.json` | 541 / 4116 / 70 个 File | `sql_eligible = true` / `sql_eligible = false` / 弱证据待确认 | M2.3 SQL 输入、排除口径、人工待确认（**三者都不是删除清单**） |
 | `inventory/tables.json` | 3724 张表 | 身份 + 注释 + 分区/大小/生命周期 | 一切分析的输入 |
 | `inventory/columns.json` | 102703 字段 | 类型、注释、分区标记 | 字段级分析输入 |
@@ -518,8 +518,8 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 | 维度 | 数值 |
 | --- | --- |
 | Workspace | 3（dme_cdm / dme_ods / dme_ads） |
-| DataWorks File（快照总量） | 4657（ODPS_SQL 2826、content_format=SQL 2826） |
-| **参与分析的 File（overall_eligible，Node ID 有效）** | **1379**（身份不满足 3278） |
+| DataWorks File（登记总量，2026-10-10 实测） | 4657（ODPS_SQL 2826、content_format=SQL 2826） |
+| ****整体分析资格（overall_eligible）** 或 **NodeId 有效（身份维度）**** | **1379**（身份不满足 3278） |
 | **SQL 分析输入（sql_eligible）** | **541**（身份 + 任务 + 类型 + 内容四组规则全部通过） |
 | SQL 分析排除（`scope/inputs/excluded-tasks.json`） | 4116（与 541 份 SQL 候选互斥且合计 = 4657） |
 | 读取到内容并解析的 File | 541 |
@@ -658,7 +658,7 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 | `tests/test_business_quality_assessment.py` | 15 | M3.1：UNKNOWN / AMBIGUOUS 主因、confidence 复核、P1–P3 清单 |
 | `tests/test_workspace_config.py` | 9 | workspace 身份 / layer-rules 配置契约 |
 | `tests/test_rerun_semantics.py` | 8 | 重跑确定性、清单回填保留、产物不互相覆盖 |
-| `tests/test_analysis_node_eligibility.py` | 6 | NodeId 有效过滤（is_analysis_eligible） |
+| `tests/test_analysis_node_eligibility.py` | 6 | NodeId / sql_eligible 输入范围黑盒 |
 | `tests/test_workspace_filter.py` | 5 | workspace 过滤 |
 | `tests/test_fault_tolerance.py` | 5 | 可恢复错误账本、单对象失败不中断 |
 | `tests/test_list_files_pagination.py` | 4 | 采集分页 |

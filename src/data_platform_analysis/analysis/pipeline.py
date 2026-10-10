@@ -235,6 +235,7 @@ class AnalysisPipeline:
             inventory=inventory,
             inventory_summary=inventory_summary,
             scope=scope,
+            rules=rules,
             statements=statements,
             references=references,
             parse_errors=parse_errors,
@@ -331,6 +332,7 @@ class AnalysisPipeline:
             inventory=inventory,
             inventory_summary=inventory_summary,
             scope=scope,
+            rules=rules,
             errors=errors,
         )
 
@@ -359,6 +361,7 @@ class AnalysisPipeline:
         inventory: Inventory,
         inventory_summary: InventorySummary,
         scope: FileScope,
+        rules: ScopeRules,
         errors: list[dict[str, object]],
     ) -> Path:
         """写出 Inventory / Scope 阶段 Summary 与根 Summary。"""
@@ -386,6 +389,7 @@ class AnalysisPipeline:
                     inventory=inventory,
                     lineage=LineageResult(edges=[], candidates=[]),
                     scope_stats=scope_stats,
+                    sql_capable_content_formats=rules.sql_capable_content_formats,
                     statements=[],
                     references=[],
                     parse_errors=[],
@@ -461,6 +465,7 @@ class AnalysisPipeline:
             inventory=inventory,
             inventory_summary=inventory_summary,
             scope=scope,
+            rules=rules,
             statements=statements,
             references=references,
             parse_errors=parse_errors,
@@ -849,6 +854,7 @@ class AnalysisPipeline:
         inventory: Inventory,
         inventory_summary: InventorySummary,
         scope: FileScope,
+        rules: ScopeRules,
         statements: list[StatementRecord],
         references: list[TableReference],
         parse_errors: list[ParseErrorRecord],
@@ -888,6 +894,7 @@ class AnalysisPipeline:
                     inventory=inventory,
                     lineage=lineage,
                     scope_stats=scope_stats,
+                    sql_capable_content_formats=rules.sql_capable_content_formats,
                     statements=statements,
                     references=references,
                     parse_errors=parse_errors,

@@ -61,8 +61,8 @@ find source -delete
 shutil.rmtree("source")
 shutil.rmtree(Path("source"))
 Path("source/...").unlink()
-path.write_text(...)        # 目标落在真实 source/ 时
-path.write_bytes(...)       # 目标落在真实 source/ 时
+path.write_text(...)  # 目标落在真实 source/ 时
+path.write_bytes(...)  # 目标落在真实 source/ 时
 ```
 
 **读取 `source/` 永远是允许的。** 只有修改、删除、覆盖、移动才是禁止的。

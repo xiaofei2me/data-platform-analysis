@@ -53,7 +53,7 @@ _Avoid_: 自动裁决、审核通过
 _Avoid_: 坏模型、无效模型、待修复
 
 **Analysis Scope Rules（分析范围规则）**:
-`config/analysis-scope-rules.yaml` 声明、由 Scope 阶段通过源码包 `analysis/scope/` 对 Inventory 全量 File 执行一次的分类规则，产出 `overall_eligible`（Node ID 有效）与 `sql_eligible`（M2.3 输入）两个口径；正式产物统一归属 `analysis/scope/`：`inputs/sql-candidates.json`（`sql_eligible = true`）、`inputs/excluded-tasks.json`（`sql_eligible = false`）、`review-tasks.json`（弱证据待确认）与 `summary.{json,md}`。前两份互斥且合计 = 登记文件，被排除的对象仍完整保留在 `inventory/files.json`；规则发现（`scope/findings/`）尚未实现，不产出整改问题，Summary 标注 `status = not_implemented`、`count = 0`。Content 是否读取由 `content_check` 开关控制，未启用的格式状态为 `not_checked`（既非可用也非缺口，不阻断资格）。
+`config/analysis-scope-rules.yaml` 声明、由 Scope 阶段通过源码包 `analysis/scope/` 对 Inventory 全量 File 执行一次的分类规则，产出三个互不等价的口径：`identity_eligible`（身份维度，`is_analysis_eligible` 为兼容入口）、`overall_eligible`（= `identity_eligible` 且未被明确非正式任务排除）、`sql_eligible`（M2.3 输入维度，身份 + 非正式任务 + 格式适用 SQL + Content 可用）；正式产物统一归属 `analysis/scope/`：`inputs/sql-candidates.json`（`sql_eligible = true`）、`inputs/excluded-tasks.json`（`sql_eligible = false`）、`review-tasks.json`（弱证据待确认）与 `summary.{json,md}`。前两份互斥且合计 = 登记文件，被排除的对象仍完整保留在 `inventory/files.json`；规则发现（`scope/findings/`）尚未实现，不产出整改问题，Summary 标注 `status = not_implemented`、`count = 0`。Content 是否读取由 `content_check` 开关控制，未启用的格式状态为 `not_checked`（既非可用也非缺口，不阻断资格）。
 _Avoid_: 删除清单、清理脚本、清理候选（`cleanup_candidate`）、失效资产（分类结果不授权任何删除或修改操作）
 
 **Inventory Summary / Scope Summary（盘点报告 / 资格评估报告）**:

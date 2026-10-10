@@ -3429,7 +3429,12 @@ def render_analysis_summary(context: SummaryContext) -> str:
                 ],
                 [
                     "SQL 格式 File",
-                    sum(1 for item in inventory.files if item.content_format.upper() == "SQL"),
+                    sum(
+                        1
+                        for item in inventory.files
+                        if (item.content_format or "").strip().upper()
+                        in context.sql_capable_content_formats
+                    ),
                 ],
                 ["NodeId 有效（身份维度）", scope_stats.node_id_valid_count],
                 ["NodeId 缺失（仅保留在 Snapshot）", scope_stats.node_id_missing_count],
@@ -3613,6 +3618,8 @@ class SummaryContext:
     inventory: Inventory
     lineage: LineageResult
     scope_stats: FileScopeStats
+    sql_capable_content_formats: frozenset[str] = field(default_factory=frozenset)
+    """适用 SQL 分析的 content_format 集合（来自 config/analysis-scope-rules.yaml）。"""
     statements: list[StatementRecord] = field(default_factory=list)
     references: list[TableReference] = field(default_factory=list)
     parse_errors: list[ParseErrorRecord] = field(default_factory=list)

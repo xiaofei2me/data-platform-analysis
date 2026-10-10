@@ -150,13 +150,13 @@ ModuleNotFoundError: No module named 'data_platform_analysis.analysis.understand
 
 ```python
 payloads = [
-    ("sql",      "references", ...),
-    ("lineage",  "edges",      ...),
-    ("lineage",  "candidates", ...),
-    ("layer",    "assessments",...),
+    ("sql", "references", ...),
+    ("lineage", "edges", ...),
+    ("lineage", "candidates", ...),
+    ("layer", "assessments", ...),
 ]
 ...
-path = analysis_dir / folder / names[key]     # ← 缺 evidence/ 前缀
+path = analysis_dir / folder / names[key]  # ← 缺 evidence/ 前缀
 ```
 
 → 写入 `analysis/sql/…`，而 `src/.../understanding/business/understanding.py:95` 的 `M2_INPUT_FILES` 读 `analysis/evidence/sql/…`。
