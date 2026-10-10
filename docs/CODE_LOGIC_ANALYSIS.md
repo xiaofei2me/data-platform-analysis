@@ -110,7 +110,7 @@ source/
 
 执行顺序 `M2.1 → M2.2 → M2.3 → M2.4 → M2.5` 是刻意的：M2.2 只依赖表清单与规则配置，必须先于 M2.4 完成，血缘才能直接引用 `candidate_layer`（见 ADR-0003）。
 
-### 3.1 M2.1 Warehouse Inventory（`inventory/inventory.py` + `inventory/scope.py`）
+### 3.1 M2.1 Warehouse Inventory（`inventory/inventory.py` + `analysis/scope/`）
 
 **输入**：`files-index.json` / `tables-index.json` + raw JSON。
 
@@ -118,11 +118,11 @@ source/
 
 1. index 导航、raw 优先：`raw` 与 `index` 冲突时以 raw 为准（约定 2）。
 2. 身份与排序：workspaces 按 `workspace_id`；files 按 `(workspace_id, file_id)`；tables 按 workspace + table_key；columns 按 workspace + 表 + 序号，全部用 `numeric_id_sort_key`（数字 id 数值排序、字符串 id 其后字典序）。
-3. **Analysis Scope Rules（`inventory/scope.py` + `config/analysis-scope-rules.yaml`）**：对全量 File 做一次规则化分类，给出两个互不混用的口径——`overall_eligible`（资产身份维度：NodeId 有效，`is_analysis_eligible` 仍可用）与 `sql_eligible`（M2.3 输入维度：身份 + 非正式任务 + `content_format` 适用 SQL + Content 可用）。NodeId 缺失、格式无效、明确的非正式任务、类型不适用 SQL、Content 不可用都只被分类，File 保留在 Inventory，**不产生证据、也不记错误**（`CONTENT_FILE_MISSING` 这类 Snapshot 完整性问题归 inventory stage 记账）。同时产出 `inventory/excluded-tasks.json`（明确排除，含清理候选标记）与 `inventory/review-tasks.json`（弱证据待确认）——两者都是分析范围判定的产物，**不是删除清单**。
+3. **Analysis Scope Rules（`analysis/scope/` + `config/analysis-scope-rules.yaml`，旧 `inventory/scope.py` 只是兼容层）**：对全量 File 做一次规则化分类，给出两个互不混用的口径——`overall_eligible`（资产身份维度：Node ID 有效，`is_analysis_eligible` 仍可用）与 `sql_eligible`（M2.3 输入维度：身份 + 非正式任务 + `content_format` 适用 SQL + Content 可用）。Node ID 缺失、明确的非正式任务、类型不适用 SQL、Content 不可用都只被分类，File 保留在 Inventory，**不产生证据、也不记错误**（`CONTENT_FILE_MISSING` 这类 Snapshot 完整性问题归 inventory stage 记账）。Content 是否读取由 `content_check.enabled` / `content_check.enabled_formats` 控制，未启用的格式状态恒为 `not_checked`：既不计内容可用、不计内容缺口，也不阻断 `sql_eligible`。Node ID 状态只有 `missing` / `valid` 两值，没有「格式无效」。正式产物写入 `analysis/scope/`：`scope/inputs/sql-candidates.json`（`sql_eligible = true`）与 `scope/inputs/excluded-tasks.json`（`sql_eligible = false`），两者互斥且合计 = 登记文件；`scope/review-tasks.json` 是弱证据待确认的独立维度——三份清单都是分析范围判定的产物，**不是删除清单**，`cleanup_candidate` 概念已全量删除。路径常量唯一来源是 `scope/outputs.py`（见 ADR-0005）。
 4. 层级判定**不在** M2.1 范围（`layer_candidate` 字段已删除，见 ADR-0003），M2.1 回归纯清单。
 
 **产出字段（tables.json）**：`workspace_id / workspace_name / project / schema / table / table_key / comment / column_count / partition_count / size / is_virtual_view / lifecycle / creation_time / last_modified_time / raw_file`。
-**额外产物**：`excluded-tasks.json` / `review-tasks.json`（见上），`summary.md` 第 11 节给出规则分类统计（资格口径、节点身份与类型、内容状态与期望、规则命中、主因分布）。
+**额外产物**：`inventory/summary.md`（10 节资产盘点报告）+ `scope/inputs/sql-candidates.json`、`scope/inputs/excluded-tasks.json`、`scope/review-tasks.json`（见上）与 `scope/summary.{json,md}`（规则分类统计：资格口径、节点身份与类型、内容状态与期望、规则命中、主因分布；原 Inventory 第 11 节迁入）。规则发现（`scope/findings/`）预留未实现。
 
 ### 3.2 M2.2 Layer Assessment（M2 层级判定，代码已实现）（`evidence/layer/layer_assessment.py`）——唯一的层级判定
 
@@ -414,9 +414,10 @@ content（只取 NodeId 有效 File）
 | 产物 | 内容 | 关键字段 / 说明 | 下游用途 |
 | --- | --- | --- | --- |
 | `inventory/workspaces.json` | 3 个 Workspace | workspace_id / project / file_count / table_count | 资产总账 |
-| `inventory/files.json` | 4651 个 DataWorks File | node_id、category、content_format、`is_analysis_eligible` | 任务目录、范围过滤依据 |
-| `inventory/tables.json` | 3719 张表 | 身份 + 注释 + 分区/大小/生命周期 | 一切分析的输入 |
-| `inventory/columns.json` | 102603 字段 | 类型、注释、分区标记 | 字段级分析输入 |
+| `inventory/files.json` | 4657 个 DataWorks File | node_id、category、content_format、`is_analysis_eligible` | 任务目录、范围过滤依据 |
+| `scope/inputs/sql-candidates.json`、`inputs/excluded-tasks.json`、`scope/review-tasks.json` | 541 / 4116 / 70 个 File | `sql_eligible = true` / `sql_eligible = false` / 弱证据待确认 | M2.3 SQL 输入、排除口径、人工待确认（**三者都不是删除清单**） |
+| `inventory/tables.json` | 3724 张表 | 身份 + 注释 + 分区/大小/生命周期 | 一切分析的输入 |
+| `inventory/columns.json` | 102703 字段 | 类型、注释、分区标记 | 字段级分析输入 |
 | `evidence/layer/assessments.json` | 3719 条层级判定 | workspace_layer / candidate_layer / status / evidence | **分层现状的唯一口径** |
 | `evidence/layer/summary.md` | 层级报告 | 状态分布、UNKNOWN 明细、跨层提示、CONFLICT 明细 | 现状分层评审 |
 | `evidence/sql/statements.json` | 1963 条语句 | sql 原文、parse_status、extraction_method | 业务逻辑反读的语料 |
@@ -485,7 +486,7 @@ content（只取 NodeId 有效 File）
 ## 6. 配置与运行
 
 - 配置中心：`config.py`（pydantic-settings + `.env`）。关键项：`WORKSPACES`（workspace_id/name/project 映射）、阿里云 AK、`DATAWORKS_*`、`MAXCOMPUTE_*`、`SOURCE_DIR=source`、`ANALYSIS_DIR=analysis`、`SCOPE_RULES_PATH=config/analysis-scope-rules.yaml`、`LAYER_RULES_PATH=config/layer-rules.yaml`、`BUSINESS_RULES_PATH=config/business-rules.yaml`、`PROCESS_RULES_PATH=config/process-rules.yaml`。
-- 分析范围规则：`config/analysis-scope-rules.yaml`（**唯一**范围判定来源：节点身份 / 内容状态 / 分析资格 / 非正式任务；只被 M2.1 读取，配置非法即 exit 1，不回退默认值）。
+- 分析范围规则：`config/analysis-scope-rules.yaml`（**唯一**范围判定来源：`content_check` 开关 / 节点身份 / 内容状态与期望 / 分析资格 / 非正式任务；只被 `analysis/scope/` 读取，配置非法即 exit 1，不回退默认值，旧字段 `cleanup_candidate` 出现即报错）。
 - 层级规则：`config/layer-rules.yaml`（**唯一**层级规则来源，历史硬编码前缀已删除）。
 - 业务词典：`config/business-rules.yaml`（stopwords / domains / objects；**只被 `analyze --stage understanding` 读取**，关键词与 stopwords 冲突直接报错）。
 - 过程信号规则：`config/process-rules.yaml`（transaction_identifiers / transaction_measures / event_time / status；**只被 `analyze --stage understanding` 读取**，段缺失、空列表、跨段冲突直接报错，配置里不得出现业务过程命名）。
@@ -515,14 +516,15 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 | 维度 | 数值 |
 | --- | --- |
 | Workspace | 3（dme_cdm / dme_ods / dme_ads） |
-| DataWorks File（快照总量） | 4651（TASK 2899、SQL 格式 2821） |
-| **参与分析的 File（overall_eligible，Node ID 有效）** | **1379**（排除 3272） |
+| DataWorks File（快照总量） | 4657（ODPS_SQL 2826、content_format=SQL 2826） |
+| **参与分析的 File（overall_eligible，Node ID 有效）** | **1379**（身份不满足 3278） |
 | **SQL 分析输入（sql_eligible）** | **541**（身份 + 任务 + 类型 + 内容四组规则全部通过） |
+| SQL 分析排除（`scope/inputs/excluded-tasks.json`） | 4116（与 541 份 SQL 候选互斥且合计 = 4657） |
 | 读取到内容并解析的 File | 541 |
-| MaxCompute Table / Column | 3719 / 102603 |
-| SQL 语句 | 1963（success 100%） |
-| 表引用 / 去重血缘边 | 1273 / 3442（跨 Workspace 1560） |
-| 核心表候选 | 1789 |
+| MaxCompute Table / Column | 3724 / 102703 |
+| SQL 语句 | 1917（success 100%） |
+| 表引用 / 去重血缘边 | 1241 / 3384（跨 Workspace 1567） |
+| 核心表候选 | 1747 |
 | 可恢复错误 | 0 |
 
 ### 7.2 分层现状（M2.2）
@@ -550,7 +552,7 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 
 ## 8. 局限与风险（必须知道的边界）
 
-1. **分析覆盖率**：4651 个 File 中只有 1379 个（29.6%）Node ID 有效，其中 541 个（11.6%）通过全部规则进入 SQL/血缘分析并解析到内容（口径见 `config/analysis-scope-rules.yaml`）。血缘只覆盖"已提交节点"，**不覆盖草稿/无节点文件**——引用现状时必须带上这个口径。
+1. **分析覆盖率**：4657 个 File 中只有 1379 个（29.6%）Node ID 有效，其中 541 个（11.6%）通过全部规则进入 SQL/血缘分析并解析到内容（口径见 `config/analysis-scope-rules.yaml`）；其余 4116 个是 `sql_eligible = false`（见 `scope/inputs/excluded-tasks.json`）。非 SQL 格式的 Content 状态为 `not_checked`（`content_check` 未启用该格式），既不算内容可用也不算内容缺口。血缘只覆盖"已提交节点"，**不覆盖草稿/无节点文件**——引用现状时必须带上这个口径。
 2. **只有表级血缘**：无列级血缘、无调度任务级依赖、无字段级加工逻辑。
 3. **无行级数据**：Profiling 是 `metadata_only`，无法支撑唯一性/分布/质量判断。
 4. **解析能力**：ODPS 方言基于 Hive 注册，未覆盖的语法会走 unsupported/fallback；当前 unsupported=0 属健康状态，但新增 SQL 写法需回归 `test_golden_*`。

@@ -12,6 +12,8 @@
 
 输出：
     analysis/inventory/{workspaces,files,tables,columns}.json
+    （summary.md 由 analysis/pipeline.py 渲染；资格清单与 Scope Summary
+    归属 analysis/scope/，依据 scope 包的判定写出，不写入本目录）
 
 约定：
 
@@ -39,8 +41,16 @@ from ..models import (
     is_analysis_eligible,
     numeric_id_sort_key,
 )
+from ..scope import (
+    CONTENT_STATE_EMPTY_TEXT,
+    CONTENT_STATE_NOT_CHECKED,
+    CONTENT_STATE_NOT_COLLECTED,
+    CONTENT_STATE_PATH_MISSING,
+    CONTENT_STATE_PRESENT,
+    CONTENT_STATE_READ_ERROR,
+    FileScope,
+)
 from ..snapshot import SnapshotReader, WorkspaceIdentity, to_int
-from .scope import FileScope, FileScopeStats
 
 logger = logging.getLogger(__name__)
 
@@ -611,12 +621,22 @@ CASE_REPRESENTATIVE_LIMIT = 5
 """案例总数超过全量展示阈值时的代表案例数量上限（3～5）。"""
 
 NODE_ID_CASE_LIMIT = 3
-"""缺失 / 无效 Node ID 的代表案例数量（大批量异常只展示少量定位案例）。"""
+"""缺失 Node ID 的代表案例数量（大批量异常只展示少量定位案例）。"""
 
 REASON_UNKNOWN_FORMAT = "content_format = UNKNOWN（类型未识别）"
 REASON_MISSING_NODE_ID = "未提供 Node ID（node_id 为空）"
 REASON_CONTENT_FILE_EMPTY = "未提供 Content（content_file 为空）"
 REASON_CONTENT_PATH_MISSING = "content_file 指向的 Snapshot 文件缺失"
+REASON_CONTENT_EMPTY_TEXT = "Content 文件存在但内容为空白"
+REASON_CONTENT_READ_ERROR = "Content 存在但读取失败"
+
+CONTENT_GAP_REASONS: Mapping[str, str] = {
+    CONTENT_STATE_NOT_COLLECTED: REASON_CONTENT_FILE_EMPTY,
+    CONTENT_STATE_PATH_MISSING: REASON_CONTENT_PATH_MISSING,
+    CONTENT_STATE_EMPTY_TEXT: REASON_CONTENT_EMPTY_TEXT,
+    CONTENT_STATE_READ_ERROR: REASON_CONTENT_READ_ERROR,
+}
+"""已检查状态 → 内容不可用的代表案例说明（present / not_checked 不在其中）。"""
 
 ERROR_TYPE_FILES_INDEX = ("FILES_INDEX_MISSING", "FILES_INDEX_INVALID")
 ERROR_TYPE_TABLES_INDEX = ("TABLES_INDEX_MISSING", "TABLES_INDEX_INVALID")
@@ -644,6 +664,8 @@ class AssetCase:
     content_format: str
     content_file: str | None
     reason: str
+    content_state: str | None = None
+    """Content 事实状态（仅内容类案例填写）；未启用 Content 检查时为 not_checked。"""
 
 
 @dataclass(frozen=True)
@@ -711,6 +733,7 @@ class DataWorksInventorySummary:
     missing_node_id_count: int = 0
     content_available_count: int = 0
     content_unavailable_count: int = 0
+    content_not_checked_count: int = 0
     content_path_missing_count: int = 0
     collect_failure_count: int = 0
     unrecognized_format_count: int = 0
@@ -741,15 +764,17 @@ class MaxComputeInventorySummary:
 
 @dataclass
 class InventorySummary:
-    """当前 Snapshot 的数据资产基线与异常报告输入。"""
+    """当前 Snapshot 的数据资产基线与异常报告输入。
+
+    只承载资产盘点统计；资格判定、排除原因与规则命中属于 Scope Summary
+    （analysis/scope/），不进入本模型。
+    """
 
     workspaces: list[WorkspaceInventorySummary] = field(default_factory=list)
     dataworks: DataWorksInventorySummary = field(default_factory=DataWorksInventorySummary)
     maxcompute: MaxComputeInventorySummary = field(default_factory=MaxComputeInventorySummary)
     technical_exceptions: list[TechnicalException] = field(default_factory=list)
     inventory_error_count: int = 0
-    scope: FileScopeStats | None = None
-    """规则分类统计（Analysis Scope Rules）；未执行分类时为 None。"""
 
 
 def build_inventory_summary(
@@ -757,22 +782,21 @@ def build_inventory_summary(
     *,
     reader: SnapshotReader,
     errors: Sequence[Mapping[str, Any]] | None = None,
-    scope: FileScope | None = None,
+    scope: FileScope,
 ) -> InventorySummary:
     """从 Inventory 与当前 Snapshot 计算结构化盘点统计。
 
     输入：
 
     - ``inventory``：M2.1 清单（File / Table / Column / Workspace）；
-    - ``reader``：只读 Snapshot，用于确认 content_file 是否真实存在，
-      以及读取 index 里的采集失败条目；
+    - ``reader``：只读 Snapshot，用于读取 index 里的采集失败条目；
     - ``errors``：可恢复错误记录，默认取当前 ledger；
-    - ``scope``：规则分类结果，提供节点身份 / 内容状态 / 分析资格 /
-      非正式任务的统计口径，缺省时 Summary 不含规则分类节。
+    - ``scope``：规则分类结果（必需），只用于读取每文件的 content_state
+      事实（内容可用 / 缺口 / 未检查）；资格与规则命中统计属于 Scope
+      Summary，不进入 InventorySummary。
 
     只统计，不判断：范围限制（缺 Node ID）与技术异常（采集失败 / 元数据缺失）
     分开计数，Content 缺失不记作采集失败；代表案例全部回指真实 Snapshot 资产。
-    规则分类统计同样只计数：唯一对象数与规则命中数分开，避免重复计数。
     """
 
     records = reader.ledger.records() if errors is None else list(errors)
@@ -785,7 +809,9 @@ def build_inventory_summary(
         workspace.workspace_id: workspace.workspace_name for workspace in inventory.workspaces
     }
 
-    dataworks, files_by_workspace = _summarize_files(inventory, reader, workspace_names)
+    dataworks, files_by_workspace = _summarize_files(
+        inventory, reader, workspace_names, scope=scope
+    )
     maxcompute, tables_by_workspace = _summarize_tables(inventory, error_counts)
 
     failed_files, failed_tables = _collect_failures(inventory, reader)
@@ -820,7 +846,6 @@ def build_inventory_summary(
             content_path_missing=dataworks.content_path_missing_cases,
         ),
         inventory_error_count=sum(error_counts.values()),
-        scope=scope.stats() if scope is not None else None,
     )
 
     return summary
@@ -859,8 +884,14 @@ def _summarize_files(
     inventory: Inventory,
     reader: SnapshotReader,
     workspace_names: Mapping[int, str],
+    *,
+    scope: FileScope,
 ) -> tuple[DataWorksInventorySummary, list[tuple[int, int, int]]]:
     """统计 DataWorks File 侧指标，并挑选代表案例。
+
+    Content 三桶直接取自规则分类的 ``content_state``，不在这里重读 Snapshot：
+    ``present`` 计入可用；``CONTENT_GAP_STATES`` 计入不可用（缺口）；
+    ``not_checked``（未启用 Content 检查）三桶都不计入。
 
     返回 (汇总, 每个 Workspace 的 (registered, eligible, content_available))，
     Workspace 顺序与 inventory.workspaces 一致。
@@ -870,12 +901,14 @@ def _summarize_files(
         discovered_count=sum(workspace.file_count for workspace in inventory.workspaces),
     )
 
+    decisions = {(item.workspace_id, item.file_id): item for item in scope.decisions}
+
     registered_by_workspace: Counter[int] = Counter()
     eligible_by_workspace: Counter[int] = Counter()
     content_by_workspace: Counter[int] = Counter()
     unknown_files: list[FileInventory] = []
     missing_node_files: list[FileInventory] = []
-    content_unavailable: list[tuple[FileInventory, str]] = []
+    content_unavailable: list[tuple[FileInventory, str, str]] = []
     content_path_missing: list[FileInventory] = []
 
     for file in inventory.files:
@@ -889,31 +922,35 @@ def _summarize_files(
             summary.unrecognized_format_count += 1
             unknown_files.append(file)
 
-        content_available = _has_content(reader, file)
+        decision = decisions[(file.workspace_id, str(file.file_id))]
+        content_state = decision.content_state
 
-        if content_available:
+        if content_state == CONTENT_STATE_PRESENT:
             summary.content_available_count += 1
             content_by_workspace[file.workspace_id] += 1
 
-        elif file.content_file:
-            # content_file 指向的文件在 Snapshot 中不存在，属于技术异常。
-            # 在 Inventory 阶段记录：Content 是否可用已由规则分类判定，
-            # 被排除出 SQL 分析的文件不再经过 SQL 阶段，也不能因此丢掉这条事实。
-            reader.ledger.add(
-                stage="inventory",
-                error_type="CONTENT_FILE_MISSING",
-                message="content_file 指向的文件在 Snapshot 中不存在",
-                workspace_id=file.workspace_id,
-                file_id=str(file.file_id),
-                path=file.content_file,
-            )
-            summary.content_path_missing_count += 1
-            content_path_missing.append(file)
-            content_unavailable.append((file, REASON_CONTENT_PATH_MISSING))
+        elif content_state == CONTENT_STATE_NOT_CHECKED:
+            # 未启用 Content 检查：既不计入可用，也不计入不可用 / 缺失。
+            summary.content_not_checked_count += 1
 
-        else:
-            # content_file 为空是采集结果事实，不是技术异常。
-            content_unavailable.append((file, REASON_CONTENT_FILE_EMPTY))
+        elif content_state in CONTENT_GAP_REASONS:
+            # Content 缺口是分类结果；其中 path_missing 属技术异常。
+            # 在 Inventory 阶段记录：被排除出 SQL 分析的文件不再经过 SQL 阶段，
+            # 也不能因此丢掉这条 Snapshot 完整性事实。
+            if content_state == CONTENT_STATE_PATH_MISSING:
+                reader.ledger.add(
+                    stage="inventory",
+                    error_type="CONTENT_FILE_MISSING",
+                    message="content_file 指向的文件在 Snapshot 中不存在",
+                    workspace_id=file.workspace_id,
+                    file_id=str(file.file_id),
+                    path=file.content_file,
+                )
+                summary.content_path_missing_count += 1
+                content_path_missing.append(file)
+
+            summary.content_unavailable_count += 1
+            content_unavailable.append((file, CONTENT_GAP_REASONS[content_state], content_state))
 
         if not is_analysis_eligible(file):
             missing_node_files.append(file)
@@ -922,18 +959,17 @@ def _summarize_files(
         summary.eligible_count += 1
         eligible_by_workspace[file.workspace_id] += 1
 
-        if content_available:
+        if content_state == CONTENT_STATE_PRESENT:
             summary.eligible_content_available_count += 1
 
         if str(file.content_format or "").upper() == "SQL":
             summary.eligible_sql_format_count += 1
 
-            if content_available:
+            if content_state == CONTENT_STATE_PRESENT:
                 summary.eligible_sql_content_count += 1
 
     summary.valid_node_id_count = summary.eligible_count
     summary.missing_node_id_count = len(missing_node_files)
-    summary.content_unavailable_count = summary.registered_count - summary.content_available_count
     summary.unknown_format_groups = _unknown_format_groups(unknown_files)
     summary.unknown_format_cases = _trim_examples(
         [_file_case(item, workspace_names, reason=REASON_UNKNOWN_FORMAT) for item in unknown_files],
@@ -948,12 +984,20 @@ def _summarize_files(
         limit=NODE_ID_CASE_LIMIT,
     )
     summary.content_unavailable_cases = _trim_examples(
-        [_file_case(item, workspace_names, reason=reason) for item, reason in content_unavailable],
+        [
+            _file_case(item, workspace_names, reason=reason, content_state=state)
+            for item, reason, state in content_unavailable
+        ],
         key=lambda case: case.file_type,
     )
     summary.content_path_missing_cases = _trim_examples(
         [
-            _file_case(item, workspace_names, reason=REASON_CONTENT_PATH_MISSING)
+            _file_case(
+                item,
+                workspace_names,
+                reason=REASON_CONTENT_PATH_MISSING,
+                content_state=CONTENT_STATE_PATH_MISSING,
+            )
             for item in content_path_missing
         ],
         key=lambda case: case.file_type,
@@ -1231,8 +1275,9 @@ def _file_case(
     workspace_names: Mapping[int, str],
     *,
     reason: str,
+    content_state: str | None = None,
 ) -> AssetCase:
-    """把 File 转成可回溯到 Snapshot 的代表案例。"""
+    """把 File 转成可回溯到 Snapshot 真实资产的代表案例。"""
 
     return AssetCase(
         workspace_id=file.workspace_id,
@@ -1245,6 +1290,7 @@ def _file_case(
         content_format=file.content_format,
         content_file=file.content_file,
         reason=reason,
+        content_state=content_state,
     )
 
 
@@ -1285,15 +1331,6 @@ def _trim_examples[ExampleT](
             break
 
     return selected
-
-
-def _has_content(reader: SnapshotReader, file: FileInventory) -> bool:
-    """判断 File 的 Content 在 Snapshot 中是否可读（只看路径存在，不读内容）。"""
-
-    if not file.content_file:
-        return False
-
-    return reader.resolve(file.content_file).exists()
 
 
 def _count_error_types(

@@ -185,9 +185,9 @@ uv run data-platform-analysis analyze --stage evidence       # Stage 02-05 (Evid
 uv run data-platform-analysis analyze --stage understanding  # Stage 06-11 (Understanding)
 uv run data-platform-analysis analyze --stage review         # Stage 12-14 (Review)
 
-# 重跑前注意：--stage inventory / --stage evidence 会先清空整个 analysis/
-# （含 understanding/、review/ 与两份人工回填清单）；--stage understanding /
-# --stage review 不清场，但 evidence/ 缺失时会自动先补跑 evidence。
+# 重跑前注意：--stage inventory / --stage evidence 会先清空 analysis/
+# （含 understanding/、review/；5 份人工回填清单经快照恢复不丢失）；
+# --stage understanding / --stage review 不清场，但 evidence/ 缺失时会自动先补跑 evidence。
 
 # M3.6 评审（一次性完整分析或单独执行 review 阶段）：
 uv run data-platform-analysis analyze --stage review
@@ -198,8 +198,13 @@ Analysis 输出目录（`ANALYSIS_DIR` 默认为 `analysis/`，gitignore；完�
 ```text
 analysis/
 ├── summary.md                     # 根入口报告（12 节）
-├── inventory/                     # Inventory · Stage 01
-│   └── workspaces / files / tables / columns / excluded-tasks / review-tasks.json + summary.md
+├── inventory/                     # Inventory · Stage 01（资产索引）
+│   └── workspaces / files / tables / columns.json + summary.md（10 节盘点报告）
+├── scope/                         # Scope · M2.1 资格评估（消费 Inventory 全量资产）
+│   ├── inputs/                    #   sql-candidates / excluded-tasks.json（互斥且合计 = 登记文件）
+│   ├── review-tasks.json          #   弱证据待确认（非删除清单）
+│   ├── summary.json + summary.md  #   Scope Summary（机器统计 + 人读报告）
+│   └── findings/                  #   规则发现预留（当前未实现，不生成产物）
 ├── evidence/                      # Evidence · Stage 02–05
 │   ├── errors.json                # 正式 Error Ledger（跨阶段错误账本）
 │   ├── layer/                     #   02 层级判定
@@ -264,6 +269,7 @@ data-platform-analysis/
 │           ├── README.md       # 包内说明（四阶段目录地图 / 模块导览 / 入口与重跑顺序 / 错误模型）
 │           ├── pipeline.py     # 四阶段编排（inventory → evidence → understanding → review）
 │           ├── inventory/      # Stage 01 资产清单
+│           ├── scope/          # M2.1 资格评估（rules / decision / content / outputs）
 │           ├── evidence/       # Stage 02–05 技术证据
 │           │   ├── layer/      #   Stage 02 层级判定（唯一口径）
 │           │   ├── sql/        #   Stage 03 SQL 解析 / 归一化 / 方言 / CTAS 兜底
@@ -280,7 +286,7 @@ data-platform-analysis/
 │           └── naming.py       # 表名 / 引用工具
 │
 ├── source/                     # Snapshot 输出目录（gitignore）
-├── analysis/                   # Analysis 产物（四阶段：inventory / evidence / understanding / review，gitignore）
+├── analysis/                   # Analysis 产物（inventory / scope / evidence / understanding / review，gitignore）
 ├── output/                     # 导出产物
 │
 ├── docs/

@@ -134,7 +134,7 @@ limit is not None → 部分集合 → 禁止 Cleanup（日志输出 Cleanup=SKI
 
 - 除采集阶段外，路径若无前缀均相对 `analysis/`（由 `ANALYSIS_DIR` 决定，默认 `analysis`）。
 - **`source/` 对第 4 阶段起的所有命令只读**：分析链只写 `analysis/`，不改写 Snapshot。
-- 清场范围分两类：`analyze`、`analyze --stage inventory`、`analyze --stage evidence` 先执行 `pipeline._reset_outputs()`，清空 `inventory/`、`evidence/`、`understanding/`、`review/` 与根 `summary.md`（所以**未声明的 `understanding/`、`review/` 也会被删**，两份人工回填清单一并丢失）；`analyze --stage understanding`、`analyze --stage review` 不清场，上游产物保持原样。
+- 清场范围分两类：`analyze`、`analyze --stage inventory`、`analyze --stage evidence` 先执行 `pipeline._reset_outputs()`，清空 `inventory/`、`scope/`、`evidence/`、`understanding/`、`review/` 与根 `summary.md`（所以**未声明的 `understanding/`、`review/` 也会被删**）；清场时 `pipeline.PRESERVED_CHECKLIST_FILES` 登记的 5 份人工回填清单（两份 M3.6 review checklist + M3.3/M3.4/M3.5 三份 understanding checklist）被原样快照并恢复，人工三列不因清场丢失；`analyze --stage understanding`、`analyze --stage review` 不清场，上游产物保持原样。
 - 上游缺失的三种情况：阶段内模块缺必需输入 → 退出码 1、模块自身不回退、不留半成品；`understanding` / `review` 缺 `evidence/layer/assessments.json` → 流水线先自动补跑 `run_stage_evidence()`（该步会清场）；`inventory` / `evidence` 只依赖 `source/`，空 `analysis/` 下照常 exit 0。
 
 ## 阶段命令矩阵
@@ -146,13 +146,13 @@ Stage 号与 Milestone 的完整映射（含每阶段的代码模块、产物目
 | 1 | 00 | M1 DataWorks 采集 | `dataworks`（或 `export`） | `source/dataworks/workspaces/<id>/**`、`source/dataworks/workspaces/<id>/files-index.json`、`source/dataworks/workspaces-index.json` | — | 机器事实（Snapshot） |
 | 2 | 00 | M1 MaxCompute 采集 | `maxcompute`（或 `export`） | `source/maxcompute/workspaces/<id>/**`、`source/maxcompute/workspaces/<id>/tables-index.json`；全量 `export` 另写 `source/manifest.json` | — | 机器事实（Snapshot）+ 辅助（`manifest.json`） |
 | 3 | 00 | M1 Snapshot Summary | `summary` | `source/Summary.md` | 1 | 辅助（生成报告，含时间戳） |
-| 4 | 01–14 | M2–M3.6 完整 Analysis Chain | `analyze` | `inventory/{workspaces,files,tables,columns,excluded-tasks,review-tasks}.json`、`inventory/summary.md`、`evidence/{layer,sql,lineage,profiling}/*`、`evidence/errors.json`、`understanding/business/*`、`understanding/modeling/*`、`review/*`、`summary.md` | **61** | 机器事实（inventory / sql / profiling）+ 规则推导（layer / lineage）+ 机器候选（business / modeling）+ 辅助（summary / errors） |
-| 5 | 01 | Inventory 单独重跑 | `analyze --stage inventory` | `inventory/{workspaces,files,tables,columns,excluded-tasks,review-tasks}.json`、`inventory/summary.md` | **7** | 机器事实（inventory） |
-| 6 | 02–05 | Evidence 单独重跑 | `analyze --stage evidence` | `evidence/{layer,sql,lineage,profiling}/*` + `errors.json` | **20** | 机器事实（sql / profiling）+ 规则推导（layer / lineage） |
-| 7 | 06–11 | Understanding 单独重跑 | `analyze --stage understanding` | `understanding/business/*` + `understanding/modeling/*` | **23** | 机器候选（business / modeling）+ 辅助 |
-| 8 | 12–14 | Review 单独重跑 | `analyze --stage review` | `review/*`（同时重跑 Stage 06–11 刷新 `understanding/**`，不写根 `summary.md`） | **13** | 机器候选（finding / problem）+ 证据 + 辅助 |
+| 4 | 01–14 | M2–M3.6 完整 Analysis Chain | `analyze` | `inventory/{workspaces,files,tables,columns}.json`、`inventory/summary.md`、`scope/{inputs/sql-candidates,inputs/excluded-tasks,review-tasks}.json`、`scope/summary.{json,md}`、`evidence/{layer,sql,lineage,profiling}/*`、`evidence/errors.json`、`understanding/business/*`、`understanding/modeling/*`、`review/*`、`summary.md` | **64** | 机器事实（inventory / sql / profiling）+ 规则推导（layer / lineage / scope 统计）+ 机器候选（business / modeling）+ 辅助（summary / errors） |
+| 5 | 01 | Inventory + Scope 单独重跑 | `analyze --stage inventory` | `inventory/**`（5）+ `scope/**`（5）+ 根 `summary.md` | **11** | 机器事实（inventory）+ 规则推导（scope） |
+| 6 | 02–05 | Evidence 单独重跑 | `analyze --stage evidence` | 上一行全部 + `evidence/{layer,sql,lineage,profiling}/*` + `evidence/errors.json` | **23** | 机器事实（sql / profiling）+ 规则推导（layer / lineage） |
+| 7 | 06–11 | Understanding 单独重跑 | `analyze --stage understanding` | `understanding/business/*` + `understanding/modeling/*`（不清场） | **32** | 机器候选（business / modeling）+ 辅助 |
+| 8 | 12–14 | Review 单独重跑 | `analyze --stage review` | `review/*` + 重跑 Stage 06–11 刷新 `understanding/**`（不清场、不写根 `summary.md`） | **41** | 机器候选（finding / problem）+ 证据 + 辅助 |
 
-`61 = 7 + 18 + 23 + 13`，即 `analysis/` 当前的 61 个产物文件。
+`64 = 10 + 12 + 32 + 9 + 1`（inventory+scope + evidence + understanding + review + 根 `summary.md`），即新契约下 `analysis/` 的 64 个产物文件；「数量」= 该命令本次写出的文件数。
 
 ### Evidence Stage Contract
 
@@ -160,11 +160,11 @@ Stage 号与 Milestone 的完整映射（含每阶段的代码模块、产物目
 
 | 检查 | 契约 |
 | --- | --- |
-| 产物范围 | 同一个 `ANALYSIS_DIR` 下，`evidence/**`（12 个文件）、`inventory/**`（7 个文件）、`summary.md` 与全量 `analyze` 的对应产物**逐文件字节一致**（20/20 相同） |
+| 产物范围 | 同一个 `ANALYSIS_DIR` 下，`evidence/**`（12 个文件）、`inventory/**` + `scope/**`（10 个文件）、`summary.md` 与全量 `analyze` 的对应产物**逐文件字节一致**（23/23 相同） |
 | Evidence 报告 | `evidence/{layer,lineage,profiling}/summary.md` 是 Evidence 正式产物，由 `run_stage_evidence()` 与 `run()` 共用的 `_write_reports()` 写出 |
 | 数据来源 | 报告用 Evidence stage 刚算完的 Layer / SQL / Lineage / Profiling 结果渲染；**不制造空 `LineageResult`，不重复计算任何 M2 输入** |
-| 阶段边界 | 只产出 `inventory/` + `evidence/` + `summary.md`；**不产出** `understanding/**`、`review/**` |
-| 阶段链 | `--stage inventory → evidence → understanding → review` 四条命令跑完后，`analysis/` 与全量 `analyze` **61/61 SHA256 完全一致** |
+| 阶段边界 | 只产出 `inventory/` + `scope/` + `evidence/` + `summary.md`；**不产出** `understanding/**`、`review/**`（5 份人工回填清单除外，清场时原样恢复） |
+| 阶段链 | `--stage inventory → evidence → understanding → review` 四条命令跑完后，`analysis/` 与全量 `analyze` **64/64 SHA256 完全一致** |
 
 回归测试：`tests/test_evidence_stage_contract.py`。
 
@@ -190,7 +190,7 @@ uv run data-platform-analysis config        # 核对生效配置（不含密钥�
 uv run data-platform-analysis export        # 或分开跑 dataworks / maxcompute
 uv run data-platform-analysis summary       # 可选：重生成 source/Summary.md
 
-# 2) M2–M3.6 完整 Analysis Chain（61 个产物）
+# 2) M2–M3.6 完整 Analysis Chain（64 个产物）
 uv run data-platform-analysis analyze
 ```
 
@@ -204,13 +204,13 @@ uv run data-platform-analysis analyze
 
 | 命令 | 是否清场 | 实际覆盖 |
 | --- | --- | --- |
-| `analyze` | 清空 `inventory/ evidence/ understanding/ review/ summary.md` | 全部 61 个产物 |
-| `analyze --stage inventory` | **同样清空**（连 `understanding/`、`review/` 一起删） | `inventory/**`（7）+ 根 `summary.md` |
-| `analyze --stage evidence` | **同样清空**（连 `understanding/`、`review/` 一起删） | `inventory/**` + `evidence/**` + 根 `summary.md`（20） |
+| `analyze` | 清空 `inventory/ scope/ evidence/ understanding/ review/ summary.md`（5 份人工清单除外） | 全部 64 个产物 |
+| `analyze --stage inventory` | **同样清空**（连 `understanding/`、`review/` 一起删，5 份人工清单除外） | `inventory/**`（5）+ `scope/**`（5）+ 根 `summary.md` |
+| `analyze --stage evidence` | **同样清空**（同上） | `inventory/**` + `scope/**` + `evidence/**` + 根 `summary.md`（23） |
 | `analyze --stage understanding` | 不清场 | `understanding/**` |
 | `analyze --stage review` | 不清场 | `understanding/**`（总是先重跑一遍）+ `review/**`，**不写**根 `summary.md` |
 
-清空重跑 M2–M3.6 用 `analyze`（**不动 `source/`**）。人工回填过的两份 checklist 位于 `review/`，因此**不要**在生产 `analysis/` 上用 `--stage inventory` / `--stage evidence` 重跑——那会连清单一起删掉。
+清空重跑 M2–M3.6 用 `analyze`（**不动 `source/`**）。5 份人工回填清单（`pipeline.PRESERVED_CHECKLIST_FILES`）在清场中被原样保留、随后 carry-over 合并——但仍**不要**在生产 `analysis/` 上随意用 `--stage inventory` / `--stage evidence`：清单能保住，其余 `understanding/`、`review/` 产物会被删掉，需要再跑全链补回。
 
 ### D. 人工清单回填之后
 
@@ -239,19 +239,19 @@ uv run data-platform-analysis analyze
 
 ## 实测验证
 
-> 验证环境：macOS，2026-10-08，`uv run data-platform-analysis`（HEAD = `c61fcb3`）。其中「阶段清场范围」「上游缺失」「`uv run pytest`」三行已于 2026-10-09 在 HEAD = `cdff915` 重新实测并订正；其余行沿用 2026-10-08 的结果。
+> 验证环境：macOS，2026-10-08，`uv run data-platform-analysis`（HEAD = `c61fcb3`）。其中「阶段清场范围」「上游缺失」「`uv run pytest`」三行已于 2026-10-09 在 HEAD = `cdff915` 重新实测并订正；「产物个数」「阶段清场范围」「上游缺失」「`analyze --stage inventory --workspace`」四行已于 2026-10-10 随 `analysis/scope/` 迁移（Scope 正式产物迁入 `scope/`，`inventory/` 只留资产索引）按临时 `ANALYSIS_DIR` 实测重写为 64 / 11 / 23 / 55 / 64；「`uv run pytest`」一行同步更新为 2026-10-10 的 506 passed；其余行沿用 2026-10-08 的结果。注意：生产 `analysis/` 目录尚未按新契约重跑，仍是迁移前的 62 个产物（`inventory/` 为 8 文件旧布局、无 `scope/`），重跑前不要拿它做逐字节比对。
 
 | 检查项 | 结果 |
 | --- | --- |
 | 5 个分析子命令 `--help` | 全部 exit 0；参数与本文件「子命令总览」一致（`analyze --stage inventory/evidence/understanding/review`：无参数；`dataworks` / `maxcompute` / `export`：`--workspace` `--limit`） |
 | `config` | exit 0，打印非敏感配置，不发起采集 |
-| Clean-room 全链（`ANALYSIS_DIR=<临时目录>`，4 条分析命令） | 全部 exit 0，产出 61 个文件；与生产 `analysis/` 逐字节一致（唯一差异是报告里「输入」一行的路径写法，归一化后 **61/61 相同**） |
-| 生产 `analysis/` 原地重跑全链 | exit 0，**61/61 SHA256 与重跑前完全一致** |
-| 阶段清场范围 | `analyze` / `--stage inventory` / `--stage evidence` 先执行 `_reset_outputs()` 清空 `inventory/` `evidence/` `understanding/` `review/` 与根 `summary.md`：生产 `analysis/` 的副本跑 `--stage inventory` 只剩 **8** 个文件、跑 `--stage evidence` 只剩 **20** 个；`--stage understanding` / `--stage review` **不清场**，副本 61 个文件全部保留（根 `summary.md` 哈希不变） |
-| 上游缺失（`ANALYSIS_DIR` 指向空目录，`source/` 正常） | 4 条阶段命令**全部 exit 0 并补齐上游**：`--stage inventory` → 8 个文件、`--stage evidence` → 20 个、`--stage understanding` → 先打印 `Evidence 阶段未完成，执行 run_stage_evidence` 再产出 52 个、`--stage review` → 同样补跑后产出 61 个；只有阶段内模块缺必需输入时才报 `<上游> 产物缺失，无法执行 <阶段>` 并 exit 1 |
-| `analyze --stage inventory --workspace 466338` | exit 0，临时目录仅 7 个 Inventory 产物 + 根 `summary.md`（无 `evidence/`、`understanding/`、`review/`），生产 `analysis/` 未受影响 |
+| Clean-room 全链（`ANALYSIS_DIR=<临时目录>`，4 条分析命令） | 全部 exit 0，产出 64 个文件；目录结构符合新契约（`inventory/` 5 个 + `scope/` 5 个 + `evidence/` 12 个 + `understanding/` 32 个 + `review/` 9 个 + 根 `summary.md`），与生产 `analysis/`（旧布局）不可直接比对 |
+| 生产 `analysis/` 原地重跑全链 | 历史结果（迁移前 62 文件布局）：exit 0，62/62 SHA256 与重跑前完全一致；**新契约下尚未重跑**，生产仍为旧布局 |
+| 阶段清场范围 | `analyze` / `--stage inventory` / `--stage evidence` 先执行 `_reset_outputs()` 清空 `inventory/` `scope/` `evidence/` `understanding/` `review/` 与根 `summary.md`（5 份人工清单经快照恢复）：临时目录跑 `--stage inventory` 只剩 **11** 个文件、跑 `--stage evidence` 只剩 **23** 个；`--stage understanding` / `--stage review` **不清场** |
+| 上游缺失（`ANALYSIS_DIR` 指向空目录，`source/` 正常） | 4 条阶段命令**全部 exit 0 并补齐上游**：`--stage inventory` → 11 个文件、`--stage evidence` → 23 个、`--stage understanding` → 先打印 `Evidence 阶段未完成，执行 run_stage_evidence` 再产出 55 个、`--stage review` → 同样补跑后产出 64 个；只有阶段内模块缺必需输入时才报 `<上游> 产物缺失，无法执行 <阶段>` 并 exit 1 |
+| `analyze --stage inventory --workspace 466338` | exit 0，临时目录共 11 个文件（`inventory/` 5 + `scope/` 5 + 根 `summary.md`，无 `evidence/`、`understanding/`、`review/`） |
 | `summary` | exit 0，仅改写 `source/Summary.md`；其余 12998 个 Snapshot 文件哈希不变。注意：该文件含「Summary 生成时间」时间戳，**连续两次运行哈希不同**，属预期非确定性 |
-| `uv run pytest` | 471 passed |
+| `uv run pytest` | 506 passed |
 | `uv run ruff check src tests` / `uv run ruff format --check src tests` / `uv run -m mypy` | 全绿（0 errors） |
 | `cd workbench && npm test` | 38 passed · 10 failed（golden 期望值早于当前 source 快照，待刷新） |
 | `dataworks` / `maxcompute` / `export` | **未实际执行**（需阿里云凭证且会改写 `source/`）；仅验证 `--help` exit 0 与参数签名 |

@@ -74,7 +74,7 @@ source/
    │
    │ read-only
    ▼
-inventory
+inventory ──► scope
    │
    ▼
 evidence
@@ -104,7 +104,11 @@ Analysis 阶段的所有产物一律写入 `analysis/`，**不允许反向写入
 | --- | --- | --- |
 | `analysis/snapshot.py`（`SnapshotReader`） | 只读 | 无 |
 | `analysis/pipeline.py` | 只读 | `analysis/` |
-| `analysis/inventory`、`evidence`、`understanding`、`review` | 只读（多数阶段甚至不读 `source/`） | `analysis/` |
+| `analysis/inventory`、`analysis/scope`、`evidence`、`understanding`、`review` | 只读（多数阶段甚至不读 `source/`） | `analysis/` |
+
+`analysis/` 整体可用 `analyze` 重建（gitignore），但其中 5 份 `*-review-checklist.md`
+的 `human_status` / `human_name` / `note` 三列是**唯一的人工回填数据**（全仓库只有人能写），
+清场时由 `pipeline.PRESERVED_CHECKLIST_FILES` 快照保留——重跑前仍应备份，不要依赖实现细节。
 
 ## 5. 测试规则
 

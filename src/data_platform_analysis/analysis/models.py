@@ -71,9 +71,6 @@ def has_valid_node_id(node_id: int | str | None) -> bool:
 
     有效 = 非 None，且字符串形态去除空白后非空。
     None / "" / "   " 都视为没有 NodeId。
-
-    这是历史兼容入口，只区分「有 / 没有 NodeId」。
-    需要区分缺失与格式无效时使用 node_id_state()。
     """
 
     if node_id is None:
@@ -86,40 +83,21 @@ def has_valid_node_id(node_id: int | str | None) -> bool:
 
 
 NODE_ID_STATE_VALID = "valid"
-"""NodeId 为正整数，节点身份成立。"""
+"""NodeId 存在（非 None，且字符串形态去除空白后非空），节点身份成立。"""
 
 NODE_ID_STATE_MISSING = "missing"
 """NodeId 为 None 或空白，属于分析范围限制，不是技术异常。"""
 
-NODE_ID_STATE_INVALID = "invalid"
-"""NodeId 非空白但格式不成立（不是正整数），节点身份无法确认。"""
-
 
 def node_id_state(node_id: int | str | None) -> str:
-    """NodeId 状态：valid（正整数）/ missing（空）/ invalid（格式不成立）。
+    """NodeId 状态：valid（存在）/ missing（缺失）。
 
-    缺失与格式无效都是明确的分类原因（Analysis Scope Rules），
-    不是技术异常，也不代表对象是测试任务或删除候选。
+    口径与报告第 10 节的「有效 Node ID」定义一致：node_id 非 None 且去除空白后非空。
+    缺失是明确的分类原因（Analysis Scope Rules），不是技术异常，
+    也不代表对象是测试任务或删除候选。
     """
 
-    if node_id is None:
-        return NODE_ID_STATE_MISSING
-
-    if isinstance(node_id, str):
-        text = node_id.strip()
-
-        if not text:
-            return NODE_ID_STATE_MISSING
-
-        if not text.isdigit():
-            return NODE_ID_STATE_INVALID
-
-        return NODE_ID_STATE_VALID if int(text) > 0 else NODE_ID_STATE_INVALID
-
-    if node_id <= 0:
-        return NODE_ID_STATE_INVALID
-
-    return NODE_ID_STATE_VALID
+    return NODE_ID_STATE_VALID if has_valid_node_id(node_id) else NODE_ID_STATE_MISSING
 
 
 def is_analysis_eligible(file: FileInventory) -> bool:
@@ -128,9 +106,9 @@ def is_analysis_eligible(file: FileInventory) -> bool:
     语义：NodeId 状态为 valid，即该 File 是已提交的 DataWorks 节点。
     这是「身份维度」的整体分析资格，不是 SQL 分析资格——
     SQL 分析资格由 Inventory 的 Analysis Scope Rules 统一判定
-    （见 analysis/inventory/scope.py 的 FileScopeDecision.sql_eligible）。
+    （见 analysis/scope/decision.py 的 FileScopeDecision.sql_eligible）。
 
-    NodeId 缺失或格式无效的 File 仍然保留在 Snapshot Inventory 中，
+    NodeId 缺失的 File 仍然保留在 Snapshot Inventory 中，
     这是 Analysis Scope Rules 的分类结果，不是 Analysis Error。
     """
 

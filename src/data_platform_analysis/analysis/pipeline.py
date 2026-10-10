@@ -6,20 +6,21 @@
 执行顺序：
 
     1. 读取 Workspace identity（失败即 Fatal Error）
-    2. M2.1 Inventory（Snapshot 全量 File，不做任何过滤；同时执行
-       Analysis Scope Rules 分类，产出 excluded / review 清单与统计）
-    3. M2.2 Layer Assessment（依赖 M2.1 的 Inventory 输出与 layer-rules 配置，
-       产出唯一层级判定 candidate_layer，供 Lineage 引用）
+    2. M2.1 Inventory（Snapshot 全量 File，不做任何过滤）+ Analysis
+       Scope Rules 分类：Inventory 资产清单写入 inventory/，
+       资格判定清单与 Scope Summary 写入 scope/
+    3. M2.2 Layer Assessment（依赖 M2.1 的 inventory/tables.json 与
+       layer-rules 配置，产出唯一层级判定 candidate_layer，供 Lineage 引用）
     4. M2.3 SQL Analysis（只接受统一资格判定 sql_eligible 的 File）
     5. M2.4 Table Reference / Lineage（层级标注取自 M2.2 candidate_layer）
     6. M2.5 Metadata Profiling
     7. 写出 Summary 与错误账本
 
-Analysis 输入范围（Analysis Scope Rules，规则在 Inventory 内部执行）：
+Analysis 输入范围（Analysis Scope Rules，规则在 Scope 阶段内部执行一次）：
 
-    Inventory 对每个 File 计算一次规则分类结果（FileScope），
+    Scope 对 Inventory 登记的每个 File 计算一次规则分类结果（FileScope），
     SQL Analysis 只接受 sql_eligible = true 的 File；
-    NodeId 缺失、格式无效、明确的非正式任务、类型不适用 SQL、
+    NodeId 缺失、明确的非正式任务、类型不适用 SQL、
     Content 不可用都会记录明确的原因代码，保留在 Inventory 全量清单中，
     不产生 SQL Evidence，也不记录为 Analysis Error。
     整体分析资格（identity）与 SQL 分析资格（sql_eligible）分别统计，
@@ -51,14 +52,6 @@ from .inventory.inventory import (
     InventorySummary,
     build_inventory_summary,
 )
-from .inventory.scope import (
-    FileScope,
-    ScopeRulesError,
-    build_file_scope,
-    excluded_tasks_payload,
-    load_scope_rules,
-    review_tasks_payload,
-)
 from .models import (
     ColumnProfile,
     FileInventory,
@@ -68,6 +61,21 @@ from .models import (
     TableReference,
     is_analysis_eligible,
     numeric_id_sort_key,
+)
+from .scope import (
+    EXCLUDED_TASKS_RELATIVE_PATH,
+    REVIEW_TASKS_RELATIVE_PATH,
+    SCOPE_SUMMARY_JSON_RELATIVE_PATH,
+    SCOPE_SUMMARY_MD_RELATIVE_PATH,
+    SQL_CANDIDATES_RELATIVE_PATH,
+    FileScope,
+    ScopeRulesError,
+    build_file_scope,
+    excluded_tasks_payload,
+    load_scope_rules,
+    review_tasks_payload,
+    scope_summary_payload,
+    sql_candidates_payload,
 )
 
 if TYPE_CHECKING:
@@ -80,6 +88,7 @@ from .reports import (
     render_inventory_summary,
     render_lineage_summary,
     render_profiling_summary,
+    render_scope_summary,
 )
 from .snapshot import SnapshotReader
 
@@ -87,11 +96,28 @@ logger = logging.getLogger(__name__)
 
 PRODUCTION_DIRS: tuple[str, ...] = (
     "inventory",
+    "scope",
     "evidence",
     "understanding",
     "review",
 )
 PRODUCTION_FILES: tuple[str, ...] = ("evidence/errors.json", "summary.md")
+
+PRESERVED_CHECKLIST_FILES: tuple[str, ...] = (
+    "understanding/business/process-review-checklist.md",
+    "understanding/business/grain-review-checklist.md",
+    "understanding/modeling/model-review-checklist.md",
+    "review/current-state-review-checklist.md",
+    "review/current-state-problem-review-checklist.md",
+)
+"""含人工回填列的 checklist：清场时原样保留，人工列由各阶段 carry-over 机制合并。
+
+这些文件的机器列每次由对应阶段重算，human_* / confirmed / note 三列由人工维护；
+清场（PRODUCTION_DIRS 整目录删除）发生在阶段重算之前，若不保留，
+人工回填会随全量 / inventory / evidence 运行一并丢失。
+understanding/business/review-checklist.md 不在此列：M3.1 重跑时无条件重写
+（无 carry-over），保留副本也会在同一次运行内被覆盖，无保护意义。
+"""
 
 LOG_INTERVAL = 500
 """SQL 文件分析进度日志间隔。"""
@@ -153,10 +179,11 @@ class AnalysisPipeline:
             identities=identities,
         ).build()
 
-        # 规则分类在 Inventory 内部执行一次，后续阶段只消费判定结果。
+        # 规则分类在 Scope 内部执行一次，后续阶段只消费判定结果。
         scope = self._build_scope(inventory)
 
-        self._write_inventory(inventory, scope)
+        self._write_inventory(inventory)
+        self._write_scope(scope)
 
         # 盘点统计只依赖刚构建的 Inventory 与只读 Snapshot，
         # 在 SQL / Lineage 之前算好，保证它只反映 M2.1 的事实。
@@ -197,6 +224,7 @@ class AnalysisPipeline:
         summary_path = self._write_reports(
             inventory=inventory,
             inventory_summary=inventory_summary,
+            scope=scope,
             statements=statements,
             references=references,
             parse_errors=parse_errors,
@@ -272,7 +300,8 @@ class AnalysisPipeline:
 
         scope = self._build_scope(inventory)
 
-        self._write_inventory(inventory, scope)
+        self._write_inventory(inventory)
+        self._write_scope(scope)
 
         inventory_summary = build_inventory_summary(
             inventory,
@@ -285,6 +314,7 @@ class AnalysisPipeline:
         summary_path = self._write_reports_stage_inventory(
             inventory=inventory,
             inventory_summary=inventory_summary,
+            scope=scope,
             errors=errors,
         )
 
@@ -312,13 +342,18 @@ class AnalysisPipeline:
         *,
         inventory: Inventory,
         inventory_summary: InventorySummary,
+        scope: FileScope,
         errors: list[dict[str, object]],
     ) -> Path:
-        """写出 Inventory 阶段 Summary。"""
+        """写出 Inventory / Scope 阶段 Summary 与根 Summary。"""
 
         write_text(
             self.analysis_dir / "inventory" / "summary.md",
             render_inventory_summary(inventory_summary),
+        )
+        write_text(
+            self.analysis_dir / SCOPE_SUMMARY_MD_RELATIVE_PATH,
+            render_scope_summary(scope.stats()),
         )
 
         summary_path = self.analysis_dir / "summary.md"
@@ -362,7 +397,8 @@ class AnalysisPipeline:
 
         scope = self._build_scope(inventory)
 
-        self._write_inventory(inventory, scope)
+        self._write_inventory(inventory)
+        self._write_scope(scope)
 
         # 盘点统计
         inventory_summary = build_inventory_summary(
@@ -402,6 +438,7 @@ class AnalysisPipeline:
         summary_path = self._write_reports(
             inventory=inventory,
             inventory_summary=inventory_summary,
+            scope=scope,
             statements=statements,
             references=references,
             parse_errors=parse_errors,
@@ -548,7 +585,7 @@ class AnalysisPipeline:
     # ==========================================================
 
     def _build_scope(self, inventory: Inventory) -> FileScope:
-        """执行 Inventory 内部的规则化分类（Analysis Scope Rules）。
+        """执行 Analysis Scope Rules 分类（Scope 阶段的资格评估）。
 
         分类只依赖 Inventory 全量清单与只读 Snapshot；
         配置缺失或非法视为 Fatal Error，不回退默认规则，也不静默忽略。
@@ -653,12 +690,11 @@ class AnalysisPipeline:
     # 产物写出
     # ==========================================================
 
-    def _write_inventory(self, inventory: Inventory, scope: FileScope) -> None:
-        """写出 M2.1 产物：全量资产清单 + 规则分类的排除 / 待确认清单。
+    def _write_inventory(self, inventory: Inventory) -> None:
+        """写出 M2.1 资产清单：全量 Workspaces / Files / Tables / Columns。
 
         files.json 始终包含全部登记文件，分类规则不会从中删除任何记录；
-        excluded-tasks.json 与 review-tasks.json 是分析范围判定的产物，
-        用 workspace_id + file_id 关联回 files.json，不是删除指令清单。
+        Inventory 只做资产盘点，不承载资格判定清单或 Scope 统计。
         """
 
         self._write(
@@ -689,8 +725,21 @@ class AnalysisPipeline:
                 "columns": [item.to_dict() for item in inventory.columns],
             },
         )
-        self._write("inventory/excluded-tasks.json", excluded_tasks_payload(scope))
-        self._write("inventory/review-tasks.json", review_tasks_payload(scope))
+
+    def _write_scope(self, scope: FileScope) -> None:
+        """写出 Scope 产物：资格清单 + 待确认清单 + Scope Summary。
+
+        sql-candidates.json 与 excluded-tasks.json 按 sql_eligible 互补切分
+        （互斥且合计覆盖全部登记文件），review-tasks.json 是弱证据待确认维度；
+        三份都是分析范围判定的产物，用 workspace_id + file_id 关联回
+        inventory/files.json，不是指令清单。规则发现（findings/）当前
+        尚未实现，不生成对应产物。
+        """
+
+        self._write(SQL_CANDIDATES_RELATIVE_PATH, sql_candidates_payload(scope))
+        self._write(EXCLUDED_TASKS_RELATIVE_PATH, excluded_tasks_payload(scope))
+        self._write(REVIEW_TASKS_RELATIVE_PATH, review_tasks_payload(scope))
+        self._write(SCOPE_SUMMARY_JSON_RELATIVE_PATH, scope_summary_payload(scope))
 
     def _write_sql(
         self,
@@ -768,6 +817,7 @@ class AnalysisPipeline:
         *,
         inventory: Inventory,
         inventory_summary: InventorySummary,
+        scope: FileScope,
         statements: list[StatementRecord],
         references: list[TableReference],
         parse_errors: list[ParseErrorRecord],
@@ -782,6 +832,10 @@ class AnalysisPipeline:
         write_text(
             self.analysis_dir / "inventory" / "summary.md",
             render_inventory_summary(inventory_summary),
+        )
+        write_text(
+            self.analysis_dir / SCOPE_SUMMARY_MD_RELATIVE_PATH,
+            render_scope_summary(scope.stats()),
         )
         write_text(
             self.analysis_dir / "evidence" / "lineage" / "summary.md",
@@ -818,9 +872,17 @@ class AnalysisPipeline:
     # ==========================================================
 
     def _reset_outputs(self) -> None:
-        """清空 Analysis 自有产物，保证每次运行结果确定。"""
+        """清空 Analysis 自有产物，保证每次运行结果确定。
+
+        含人工回填列的 checklist（PRESERVED_CHECKLIST_FILES）在清场前
+        原样快照、清场后恢复：全量 / inventory / evidence 运行不再抹掉
+        人工工作成果，各阶段重算机器列时由 carry-over 机制合并人工列。
+        其余产物（含 Understanding / Review 的机器产物）照常删除重建。
+        """
 
         ensure_dir(self.analysis_dir)
+
+        preserved = self._snapshot_preserved_checklists()
 
         for name in PRODUCTION_DIRS:
             shutil.rmtree(self.analysis_dir / name, ignore_errors=True)
@@ -830,6 +892,29 @@ class AnalysisPipeline:
 
         for name in LEGACY_PRODUCTION_FILES:
             (self.analysis_dir / name).unlink(missing_ok=True)
+
+        self._restore_preserved_checklists(preserved)
+
+    def _snapshot_preserved_checklists(self) -> dict[str, bytes]:
+        """读取人工回填 checklist 的当前内容（缺失的条目不记录）。"""
+
+        snapshot: dict[str, bytes] = {}
+
+        for name in PRESERVED_CHECKLIST_FILES:
+            path = self.analysis_dir / name
+
+            if path.is_file():
+                snapshot[name] = path.read_bytes()
+
+        return snapshot
+
+    def _restore_preserved_checklists(self, snapshot: dict[str, bytes]) -> None:
+        """把清场前快照的 checklist 原样写回。"""
+
+        for name, content in snapshot.items():
+            path = self.analysis_dir / name
+            ensure_dir(path.parent)
+            path.write_bytes(content)
 
     def _write(self, relative_path: str, data: object) -> None:
         """写出单个 JSON 产物。"""

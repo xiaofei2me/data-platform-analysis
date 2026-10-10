@@ -79,8 +79,14 @@ INVENTORY_FILES = (
     "files.json",
     "tables.json",
     "columns.json",
-    "excluded-tasks.json",
+    "summary.md",
+)
+
+SCOPE_FILES = (
+    "inputs/sql-candidates.json",
+    "inputs/excluded-tasks.json",
     "review-tasks.json",
+    "summary.json",
     "summary.md",
 )
 
@@ -164,6 +170,9 @@ def test_evidence_stage_writes_full_evidence_artifacts(
     for name in INVENTORY_FILES:
         assert (analysis_dir / "inventory" / name).exists(), name
 
+    for name in SCOPE_FILES:
+        assert (analysis_dir / "scope" / name).exists(), name
+
     assert (analysis_dir / "summary.md").exists()
 
     # 旧目录 / 旧文件名不复活（按字面名比对，避免 macOS 大小写不敏感误判）。
@@ -209,11 +218,14 @@ def test_evidence_stage_matches_full_analyze(
 
     stage_evidence = _tree(analysis_dir / "evidence")
     stage_inventory = _tree(analysis_dir / "inventory")
+    stage_scope = _tree(analysis_dir / "scope")
     stage_summary = (analysis_dir / "summary.md").read_bytes()
 
     assert stage_evidence, "Evidence stage 必须真的产出 evidence/"
     assert "lineage/summary.md" in stage_evidence
     assert "profiling/summary.md" in stage_evidence
+    assert stage_scope, "Evidence stage 必须同时重建 scope/"
+    assert "inputs/sql-candidates.json" in stage_scope
 
     shutil.rmtree(analysis_dir)
 
@@ -226,9 +238,11 @@ def test_evidence_stage_matches_full_analyze(
     # 每个文件字节一致（JSON 内容与 Markdown 内容一并覆盖）。
     assert stage_evidence == full_evidence
 
-    # Evidence stage 同时重建 Inventory，两者的 Inventory 产物也必须一致。
+    # Evidence stage 同时重建 Inventory 与 Scope，两者的产物也必须一致。
     assert sorted(stage_inventory) == sorted(_tree(analysis_dir / "inventory"))
     assert stage_inventory == _tree(analysis_dir / "inventory")
+    assert sorted(stage_scope) == sorted(_tree(analysis_dir / "scope"))
+    assert stage_scope == _tree(analysis_dir / "scope")
 
     # 根 summary.md 同样一致：render_analysis_summary 只吃 Evidence 段输入，
     # full analyze 多出的 Understanding / Review 不进入该上下文。
@@ -280,7 +294,7 @@ def test_evidence_stage_does_not_produce_other_stage_outputs(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
-    """Evidence stage 只产出 inventory + evidence + 根 summary.md。"""
+    """Evidence stage 只产出 inventory + scope + evidence + 根 summary.md。"""
 
     _prepare(tmp_path, monkeypatch)
     monkeypatch.setenv("ANALYSIS_DIR", str(tmp_path / "analysis_evidence"))
@@ -290,6 +304,6 @@ def test_evidence_stage_does_not_produce_other_stage_outputs(
     analysis_dir = tmp_path / "analysis_evidence"
     root_names = {path.name for path in analysis_dir.iterdir()}
 
-    assert root_names == {"inventory", "evidence", "summary.md"}
+    assert root_names == {"inventory", "scope", "evidence", "summary.md"}
     assert not (analysis_dir / "understanding").exists()
     assert not (analysis_dir / "review").exists()

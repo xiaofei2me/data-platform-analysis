@@ -4,7 +4,7 @@
 >
 > 从 MaxCompute / DataWorks 原始数据开始，到 M3.6 Problem、Evidence 与 Human Decision，**每一步输入什么、做了什么、产出什么、产出代表什么、能证明什么、不能证明什么、为什么下一阶段需要它**。
 >
-> 文中数量为**上一轮读取实际产物**时的实测快照（标注「本轮实测」；表 3719 / finding 4439 / problem 1190 / evidence 30201 行）。当前 `source/` 快照重跑后为表 3724 / finding 4425 / problem 1185 / evidence 30124 行，**数量以 `analysis/` 实际产物为准**；本文不修改任何代码、产物与配置。
+> 文中数量为**上一轮读取实际产物**时的实测快照（标注「本轮实测」；表 3719 / finding 4439 / problem 1190 / evidence 30201 行）。当前 `source/` 快照重跑后为表 3724 / finding 4425 / problem 1186 / evidence 30132 行，**数量以 `analysis/` 实际产物为准**；本文不修改任何代码、产物与配置。§4.1（M2.1 Inventory）的 Outputs 表已于 2026-10-10 随 `analysis/scope/` 迁移按当前 Snapshot 刷新为 8 个文件（新增 `sql-candidates.json`，`excluded-tasks.json` 口径改为 `sql_eligible = false`），其余章节仍为上一轮实测。
 
 ## 1. Purpose
 
@@ -175,19 +175,21 @@ M2 的共同性质：**只描述技术事实与技术推导，不含业务判断
 - `source/maxcompute/workspaces/<id>/tables-index.json`
 - `source/maxcompute/workspaces/<id>/tables/<table>.json`（与 index 冲突时 raw 优先）
 
-**Processing**：建立统一资产清单与**稳定身份**——`Workspace = workspace_id`、`File = workspace_id + file_id`、`Table = project.table`（`table_key`，不含 schema）。**不做层级判定**（归 M2.2），**不读 SQL 内容做解析**（归 M2.3）；同时按 `config/analysis-scope-rules.yaml` 对全量 File 做一次规则分类，产出整体分析资格、SQL 分析资格与排除 / 待确认清单。
+**Processing**：建立统一资产清单与**稳定身份**——`Workspace = workspace_id`、`File = workspace_id + file_id`、`Table = project.table`（`table_key`，不含 schema）。**不做层级判定**（归 M2.2），**不读 SQL 内容做解析**（归 M2.3）；同时按 `config/analysis-scope-rules.yaml` 经 `analysis/scope/` 对全量 File 做一次规则分类，产出整体分析资格、SQL 分析资格，以及 SQL 候选 / 排除 / 待确认三份清单（正式产物写入 `analysis/scope/`）；Content 是否读取由 `content_check` 开关决定，未启用的格式状态为 `not_checked`。
 
-**Outputs**（本轮实测 7 个文件）
+**Outputs**（新契约下本阶段共 10 个文件：`inventory/` 5 个 + `scope/` 5 个；下表数量为真实数据实测）
 
 | 文件 | 内容 | 数量 |
 | --- | --- | --- |
 | `analysis/inventory/workspaces.json` | Workspace ↔ MaxCompute project、`file_count` / `table_count` / `resource_count`、快照标记 | 3 |
-| `analysis/inventory/files.json` | `file_id` / `node_id` / `file_name` / `file_type` / `use_type` / `task_type` / `content_file` / `raw_file` | 4651 |
-| `analysis/inventory/tables.json` | `table_key` / `comment` / `column_count` / `partition_count` / `size` / `lifecycle` / `is_virtual_view` / `creation_time` / `last_modified_time` / `raw_file` | **3719** |
-| `analysis/inventory/columns.json` | `table_key` / `column_name` / `data_type` / `comment` / `is_partition` / `ordinal` | **102603** |
-| `analysis/inventory/excluded-tasks.json` | 明确排除出正式业务分析的 File（身份不满足 / 非正式任务强证据），含命中规则与原因代码 | 3272 |
-| `analysis/inventory/review-tasks.json` | 非正式任务弱证据的待确认 File | 70 |
-| `analysis/inventory/summary.md` | 本阶段报告（含第 11 节规则分类统计） | — |
+| `analysis/inventory/files.json` | `file_id` / `node_id` / `file_name` / `file_type` / `use_type` / `task_type` / `content_file` / `raw_file` | 4657 |
+| `analysis/inventory/tables.json` | `table_key` / `comment` / `column_count` / `partition_count` / `size` / `lifecycle` / `is_virtual_view` / `creation_time` / `last_modified_time` / `raw_file` | **3724** |
+| `analysis/inventory/columns.json` | `table_key` / `column_name` / `data_type` / `comment` / `is_partition` / `ordinal` | **102703** |
+| `analysis/inventory/summary.md` | 资产盘点报告（10 节，不含资格 / 规则统计） | — |
+| `analysis/scope/inputs/sql-candidates.json` | `sql_eligible = true` 的 File，M2.3 SQL Analysis 的候选输入 | 541 |
+| `analysis/scope/inputs/excluded-tasks.json` | `sql_eligible = false` 的 File（身份不满足 / 类型不适用 / 内容不可用），含命中规则与原因代码；与 SQL 候选互斥且合计 = 登记文件 | 4116 |
+| `analysis/scope/review-tasks.json` | 非正式任务弱证据的待确认 File | 70 |
+| `analysis/scope/summary.json` / `summary.md` | Scope Summary：资格口径、节点身份与类型、内容状态与期望、规则命中、主因分布（机器统计 + 人读报告；规则发现 `scope/findings/` 预留未实现，count = 0） | — |
 
 **Meaning**：回答「**当前平台到底有哪些数据资产**」——表、字段、分区、表元数据、Workspace 与 MaxCompute project 对应关系。`table_key` 是**全链路主键**：Layer / SQL / Lineage / Profiling / M3 / M3.6 每条记录都用它对齐。
 
@@ -209,8 +211,8 @@ Input:
 source/ 的 files-index、tables-index、表 raw JSON
 
 Produces:
-analysis/inventory/{workspaces,files,tables,columns}.json + summary.md
-（本轮：3 workspace / 4651 file / 3719 table / 102603 column）
+analysis/inventory/{workspaces,files,tables,columns,sql-candidates,excluded-tasks,review-tasks}.json + summary.md
+（本轮：3 workspace / 4657 file / 3724 table / 102703 column）
 
 Consumed By:
 M2.2、M2.3、M2.4、M2.5，以及 M3 → M3.6 全链
@@ -280,7 +282,7 @@ Does Not Prove:
 
 ### 4.3 M2.3 SQL
 
-**Input**：`analysis/inventory/files.json` 中被统一资格判定为 `sql_eligible` 的 File（`FileScope.sql_eligible_files`）及其 `content_file` 原文；节点身份、内容状态与格式适用性都在 Inventory 的规则分类中一次判定。
+**Input**：`analysis/scope/inputs/sql-candidates.json`（`sql_eligible = true`，等价于 `FileScope.sql_eligible_files` 对 `analysis/inventory/files.json` 的过滤）及其 `content_file` 原文；节点身份、内容状态与格式适用性都在 Inventory 的规则分类中一次判定。
 
 **Processing**（`analysis/evidence/sql/`）：
 
@@ -319,7 +321,7 @@ Does Not Prove:
 
 ```text
 Input:
-analysis/inventory/files.json（sql_eligible）+ source/ 中的 SQL 原文
+analysis/scope/inputs/sql-candidates.json（sql_eligible = true）+ source/ 中的 SQL 原文
 
 Produces:
 analysis/evidence/sql/{statements,table-references,parse-errors}.json

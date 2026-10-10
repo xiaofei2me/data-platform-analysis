@@ -31,7 +31,7 @@
 | Stage | 名称 | Milestone | 命令 | 产物目录（相对 `analysis/`，采集为 `source/`） | 代码 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | **00** | Raw Snapshot | M1 | `export` / `dataworks` / `maxcompute` / `summary` | `dataworks/**`、`maxcompute/**`、`manifest.json`、`Summary.md` | `export.py`、`dataworks.py`、`maxcompute.py`、`summary.py` | 已实现 |
-| **01** | Inventory | M2.1 | `analyze --stage inventory` | `inventory/` | `analysis/pipeline.py` + `analysis/inventory/` + `config/analysis-scope-rules.yaml` | 已实现 |
+| **01** | Inventory + Scope | M2.1 | `analyze --stage inventory` | `inventory/`（资产索引）+ `scope/`（资格清单与 Scope Summary） | `analysis/pipeline.py` + `analysis/inventory/` + `analysis/scope/` + `config/analysis-scope-rules.yaml` | 已实现 |
 | **02** | Layer Assessment | M2.2 | `analyze --stage evidence` | `evidence/layer/` | `analysis/evidence/layer/layer_assessment.py` + `config/layer-rules.yaml` | 已实现 |
 | **03** | SQL Analysis | M2.3 | `analyze --stage evidence` | `evidence/sql/` | `analysis/evidence/sql/` | 已实现 |
 | **04** | Lineage | M2.4 | `analyze --stage evidence` | `evidence/lineage/` | `analysis/evidence/lineage/` | 已实现 |
@@ -52,7 +52,7 @@
 | **19** | Target DWS | M4+ | 未实现 | **不存在** | — | 规划 |
 | **20** | Target Semantic Layer | M4+ | 未实现 | **不存在** | — | 规划 |
 
-四阶段目录已落地：Stage 01 → `analysis/inventory/`，Stage 02–05 → `analysis/evidence/{layer,sql,lineage,profiling}/`，Stage 06–10 → `analysis/understanding/business/`，Stage 11 → `analysis/understanding/modeling/`，Stage 12–14 → `analysis/review/`（M3.6 的 `current-state-model*` 也在 `review/`），根目录 `analysis/summary.md` 是 12 节入口报告（旧 `Summary.md` 已废弃）。旧布局残留在 `business/` / `model/` / `layer/` 等目录的文件由重跑对应命令时的 legacy 清理逻辑（`io_utils.relocate_legacy_artifacts`）删除 / 搬迁。
+四阶段目录已落地：Stage 01 → `analysis/inventory/`（资产索引）+ `analysis/scope/`（资格清单与 Scope Summary，M2.1 的 Scope 职责），Stage 02–05 → `analysis/evidence/{layer,sql,lineage,profiling}/`，Stage 06–10 → `analysis/understanding/business/`，Stage 11 → `analysis/understanding/modeling/`，Stage 12–14 → `analysis/review/`（M3.6 的 `current-state-model*` 也在 `review/`），根目录 `analysis/summary.md` 是 12 节入口报告（旧 `Summary.md` 已废弃；本仓库没有 analysis 级 `manifest.json`）。旧布局残留在 `business/` / `model/` / `layer/` 等目录的文件由重跑对应命令时的 legacy 清理逻辑（`io_utils.relocate_legacy_artifacts`）删除 / 搬迁；旧 `inventory/{sql-candidates,excluded-tasks,review-tasks}.json` 随 `inventory/` 整目录清场消失，不再作为权威来源。
 
 ### 2.1 Stage 判定规则（用于未来追加）
 
@@ -75,17 +75,17 @@
 
 | 类别 | 谁能写 | 典型产物 | 判据 |
 | --- | --- | --- | --- |
-| **机器事实 Fact** | 仅机器 | `source/**`、`inventory/*.json`、`evidence/sql/{statements,table-references}.json`、`evidence/profiling/*.json`、`evidence/errors.json` | 可回指原始位置；`profile_status` 恒为 `metadata_only` |
-| **规则推导** | 仅机器（确定性规则） | `evidence/layer/assessments.json`、`evidence/lineage/{table-lineage,core-table-candidates}.json` | 规则 / 引用归并，`status = MATCH/UNKNOWN/CONFLICT`，不含业务判断 |
+| **机器事实 Fact** | 仅机器 | `source/**`、`inventory/*.json`、`scope/inputs/*.json`、`evidence/sql/{statements,table-references}.json`、`evidence/profiling/*.json`、`evidence/errors.json` | 可回指原始位置；`profile_status` 恒为 `metadata_only` |
+| **规则推导** | 仅机器（确定性规则） | `evidence/layer/assessments.json`、`evidence/lineage/{table-lineage,core-table-candidates}.json`、`scope/summary.json`（资格 / Content / 规则命中统计） | 规则 / 引用归并，`status = MATCH/UNKNOWN/CONFLICT`，不含业务判断 |
 | **机器候选 Candidate** | 仅机器 | `understanding/business/*.json`（Stage 06–10）、`understanding/modeling/*.json`（Stage 11）、`review/*.json`（Stage 12–13） | `status ∈ {candidate, review_required, needs_discussion, rejected}`；**confirmed 只能由人工带来** |
 | **证据 Evidence** | 仅机器 | `current-state-problem-evidence.json`（每组 ≤ 50 行截断） | 由 problem 聚合时生成，不独立重算 |
 | **回填工件（双向）** | 机器写列 + **人写 `human_*` 三列** + 机器重跑读回 | 6 份 `*-review-checklist.md` | 全仓库**唯一被人工直接编辑**的文件；改后重跑对应命令 |
 | **人工裁决数据** | 仅人 | 清单 `human_status` / `human_name` / `note`；`localStorage["m36-human-adjudication"]` | 浏览器侧数据不回写产物，须导出后回填清单 |
-| **最终报告 / 辅助** | 机器 | 生成式 Markdown 共 13 份（12 份阶段报告：`inventory/` 与 `evidence/{layer,lineage,profiling}/` 的 `summary.md`、`understanding/business/` 的 `summary.md` / `quality-assessment.md` / `object-graph.md` / `process/grain-summary.md`、`understanding/modeling/` 的 `model-summary.md`、`review/` 的 `current-state-model-summary.md` / `current-state-problem-summary.md`，加根目录 `analysis/summary.md`）、`manifest.json`、`*-index.json`、`evidence/errors.json` | 生成式、非 Source of Truth、不授予 Stage 号 |
+| **最终报告 / 辅助** | 机器 | 生成式 Markdown 共 14 份（13 份阶段报告：`inventory/`、`scope/` 与 `evidence/{layer,lineage,profiling}/` 的 `summary.md`、`understanding/business/` 的 `summary.md` / `quality-assessment.md` / `object-graph.md` / `process/grain-summary.md`、`understanding/modeling/` 的 `model-summary.md`、`review/` 的 `current-state-model-summary.md` / `current-state-problem-summary.md`，加根目录 `analysis/summary.md`）、`*-index.json`、`evidence/errors.json` | 生成式、非 Source of Truth、不授予 Stage 号 |
 
 阶段报告由**对应阶段自己**写出，不在全量 pipeline 末尾补写：
 
-* `inventory/summary.md` 与根 `analysis/summary.md`：`pipeline._write_reports*()`；
+* `inventory/summary.md`、`scope/summary.md` 与根 `analysis/summary.md`：`pipeline._write_reports*()`；
 * `evidence/layer/summary.md`：M2.2 `run_layer_assessment()`；
 * `evidence/{lineage,profiling}/summary.md`：`pipeline._write_reports()`——`run()` 与 `run_stage_evidence()` 共用同一实现，用该阶段刚算出的 Layer / SQL / Lineage / Profiling 结果渲染，因此 `analyze --stage evidence` 的 Evidence 产物与全量 `analyze` 逐文件字节一致。
 
@@ -122,8 +122,8 @@ status = review_required    →     rejected             →   status = rejected
 
 ### 5.1 目录
 
-- **产物目录按语义四阶段划分**：`inventory/`（Stage 01 资产清单）、`evidence/{layer,sql,lineage,profiling}/`（Stage 02–05 技术证据）、`understanding/business/`（Stage 06–10 业务理解）、`understanding/modeling/`（Stage 11 与 Stage 12 的当前形态模型）、`review/`（Stage 12–14 评审发现与问题）；源码模块已随产物同步迁移为 `src/data_platform_analysis/analysis/{inventory,evidence/{layer,sql,lineage,profiling},understanding/{business,modeling},review}/`，**产物目录与源码模块同构**（引用时仍须区分根目录 `analysis/` 产物与 `src/.../analysis/` 源码）。Stage 15 无产物目录（回填工件与所属阶段同目录）。
-- **不给现有 61 个产物加 `NN-` 前缀**：全仓字面 `analysis/` 引用数百处，换不到顺序信息（`analysis/` 本身被 gitignore，真正入口是 §2.2 的阅读链）。
+- **产物目录按语义四阶段划分**：`inventory/`（Stage 01 资产清单）、`scope/`（Stage 01 的 M2.1 资格清单与 Scope Summary，`inputs/` + `findings/` 子结构）、`evidence/{layer,sql,lineage,profiling}/`（Stage 02–05 技术证据）、`understanding/business/`（Stage 06–10 业务理解）、`understanding/modeling/`（Stage 11 与 Stage 12 的当前形态模型）、`review/`（Stage 12–14 评审发现与问题）；源码模块已随产物同步迁移为 `src/data_platform_analysis/analysis/{inventory,scope,evidence/{layer,sql,lineage,profiling},understanding/{business,modeling},review}/`，**产物目录与源码模块同构**（引用时仍须区分根目录 `analysis/` 产物与 `src/.../analysis/` 源码；`analysis/scope/` 产物与 `src/.../analysis/scope/` 源码同名，靠前缀区分）。Stage 15 无产物目录（回填工件与所属阶段同目录）。
+- **不给现有 64 个产物加 `NN-` 前缀**：全仓字面 `analysis/` 引用数百处，换不到顺序信息（`analysis/` 本身被 gitignore，真正入口是 §2.2 的阅读链）。
 - **新增阶段**：新目录可带 Stage 号（如 `analysis/16-confirmed/`），**旧文件不补号**——避免混合风格蔓延。
 
 ### 5.2 文件名
@@ -148,7 +148,7 @@ status = review_required    →     rejected             →   status = rejected
 ### 5.3 明确不做的三件事
 
 1. 不给 `src/` 源码加数字前缀（按职责组织是正确设计）。
-2. 不给现有 61 个产物 basename 加 `NN-`（540 处引用，零算法收益）。
+2. 不给现有 64 个产物 basename 加 `NN-`（540 处引用，零算法收益）。
 3. 不预建 Stage 16–20 的目录或空文件（会把规划伪装成已实现）。
 
 ## 6. 已知不一致与待办

@@ -6,6 +6,8 @@
 2. 三类关注项分开断言：UNKNOWN（正常但需要关注）、Node ID 缺失 /
    内容不可用（范围限制 / 采集结果事实）、技术异常（真正异常）。
 3. Content 缺失不等于采集失败。
+4. Inventory Summary 只做资产盘点：资格判定、排除原因与规则命中
+   属于 Scope Summary（analysis/scope/），不得出现在本报告。
 """
 
 from __future__ import annotations
@@ -27,7 +29,6 @@ SECTION_HEADINGS = (
     "## 8. 需要关注的资产与异常",
     "## 9. 当前分析边界",
     "## 10. 关键指标定义",
-    "## 11. 分析范围规则分类",
 )
 
 HARD_CODED_SNAPSHOT_NUMBERS = (
@@ -143,7 +144,7 @@ def test_summary_totals_and_workspace_rows(
     assert "| 文件总数（发现） | 3 |" in summary
     assert "| 已登记文件 | 3 |" in summary
     assert "| 有效 Node ID | 2 |" in summary
-    assert "| 缺失 / 无效 Node ID | 1 |" in summary
+    assert "| 缺失 Node ID | 1 |" in summary
     assert "| 内容可用 | 3 |" in summary
     assert "| 内容不可用 | 0 |" in summary
 
@@ -221,7 +222,7 @@ def test_summary_registration_and_eligibility_tables(
 
     assert "| 文件总数 | 2 |" in summary
     assert "| 有效 Node ID | 1 |" in summary
-    assert "| 缺失 / 无效 Node ID | 1 |" in summary
+    assert "| 缺失 Node ID | 1 |" in summary
     assert "| 当前分析候选 | 1 |" in summary
 
     # 分析候选是范围标注，不写成「排除」。
@@ -503,7 +504,7 @@ def test_missing_node_id_cases_trimmed_to_three(
 
     summary = _summary()
 
-    assert "### 8.2 缺失 / 无效 Node ID（当前不满足节点级后续分析条件）" in summary
+    assert "### 8.2 缺失 Node ID（当前不满足节点级后续分析条件）" in summary
     assert "- 数量：12（占全部 DataWorks 文件 100.0%）" in summary
     # 代表案例 3 个（按 file_type 轮转，本例同类型 → 取前 3 个）
     assert summary.count("未提供 Node ID（node_id 为空）") == 3
@@ -884,6 +885,12 @@ def test_summary_stays_within_inventory_scope(
     assert "| Analyzed |" not in summary
     assert "| Excluded |" not in summary
     assert "Exclusion Reasons" not in summary
+
+    # Scope 专属统计（资格 / 排除原因 / 规则命中）不进入 Inventory Summary。
+    assert "分析范围规则分类" not in summary
+    assert "| SQL 候选 |" not in summary
+    assert "| SQL 分析排除 |" not in summary
+    assert "sql_reason_counts" not in summary
 
 
 def test_summary_is_deterministic(

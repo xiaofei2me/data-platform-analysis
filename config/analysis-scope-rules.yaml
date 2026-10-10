@@ -1,29 +1,33 @@
-# M2.1 Inventory 分析范围规则配置（Analysis Scope Rules）。
+# M2.1 Scope 分析范围规则配置（Analysis Scope Rules）。
 #
 # 用途：
-#   本文件定义 Inventory 内部的规则化分类，供 M2.1 对每个 DataWorks File 计算
-#   资产身份状态、内容状态、分析资格与非正式任务判定，并产出
-#   inventory/excluded-tasks.json、inventory/review-tasks.json 与 Summary 统计。
+#   本文件定义 Scope 阶段的规则化分类，对 Inventory 登记的每个 DataWorks File
+#   计算资产身份状态、内容状态、分析资格与非正式任务判定，并产出
+#   scope/inputs/sql-candidates.json、scope/inputs/excluded-tasks.json、
+#   scope/review-tasks.json 与 scope/summary.{json,md} 统计。
 #
 # 边界（重要）：
 # 1. 本文件是「范围判定规则」，不是删除清单：命中任何规则都只记录与分类，
 #    不调用 DataWorks 删除 / 禁用 / 修改接口，也不删除 Snapshot 或 Inventory 记录。
-# 2. 三个概念必须分开：
+# 2. 两个概念必须分开：
 #    - 资产有效性：对象是否是已知且可追溯的资产（Inventory 全量登记）；
-#    - 分析资格：对象是否适合某项具体分析（overall_eligible / sql_eligible）；
-#    - 清理候选资格：是否有充分证据值得后续人工核查（cleanup_candidate），
-#      比「排除分析」更严格，且永远不等于「可以删除」。
+#    - 分析资格：对象是否适合某项具体分析（overall_eligible / sql_eligible）。
 # 3. 排除分类 ≠ 无效资产：NodeId 缺失、虚拟节点无内容、测试脚本
 #    都是分类结果，对应对象仍完整保留在 inventory/files.json。
 # 4. 未知类型（category / task_type / content_format = UNKNOWN）保持 unknown，
 #    不猜测内容期望，也不猜测是否适用 SQL 分析。
 # 5. 匹配一律忽略大小写；命名 token 按非字母数字字符切分后整词匹配，
 #    不做子串匹配，避免 test 命中 contest 这类误伤。
+# 6. 两份资格清单互补：sql_eligible = true 的全部且仅出现在
+#    scope/inputs/sql-candidates.json，sql_eligible = false 的全部且仅出现在
+#    scope/inputs/excluded-tasks.json，两者互斥且合计覆盖全部登记文件；
+#    scope/review-tasks.json 是独立的待确认维度。
 #
 # 约束：
-# - 只被 M2.1 Inventory 读取；Evidence / Understanding / Review 不读取本文件。
+# - 只被 Scope 阶段读取；Evidence / Understanding / Review 不读取本文件。
 # - 配置缺失或非法时 analyze 直接以退出码 1 失败，不回退默认值，不静默忽略。
-# - 规则 ID 重复、字段缺失、条件 kind 不认识、必需规则组为空 → 视为配置错误。
+# - 规则 ID 重复、字段缺失、条件 kind 不认识、必需规则组为空
+#   或 content_check 结构 / 取值非法 → 视为配置错误。
 # - 修改本文件后重新执行 `analyze`（或 `analyze --stage inventory`）即可重算分类结果。
 #   代码本身不硬编码文件名关键词与正则；节点类型语义来自 dataworks_types 注册表。
 
@@ -45,6 +49,24 @@ content_expectations:
   BINARY: required
   UNKNOWN: unknown
 
+# ============================================================
+# Content 检查（content_check）
+# ============================================================
+# enabled          总开关；false 时不读取任何 Snapshot Content 文件。
+# enabled_formats  启用状态下实际执行 Content 检查的 content_format。
+#                  必须是 content_expectations 已登记的格式，未知格式即配置错误。
+#
+# 未启用检查的格式一律判为 not_checked（未启用 Content 检查）：
+#   - 不读 Snapshot、不做 present / empty_text 判定；
+#   - 不计入 Content 缺口，不阻断 overall_eligible / sql_eligible；
+#   - 不推断内容期望，仅作为事实状态记录在统计里。
+# 启用格式仍按 present / empty_text / not_collected / path_missing / read_error
+# 五种状态区分；Content 缺口（CONTENT_GAP_STATES）仍阻断 sql_eligible。
+content_check:
+  enabled: true
+  enabled_formats:
+    - SQL
+
 # 适用 SQL 分析的 content_format。
 # 只有这些格式的文件才可能进入 SQL Analysis；
 # 其余格式（NONE / JSON / SHELL / PYTHON / BINARY / UNKNOWN）不适用 SQL 分析，
@@ -59,8 +81,8 @@ sql_capable_content_formats:
 #         只有「名称整体就是一个 informal token」（含 token + 纯数字后缀，
 #         例如 test / Test / test_ / test111）才算，避免误伤业务任务名。
 # weak  ：token 作为独立词出现在名称中（例如 imp_s_ka_data_stock_test），
-#         证据不足 → 只标记待确认（review），不排除分析、不算清理候选。
-# 注意：弱证据命中的对象不会被自动判定无效，也不会进入清理候选。
+#         证据不足 → 只标记待确认（review），不改变 sql_eligible。
+# 注意：弱证据命中的对象不会被自动判定无效，也不计入确定排除。
 informal_task_names:
   tokens:
     - test
@@ -79,7 +101,7 @@ informal_task_names:
 #   scope       适用对象范围（当前固定 all_files = Inventory 登记的全部 DataWorks File）
 #   enabled     启用状态
 #   condition   判定条件（kind 由代码解释，未知 kind 视为配置错误）
-#   result      判定结果或处理动作（classification / reason_code / 资格开关 / 复核与清理策略）
+#   result      判定结果（classification / reason_code / 资格开关 / 复核标记）
 #
 # 处理顺序（确定性，同一文件不会得出互相矛盾的结论）：
 #   1. node_identity   → 资产身份状态
@@ -88,6 +110,8 @@ informal_task_names:
 #   4. sql_eligibility → 最终 SQL 分析资格与首要原因
 rules:
   # ---------- 1. NodeId 与节点身份 ----------
+  # Node ID 状态二值：missing（None 或空白）/ valid（存在）。
+  # 未命中任何身份规则的文件默认具备身份资格（identity_eligible = true）。
   - id: NODE_ID_MISSING
     description: NodeId 缺失（None 或空白字符串），无法定位已提交的调度节点。
     type: node_identity
@@ -99,32 +123,6 @@ rules:
       classification: excluded_identity
       reason_code: NODE_ID_MISSING
       overall_eligible: false
-      review_required: false
-
-  - id: NODE_ID_INVALID
-    description: NodeId 格式无效（非空白但不是正整数），无法确认节点身份。
-    type: node_identity
-    scope: all_files
-    enabled: true
-    condition:
-      kind: node_id_invalid
-    result:
-      classification: excluded_identity
-      reason_code: NODE_ID_INVALID
-      overall_eligible: false
-      review_required: false
-
-  - id: NODE_ID_VALID
-    description: NodeId 有效（正整数），节点身份成立。
-    type: node_identity
-    scope: all_files
-    enabled: true
-    condition:
-      kind: node_id_valid
-    result:
-      classification: identity_confirmed
-      reason_code: NODE_ID_VALID
-      overall_eligible: true
       review_required: false
 
   # ---------- 2. 测试、临时及演示任务 ----------
@@ -140,9 +138,6 @@ rules:
       reason_code: INFORMAL_TASK_STRONG
       overall_eligible: false
       review_required: false
-      # 清理候选需要「非正式命名 + 未提交节点」两条独立证据，
-      # 仍只是待人工核查的候选，不构成删除指令。
-      cleanup_candidate: when_node_id_missing
 
   - id: INFORMAL_TASK_WEAK
     description: 文件名 token 命中 informal 词但名称仍含业务结构，标记为待确认。
@@ -156,7 +151,6 @@ rules:
       reason_code: INFORMAL_TASK_WEAK
       overall_eligible: true
       review_required: true
-      cleanup_candidate: never
 
   # ---------- 3. 内容状态 ----------
   - id: CONTENT_PRESENT
