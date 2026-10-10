@@ -123,7 +123,6 @@ from .models import (
     TableProfile,
     TableReference,
     evidence_type_sort_key,
-    is_analysis_eligible,
     normalize_human_status,
 )
 from .scope import (
@@ -137,6 +136,7 @@ from .scope import (
     EXCLUSION_IDENTITY,
     EXCLUSION_INFORMAL,
     FINDINGS_STATUS_NOT_IMPLEMENTED,
+    SQL_REASON_ANALYSIS_ELIGIBLE,
     FileScopeStats,
 )
 
@@ -419,11 +419,24 @@ def render_scope_summary(stats: FileScopeStats) -> str:
         for reason, count in stats.reason_counts.items()
     ]
 
-    # SQL 阻断原因：只描述 sql_eligible 的判定，含 SQL_ANALYSIS_ELIGIBLE（通过）。
-    sql_reason_rows: list[list[object]] = [
+    # SQL 资格原因拆成通过与阻断两张表：通过原因（SQL_ANALYSIS_ELIGIBLE）
+    # 不得出现在「阻断原因」表里，两者互斥且合计 = 登记文件。
+    sql_pass_rows: list[list[object]] = [
+        ["SQL 通过原因", reason, _num(count), _pct(count, total)]
+        for reason, count in stats.sql_reason_counts.items()
+        if reason == SQL_REASON_ANALYSIS_ELIGIBLE
+    ]
+    sql_block_rows: list[list[object]] = [
         ["SQL 阻断原因", reason, _num(count), _pct(count, total)]
         for reason, count in stats.sql_reason_counts.items()
+        if reason != SQL_REASON_ANALYSIS_ELIGIBLE
     ]
+
+    if not sql_pass_rows:
+        sql_pass_rows = [["SQL 通过原因", "（无）", _num(0), "—"]]
+
+    if not sql_block_rows:
+        sql_block_rows = [["SQL 阻断原因", "（无）", _num(0), "—"]]
 
     # 整体分析资格的排除构成（与 exclusion_class_counts 同源）。
     exclusion_labels = {
@@ -614,9 +627,17 @@ def render_scope_summary(stats: FileScopeStats) -> str:
         "阻断优先级：identity → informal → node_type → content，"
         "同一文件只取首个阻断原因；SQL 候选与 SQL 分析排除互斥且合计 = 登记文件。",
         "",
+        "SQL 资格原因分通过与阻断两类，互斥且合计 = 登记文件：",
+        "",
         _table(
             ["口径", "原因", "数量", "占比"],
-            sql_reason_rows,
+            sql_pass_rows,
+            alignments=["left", "left", "right", "right"],
+        ),
+        "",
+        _table(
+            ["口径", "原因", "数量", "占比"],
+            sql_block_rows,
             alignments=["left", "left", "right", "right"],
         ),
         "",
@@ -630,6 +651,11 @@ def render_scope_summary(stats: FileScopeStats) -> str:
         "",
         "排除分类描述的是整体分析资格（overall_eligible）的构成；"
         "SQL 层面的阻断原因见第 3 节，两者是不同维度，不能互相替代。",
+        "",
+        "三个口径互不相同：规则命中数（第 7 节，可重叠）、"
+        "最终排除分类数（本节上方表格，互斥）、分类主因数（本节下方表格，互斥）。"
+        "同一文件可能命中多条规则，但只属于一个排除分类、只有一个分类主因；"
+        "本节数字不能由命中数相减推导，均直接来自文件级判定结果。",
         "",
         "排除 ≠ 删除：命中任何规则都只记录与分类，不调用 DataWorks 删除 / 禁用 / 修改接口，"
         "被排除的对象仍完整保留在 `inventory/files.json`。",
@@ -698,6 +724,17 @@ def render_scope_summary(stats: FileScopeStats) -> str:
             "同一文件可能命中多条规则，命中数之和大于等于对象数；"
             "第 4 节的分类主因分布每个文件只计一次。",
             "",
+            *(
+                [
+                    f"其中 {stats.informal_absorbed_by_identity_count} 个命中会排除整体资格的"
+                    " informal 规则（如 INFORMAL_TASK_STRONG）的文件同时被 identity 分类排除"
+                    "（exclusion_class = identity，身份排除优先），"
+                    "因此不出现在第 4 节的非正式任务排除行中。",
+                    "",
+                ]
+                if stats.informal_absorbed_by_identity_count > 0
+                else []
+            ),
             "## 8. 规则发现及实现状态",
             "",
             _table(
@@ -3306,16 +3343,22 @@ def render_review_checklist(
 
 
 def render_analysis_summary(context: SummaryContext) -> str:
-    """生成 analysis/summary.md。"""
+    """生成 analysis/summary.md。
+
+    资格与范围数字全部来自 ``SummaryContext.scope_stats``（Scope 的权威口径）：
+    整体分析资格（overall_eligible）、SQL 分析输入（sql_eligible）与
+    NodeId 身份状态是三个不同维度，不在此处用 ``is_analysis_eligible()``
+    推导 SQL Analysis 的输入数量。
+    """
 
     inventory = context.inventory
+    scope_stats = context.scope_stats
     status_counts = Counter(item.parse_status for item in context.statements)
     method_counts = Counter(item.extraction_method for item in context.statements)
     error_counts = Counter(
         (error.get("stage"), error.get("error_type")) for error in context.errors
     )
-    eligible_files = [item for item in inventory.files if is_analysis_eligible(item)]
-    excluded_files = [item for item in inventory.files if not is_analysis_eligible(item)]
+    parsed_file_count = len({(item.workspace_id, str(item.file_id)) for item in context.statements})
     layer_status_counts = Counter(item.status for item in context.layer_assessments)
     layer_candidate_counts = Counter(
         item.candidate_layer or "(未确定)" for item in context.layer_assessments
@@ -3337,8 +3380,12 @@ def render_analysis_summary(context: SummaryContext) -> str:
             [
                 ["Workspace", len(inventory.workspaces)],
                 ["DataWorks File（Snapshot 总数）", len(inventory.files)],
-                ["参与 Analysis 的 File（NodeId 有效）", len(eligible_files)],
-                ["排除的 File（NodeId 缺失）", len(excluded_files)],
+                ["整体分析资格 File（overall_eligible）", scope_stats.overall_eligible_count],
+                ["SQL 候选 File（sql_eligible）", scope_stats.sql_eligible_count],
+                [
+                    "SQL 分析排除 File（sql_eligible = false）",
+                    scope_stats.sql_ineligible_count,
+                ],
                 ["MaxCompute Table", len(inventory.tables)],
                 ["Column", len(inventory.columns)],
                 ["SQL 语句", len(context.statements)],
@@ -3348,8 +3395,11 @@ def render_analysis_summary(context: SummaryContext) -> str:
             ],
         ),
         "",
-        "Snapshot File 全量保留；只有 NodeId 有效的 File 进入 SQL / Table Reference / "
-        "Lineage Analysis，NodeId 缺失的 File 不产生 SQL Evidence，也不记为错误。",
+        "Snapshot File 全量保留；整体分析资格与 SQL 分析资格是不同口径："
+        "整体分析资格 = 身份有效且非明确非正式任务；"
+        "SQL 候选 = 通过 SQL 分析资格的 File，是 SQL / Table Reference / "
+        "Lineage Analysis 的唯一输入，不产生 SQL Evidence 的 File 也不记为错误。"
+        "明细见 `analysis/scope/summary.md`。",
         "",
         "## 2. Workspace Inventory",
         "",
@@ -3381,12 +3431,11 @@ def render_analysis_summary(context: SummaryContext) -> str:
                     "SQL 格式 File",
                     sum(1 for item in inventory.files if item.content_format.upper() == "SQL"),
                 ],
-                ["NodeId 有效（参与 SQL Analysis）", len(eligible_files)],
-                ["NodeId 缺失（仅保留在 Snapshot）", len(excluded_files)],
-                [
-                    "已读取到内容的 File",
-                    len({item.file_id for item in context.statements}),
-                ],
+                ["NodeId 有效（身份维度）", scope_stats.node_id_valid_count],
+                ["NodeId 缺失（仅保留在 Snapshot）", scope_stats.node_id_missing_count],
+                ["整体分析资格（overall_eligible）", scope_stats.overall_eligible_count],
+                ["SQL 候选（sql_eligible）", scope_stats.sql_eligible_count],
+                ["内容可用（content present）", scope_stats.content_present_count],
             ],
         ),
         "",
@@ -3418,16 +3467,18 @@ def render_analysis_summary(context: SummaryContext) -> str:
             ],
         ),
         "",
-        f"- 解析语句的 File：{len({item.file_id for item in context.statements})}",
+        f"- 解析语句的 File：{parsed_file_count}",
         f"- 解析错误 / 不支持语句：{len(context.parse_errors)}",
         f"- 表引用提取方式（按语句）：ast={method_counts.get(EXTRACTION_METHOD_AST, 0)}，"
         f"fallback={method_counts.get(EXTRACTION_METHOD_FALLBACK, 0)}",
         f"- Parser Compatibility Normalization 生效语句："
         f"{sum(1 for item in context.statements if item.normalization_applied)}",
-        f"- 因 NodeId 缺失被排除的 File：{len(excluded_files)}",
+        f"- SQL 分析排除 File（sql_eligible = false）：{scope_stats.sql_ineligible_count}",
         "",
-        "只有 NodeId 有效的 File 进入 SQL Analysis；被排除的 File 不产生任何 "
-        "statement / reference / lineage 证据。",
+        "SQL Analysis 只接受 Scope 判定为 SQL 候选（sql_eligible = true）的 File"
+        f"（{scope_stats.sql_eligible_count} 个，与第 1 节「SQL 候选 File」同源）；"
+        "被排除的 File 不产生任何 statement / reference / lineage 证据，"
+        "排除原因（含 NodeId 缺失、类型不适用等）见 `analysis/scope/summary.md`。",
         "",
         "Parser Compatibility Normalization 只在 syntax context 替换全角括号，"
         "string literal 与 comment 原样保留；statement.sql 仍是 raw SQL。",
@@ -3544,7 +3595,8 @@ def render_analysis_summary(context: SummaryContext) -> str:
 
 LIMITATION_BULLETS: tuple[str, ...] = (
     "- 只读取 `source/` Snapshot，不访问 DataWorks / MaxCompute / QuickBI 等外部 API。",
-    "- Analysis 输入只包含 NodeId 有效的 File；NodeId 缺失的 File 不产生 SQL Evidence。",
+    "- SQL Analysis 输入只包含 Scope 判定的 SQL 候选（sql_eligible = true）的 File；"
+    "被排除的 File 不产生 SQL Evidence。",
     "- 表级血缘来自 SQL 文本解析，未做 Column Lineage。",
     "- 层级、核心表均为 Candidate，不构成业务结论。",
     "- M2.2 的 UNKNOWN 只表示现有证据不足以判定 CDM 子层，不等于命名违规。",
@@ -3560,6 +3612,7 @@ class SummaryContext:
 
     inventory: Inventory
     lineage: LineageResult
+    scope_stats: FileScopeStats
     statements: list[StatementRecord] = field(default_factory=list)
     references: list[TableReference] = field(default_factory=list)
     parse_errors: list[ParseErrorRecord] = field(default_factory=list)

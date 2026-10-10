@@ -84,6 +84,13 @@ SQL_BLOCKERS: frozenset[str] = frozenset(
     }
 )
 
+SQL_REASON_ANALYSIS_ELIGIBLE = "SQL_ANALYSIS_ELIGIBLE"
+"""SQL 分析资格通过的 reason_code（与通过规则同名，来自 config YAML）。
+
+报告须把它与阻断原因（NODE_ID_MISSING 等）分开呈现，
+避免「SQL 阻断原因」表里混入通过原因。
+"""
+
 
 # ============================================================
 # 配置模型

@@ -176,6 +176,7 @@ def scope_summary_payload(scope: FileScope) -> dict[str, Any]:
         },
         "rule_hits": {
             "hit_counts": dict(stats.rule_hit_counts),
+            "informal_absorbed_by_identity_count": stats.informal_absorbed_by_identity_count,
             "types": dict(stats.rule_types),
             "descriptions": dict(stats.rule_descriptions),
         },

@@ -31,6 +31,7 @@ from data_platform_analysis.analysis.scope import (
     CONTENT_STATE_NOT_CHECKED,
     CONTENT_STATE_PRESENT,
     CONTENT_STATES,
+    SQL_REASON_ANALYSIS_ELIGIBLE,
     ContentCheckConfig,
     FileScopeStats,
     ScopeResult,
@@ -229,6 +230,47 @@ def test_not_checked_content_state_does_not_block_sql_eligibility() -> None:
     assert decision.content_state == CONTENT_STATE_NOT_CHECKED
     assert decision.sql_eligible is True
     assert decision.sql_reason_code == "SQL_ANALYSIS_ELIGIBLE"
+
+
+def test_sql_reason_eligible_constant_matches_config_reason_code() -> None:
+    """SQL 通过原因常量与配置里通过规则的 reason_code 一致（代码不再各自硬编码）。"""
+
+    rules = load_scope_rules(_REPO_CONFIG)
+    eligible_rule = rules.rule_by_id("SQL_ANALYSIS_ELIGIBLE")
+
+    assert eligible_rule is not None
+    assert eligible_rule.result.reason_code == SQL_REASON_ANALYSIS_ELIGIBLE
+    assert SQL_REASON_ANALYSIS_ELIGIBLE == "SQL_ANALYSIS_ELIGIBLE"
+
+
+def test_node_id_valid_informal_strong_separates_three_dimensions() -> None:
+    """NodeId 有效 + INFORMAL_TASK_STRONG：身份 / 整体 / SQL 三个口径各自符合定义。"""
+
+    rules = load_scope_rules(_REPO_CONFIG)
+    file = _file(file_name="test", node_id="7001")
+
+    decision = classify_file(
+        file,
+        rules=rules,
+        workspace_name="ws_a",
+        content_state=CONTENT_STATE_PRESENT,
+    )
+
+    # 身份维度（与 models.is_analysis_eligible 同口径）：NodeId 有效 → True。
+    assert node_id_state(file.node_id) == NODE_ID_STATE_VALID
+    assert is_analysis_eligible(file) is True
+    assert decision.identity_eligible is True
+
+    # 整体分析资格：命中明确非正式任务 → False，归入 informal_task 排除分类。
+    assert decision.overall_eligible is False
+    assert decision.exclusion_class == "informal_task"
+    assert decision.reason_code == "INFORMAL_TASK_STRONG"
+
+    # SQL 资格是独立维度，同样被 informal 阻断，但不是身份阻断。
+    assert decision.sql_eligible is False
+    assert decision.sql_reason_code == "INFORMAL_TASK_STRONG"
+    assert "INFORMAL_TASK_STRONG" in decision.matched_rule_ids
+    assert "NODE_ID_MISSING" not in decision.matched_rule_ids
 
 
 # ============================================================

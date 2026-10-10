@@ -101,12 +101,15 @@ def node_id_state(node_id: int | str | None) -> str:
 
 
 def is_analysis_eligible(file: FileInventory) -> bool:
-    """判断 File 是否具备节点级分析的资产身份（兼容入口）。
+    """判断 File 是否具备节点级分析的资产身份（身份维度，兼容入口）。
 
     语义：NodeId 状态为 valid，即该 File 是已提交的 DataWorks 节点。
-    这是「身份维度」的整体分析资格，不是 SQL 分析资格——
-    SQL 分析资格由 Inventory 的 Analysis Scope Rules 统一判定
-    （见 analysis/scope/decision.py 的 FileScopeDecision.sql_eligible）。
+    这是「身份维度」的判断，不是 Scope 的整体分析资格——
+    整体分析资格还要求非明确非正式任务（identity_eligible and not
+    informal_excluded），权威判定见 analysis/scope/decision.py 的
+    FileScopeDecision.overall_eligible，正式接口为
+    FileScope.overall_eligible_files()；SQL 分析输入见
+    FileScopeDecision.sql_eligible / FileScope.sql_eligible_files()。
 
     NodeId 缺失的 File 仍然保留在 Snapshot Inventory 中，
     这是 Analysis Scope Rules 的分类结果，不是 Analysis Error。

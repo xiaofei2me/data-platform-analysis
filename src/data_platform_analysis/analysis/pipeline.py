@@ -59,7 +59,6 @@ from .models import (
     StatementRecord,
     TableProfile,
     TableReference,
-    is_analysis_eligible,
     numeric_id_sort_key,
 )
 from .scope import (
@@ -126,7 +125,12 @@ LOG_INTERVAL = 500
 
 @dataclass
 class AnalysisResult:
-    """一次 Analysis 运行的汇总结果。"""
+    """一次 Analysis 运行的汇总结果。
+
+    ``eligible_file_count`` / ``excluded_file_count`` 采用 Scope 的整体分析资格
+    口径（overall_eligible = 身份有效且非明确非正式任务），与 SQL 分析输入
+    （sql_eligible）是不同维度；SQL 实际输入数量见 statements / references 字段。
+    """
 
     analysis_dir: Path
     workspace_ids: list[int] = field(default_factory=list)
@@ -204,8 +208,8 @@ class AnalysisPipeline:
         layer_result = self._run_layer_assessment()
 
         # 资产身份口径（整体分析资格）与 SQL 分析口径分开：
-        # eligible_files 用于报告统计，sql_files 是 SQL Analysis 的实际输入。
-        eligible_files = [item for item in inventory.files if is_analysis_eligible(item)]
+        # eligible_files 是 overall_eligible 权威口径，sql_files 是 SQL Analysis 的实际输入。
+        eligible_files = scope.overall_eligible_files(inventory.files)
         excluded_file_count = len(inventory.files) - len(eligible_files)
         sql_files = scope.sql_eligible_files(inventory.files)
 
@@ -265,7 +269,7 @@ class AnalysisPipeline:
         )
 
         logger.info(
-            "Analysis 完成：workspace=%s，file=%s（eligible=%s，excluded=%s），table=%s，"
+            "Analysis 完成：workspace=%s，file=%s（overall_eligible=%s，excluded=%s），table=%s，"
             "statement=%s，reference=%s，edge=%s，error=%s",
             len(identities),
             result.file_count,
@@ -330,7 +334,7 @@ class AnalysisPipeline:
             errors=errors,
         )
 
-        eligible_count = sum(1 for item in inventory.files if is_analysis_eligible(item))
+        eligible_count = len(scope.overall_eligible_files(inventory.files))
 
         result = AnalysisResult(
             analysis_dir=self.analysis_dir,
@@ -359,13 +363,15 @@ class AnalysisPipeline:
     ) -> Path:
         """写出 Inventory / Scope 阶段 Summary 与根 Summary。"""
 
+        scope_stats = scope.stats()
+
         write_text(
             self.analysis_dir / "inventory" / "summary.md",
             render_inventory_summary(inventory_summary),
         )
         write_text(
             self.analysis_dir / SCOPE_SUMMARY_MD_RELATIVE_PATH,
-            render_scope_summary(scope.stats()),
+            render_scope_summary(scope_stats),
         )
 
         summary_path = self.analysis_dir / "summary.md"
@@ -379,6 +385,7 @@ class AnalysisPipeline:
                 SummaryContext(
                     inventory=inventory,
                     lineage=LineageResult(edges=[], candidates=[]),
+                    scope_stats=scope_stats,
                     statements=[],
                     references=[],
                     parse_errors=[],
@@ -425,7 +432,7 @@ class AnalysisPipeline:
         # 执行 M2.2
         layer_result = self._run_layer_assessment()
 
-        eligible_files = [item for item in inventory.files if is_analysis_eligible(item)]
+        eligible_files = scope.overall_eligible_files(inventory.files)
         sql_files = scope.sql_eligible_files(inventory.files)
 
         statements, references, parse_errors = self._analyze_sql(sql_files)
@@ -853,13 +860,15 @@ class AnalysisPipeline:
     ) -> Path:
         """写出各阶段 Summary 与总 Summary。"""
 
+        scope_stats = scope.stats()
+
         write_text(
             self.analysis_dir / "inventory" / "summary.md",
             render_inventory_summary(inventory_summary),
         )
         write_text(
             self.analysis_dir / SCOPE_SUMMARY_MD_RELATIVE_PATH,
-            render_scope_summary(scope.stats()),
+            render_scope_summary(scope_stats),
         )
         write_text(
             self.analysis_dir / "evidence" / "lineage" / "summary.md",
@@ -878,6 +887,7 @@ class AnalysisPipeline:
                 SummaryContext(
                     inventory=inventory,
                     lineage=lineage,
+                    scope_stats=scope_stats,
                     statements=statements,
                     references=references,
                     parse_errors=parse_errors,

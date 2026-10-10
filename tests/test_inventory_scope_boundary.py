@@ -460,3 +460,245 @@ def test_stage_inventory_contract_also_writes_scope(
     assert "| 整体分析资格 |" not in inventory_md
     assert "| SQL 分析排除 |" not in inventory_md
     assert "| 当前分析候选 |" not in inventory_md
+
+
+# ============================================================
+# 5. 资格与数量口径：吸收计数、SQL 原因拆分、根 Summary 口径
+# ============================================================
+
+
+def _build_scope_from_snapshot() -> Any:
+    """在当前沙盒 Snapshot 上构建 FileScope（与 Pipeline 同一条判定链路）。"""
+
+    inventory, reader = _build_inventory(Path("source"))
+    rules = load_scope_rules(settings.scope_rules_path)
+    workspace_names = {
+        workspace.workspace_id: workspace.workspace_name for workspace in inventory.workspaces
+    }
+    scope = build_file_scope(
+        inventory.files,
+        workspace_names,
+        rules=rules,
+        reader=reader,
+    )
+    return inventory, scope
+
+
+def _informal_absorption_snapshot() -> None:
+    """101 被 identity 吸收 / 102 归 informal 排除 / 103 干净 SQL 文件。"""
+
+    write_snapshot(
+        Path("source"),
+        workspaces=[{"id": 9001, "name": "ws_a"}],
+        files=[
+            # NodeId 缺失 + informal strong：identity 排除优先 → 被吸收。
+            {
+                "workspace_id": 9001,
+                "file_id": "101",
+                "file_name": "test",
+                "content": "INSERT INTO t SELECT 1;",
+            },
+            # NodeId 有效 + informal strong：归 informal_task 排除，不被吸收。
+            {
+                "workspace_id": 9001,
+                "file_id": "102",
+                "file_name": "tmp",
+                "node_id": "7002",
+                "content": "INSERT INTO t SELECT 2;",
+            },
+            # 干净 SQL 文件。
+            {
+                "workspace_id": 9001,
+                "file_id": "103",
+                "file_name": "etl_ok",
+                "node_id": "7003",
+                "content": "INSERT INTO t SELECT 3;",
+            },
+        ],
+    )
+
+
+def test_informal_absorbed_by_identity_count_computed_from_decisions(cli_env: Any) -> None:
+    """吸收计数从文件级判定结果计算，不由命中数与分类数的差值推断。"""
+
+    _informal_absorption_snapshot()
+    inventory, scope = _build_scope_from_snapshot()
+    stats = scope.stats()
+
+    # 规则命中（可重叠）：101 与 102 都命中 INFORMAL_TASK_STRONG。
+    assert stats.rule_hit_counts["INFORMAL_TASK_STRONG"] == 2
+
+    # 最终排除分类（互斥）：101 归 identity，102 归 informal_task。
+    assert stats.identity_excluded_count == 1
+    assert stats.informal_excluded_count == 1
+    assert stats.overall_eligible_count == 1
+
+    # 吸收计数：命中 informal 排除规则但最终归 identity 分类 = 1。
+    assert stats.informal_absorbed_by_identity_count == 1
+
+    # payload 与 FileScopeStats 同源。
+    payload = scope_summary_payload(scope)
+    assert payload["rule_hits"]["informal_absorbed_by_identity_count"] == 1
+
+
+def test_overall_eligible_files_and_sql_eligible_files_are_different_sets(
+    cli_env: Any,
+) -> None:
+    """整体分析资格与 SQL 分析输入是两个不同集合，各自来自 FileScope。"""
+
+    write_snapshot(
+        Path("source"),
+        workspaces=[{"id": 9001, "name": "ws_a"}],
+        files=[
+            # SQL 候选：两个资格都通过。
+            {
+                "workspace_id": 9001,
+                "file_id": "101",
+                "file_name": "etl_ok",
+                "node_id": "7001",
+                "content": "INSERT INTO t SELECT 1;",
+            },
+            # NodeId 缺失：两个资格都不通过。
+            {
+                "workspace_id": 9001,
+                "file_id": "102",
+                "file_name": "draft",
+                "content": "INSERT INTO t SELECT 2;",
+            },
+            # PYTHON 类型：整体资格通过、SQL 资格不通过（类型不适用）。
+            {
+                "workspace_id": 9001,
+                "file_id": "103",
+                "file_name": "py_job",
+                "node_id": "7003",
+                "content": "print('x')",
+                "content_format": "PYTHON",
+            },
+        ],
+    )
+
+    inventory, scope = _build_scope_from_snapshot()
+
+    overall_ids = {item.file_id for item in scope.overall_eligible_files(inventory.files)}
+    sql_ids = {item.file_id for item in scope.sql_eligible_files(inventory.files)}
+
+    assert overall_ids == {"101", "103"}
+    assert sql_ids == {"101"}
+    assert overall_ids > sql_ids
+
+
+def test_scope_summary_splits_sql_pass_and_block_reasons(
+    cli_env: Any,
+    run_cli: Any,
+) -> None:
+    """SQL 通过原因不出现在阻断原因表里，两表互斥且合计 = 登记文件。"""
+
+    _sample_snapshot()
+
+    assert run_cli("analyze", "--stage", "inventory") == 0
+
+    payload = _read(Path("analysis/scope/summary.json"))
+    summary_md = Path("analysis/scope/summary.md").read_text(encoding="utf-8")
+
+    sql_reasons = payload["eligibility"]["sql_reason_counts"]
+    total = payload["totals"]["evaluated_count"]
+    pass_count = sql_reasons["SQL_ANALYSIS_ELIGIBLE"]
+    block_count = sum(
+        count for reason, count in sql_reasons.items() if reason != "SQL_ANALYSIS_ELIGIBLE"
+    )
+
+    assert pass_count == payload["totals"]["sql_candidates_count"]
+    assert pass_count + block_count == total
+
+    # 通过原因只出现在「SQL 通过原因」表。
+    assert f"| SQL 通过原因 | SQL_ANALYSIS_ELIGIBLE | {pass_count:,} |" in summary_md
+    assert "| SQL 阻断原因 | SQL_ANALYSIS_ELIGIBLE |" not in summary_md
+
+    # 阻断原因只出现在「SQL 阻断原因」表。
+    assert "| SQL 阻断原因 | NODE_ID_MISSING |" in summary_md
+    assert "| SQL 阻断原因 | SQL_FORMAT_NOT_APPLICABLE |" in summary_md
+    assert "| SQL 通过原因 | NODE_ID_MISSING |" not in summary_md
+
+
+def test_scope_summary_absorbed_note_matches_payload(
+    cli_env: Any,
+    run_cli: Any,
+) -> None:
+    """吸收口径说明的数字与 scope/summary.json 同源，不写死快照常量。"""
+
+    _informal_absorption_snapshot()
+
+    assert run_cli("analyze", "--stage", "inventory") == 0
+
+    payload = _read(Path("analysis/scope/summary.json"))
+    summary_md = Path("analysis/scope/summary.md").read_text(encoding="utf-8")
+
+    absorbed = payload["rule_hits"]["informal_absorbed_by_identity_count"]
+    assert absorbed == 1
+
+    # 说明文字里的数字来自本次判定结果，随快照变化。
+    assert f"其中 {absorbed} 个命中会排除整体资格的" in summary_md
+    assert "exclusion_class = identity" in summary_md
+
+
+def test_root_summary_distinguishes_overall_and_sql_eligibility(
+    cli_env: Any,
+    run_cli: Any,
+) -> None:
+    """根 Summary 的整体资格与 SQL 候选是不同口径，SQL 输入数量来自 Scope。"""
+
+    write_snapshot(
+        Path("source"),
+        workspaces=[{"id": 9001, "name": "ws_a"}],
+        files=[
+            # SQL 候选：两个资格都通过。
+            {
+                "workspace_id": 9001,
+                "file_id": "101",
+                "file_name": "etl_ok",
+                "node_id": "7001",
+                "content": "INSERT INTO t SELECT 1;",
+            },
+            # NodeId 缺失：两个资格都不通过。
+            {
+                "workspace_id": 9001,
+                "file_id": "102",
+                "file_name": "draft",
+                "content": "INSERT INTO t SELECT 2;",
+            },
+            # PYTHON 类型：整体资格通过、SQL 资格不通过（类型不适用）。
+            {
+                "workspace_id": 9001,
+                "file_id": "103",
+                "file_name": "py_job",
+                "node_id": "7003",
+                "content": "print('x')",
+                "content_format": "PYTHON",
+            },
+        ],
+    )
+
+    assert run_cli("analyze", "--stage", "inventory") == 0
+
+    payload = _read(Path("analysis/scope/summary.json"))
+    overall = payload["eligibility"]["overall_eligible_count"]
+    sql = payload["eligibility"]["sql_eligible_count"]
+    root = Path("analysis/summary.md").read_text(encoding="utf-8")
+
+    # 两个口径不同：PYTHON 文件整体资格通过、SQL 资格不通过。
+    assert overall == 2
+    assert sql == 1
+
+    assert f"| 整体分析资格 File（overall_eligible） | {overall} |" in root
+    assert f"| SQL 候选 File（sql_eligible） | {sql} |" in root
+    excluded = payload["totals"]["excluded_count"]
+    assert f"| SQL 分析排除 File（sql_eligible = false） | {excluded} |" in root
+
+    # 旧的「NodeId 有效 = 参与 SQL Analysis」口径不再出现。
+    assert "参与 Analysis 的 File（NodeId 有效）" not in root
+    assert "已读取到内容的 File" not in root
+    assert "只有 NodeId 有效的 File 进入 SQL Analysis" not in root
+    assert "Analysis 输入只包含 NodeId 有效的 File" not in root
+
+    # SQL 输入来自 Scope 判定，而不是 NodeId 身份维度。
+    assert "SQL Analysis 只接受 Scope 判定为 SQL 候选" in root

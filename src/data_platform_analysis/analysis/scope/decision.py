@@ -46,6 +46,7 @@ from .rules import (
     SQL_BLOCKER_IDENTITY,
     SQL_BLOCKER_INFORMAL,
     SQL_BLOCKER_NODE_TYPE,
+    SQL_REASON_ANALYSIS_ELIGIBLE,
     ScopeCondition,
     ScopeRule,
     ScopeRules,
@@ -210,6 +211,15 @@ class FileScopeStats:
 
     informal_strong_count: int = 0
     informal_weak_count: int = 0
+    informal_absorbed_by_identity_count: int = 0
+    """命中会排除整体资格的 informal 规则、但最终 exclusion_class 为 identity 的文件数。
+
+    规则命中数与最终排除分类可能不同：同一文件若同时命中 NODE_ID_MISSING 与
+    INFORMAL_TASK_STRONG，identity 排除优先，exclusion_class = identity，
+    因此不出现在 informal_excluded_count 中。
+    该数字从文件级判定结果直接计算，不是从 rule_hit_counts 与
+    exclusion_class_counts 的差值推断。
+    """
 
     exclusion_class_counts: Mapping[str, int] = field(default_factory=dict)
     reason_counts: Mapping[str, int] = field(default_factory=dict)
@@ -272,6 +282,25 @@ class FileScope:
 
         return selected
 
+    def overall_eligible_files(self, files: Sequence[FileInventory]) -> list[FileInventory]:
+        """按整体分析资格（overall_eligible）筛选，保持输入顺序。
+
+        与 sql_eligible_files 同源同口径：整体分析资格 =
+        身份有效且非明确非正式任务（identity_eligible and not informal_excluded）。
+        这是「参与 Analysis 的 File」的权威口径，不等同于 SQL 分析输入。
+        """
+
+        index = {(item.workspace_id, item.file_id): item for item in self.decisions}
+        selected: list[FileInventory] = []
+
+        for file in files:
+            decision = index.get((file.workspace_id, str(file.file_id)))
+
+            if decision is not None and decision.overall_eligible:
+                selected.append(file)
+
+        return selected
+
     def stats(self) -> FileScopeStats:
         """计算规则分类统计（唯一对象数与规则命中数分开）。"""
 
@@ -289,6 +318,21 @@ class FileScope:
 
             if item.exclusion_class is not None:
                 classes[item.exclusion_class] += 1
+
+        # 会排除整体资格的 informal 规则（result.overall_eligible = false）；
+        # 这些规则命中若被更高优先级的 identity 排除吸收，只算 identity 分类。
+        informal_excluding_ids = {
+            rule.id
+            for rule in self.rule_index.values()
+            if rule.type == RULE_TYPE_INFORMAL_TASK and rule.result.overall_eligible is False
+        }
+
+        informal_absorbed_by_identity_count = sum(
+            1
+            for item in self.decisions
+            if item.exclusion_class == EXCLUSION_IDENTITY
+            and any(rule_id in informal_excluding_ids for rule_id in item.matched_rule_ids)
+        )
 
         return FileScopeStats(
             rules_version=self.rules_version,
@@ -351,6 +395,7 @@ class FileScope:
             review_count=sum(1 for item in self.decisions if item.review_required),
             informal_strong_count=rule_hits.get("INFORMAL_TASK_STRONG", 0),
             informal_weak_count=rule_hits.get("INFORMAL_TASK_WEAK", 0),
+            informal_absorbed_by_identity_count=informal_absorbed_by_identity_count,
             exclusion_class_counts=dict(sorted(classes.items())),
             reason_counts=dict(sorted(reasons.items())),
             sql_reason_counts=dict(sorted(sql_reasons.items())),
@@ -614,7 +659,7 @@ def _primary_reason(
     if exclusion_class == EXCLUSION_IDENTITY and reason_codes:
         return reason_codes[0]
 
-    if sql_reason_code and sql_reason_code != "SQL_ANALYSIS_ELIGIBLE":
+    if sql_reason_code and sql_reason_code != SQL_REASON_ANALYSIS_ELIGIBLE:
         return sql_reason_code
 
     if reason_codes:
