@@ -1,0 +1,113 @@
+{
+  "rules_version": "1.0",
+  "rules_path": "config/analysis-scope-rules.yaml",
+  "totals": {
+    "evaluated_count": 4657,
+    "sql_candidates_count": 541,
+    "excluded_count": 4116,
+    "review_required_count": 70
+  },
+  "eligibility": {
+    "overall_eligible_count": 1379,
+    "identity_excluded_count": 3278,
+    "informal_excluded_count": 0,
+    "sql_eligible_count": 541,
+    "sql_ineligible_count": 4116,
+    "sql_reason_counts": {
+      "NODE_ID_MISSING": 3278,
+      "SQL_ANALYSIS_ELIGIBLE": 541,
+      "SQL_FORMAT_NOT_APPLICABLE": 838
+    },
+    "exclusion_class_counts": {
+      "identity": 3278
+    },
+    "reason_counts": {
+      "CONTENT_PRESENT": 541,
+      "NODE_ID_MISSING": 3278,
+      "SQL_FORMAT_NOT_APPLICABLE": 838
+    }
+  },
+  "identity": {
+    "node_id_valid_count": 1379,
+    "node_id_missing_count": 3278,
+    "task_type_counts": {
+      "ASSIGNMENT": 14,
+      "BRANCH": 1,
+      "CHECK": 3,
+      "DO_WHILE": 3,
+      "FOR_EACH": 1,
+      "FUNCTION_COMPUTE": 9,
+      "ODPS_SQL": 2826,
+      "OFFLINE_SYNC": 1683,
+      "PARAM_HUB": 1,
+      "PYODPS2": 2,
+      "PYODPS3": 32,
+      "REALTIME_SYNC": 1,
+      "RESOURCE": 46,
+      "SHELL": 19,
+      "TASK_FLOW": 1,
+      "VIRTUAL": 15
+    }
+  },
+  "content_states": {
+    "present_count": 2826,
+    "not_checked_count": 1831,
+    "empty_text_count": 0,
+    "not_collected_count": 0,
+    "path_missing_count": 0,
+    "read_error_count": 0,
+    "empty_allowed_count": 0,
+    "empty_unexpected_count": 0,
+    "gap_unknown_expectation_count": 0,
+    "expectation_unknown_count": 0
+  },
+  "rule_hits": {
+    "hit_counts": {
+      "CONTENT_PRESENT": 2826,
+      "INFORMAL_TASK_STRONG": 24,
+      "INFORMAL_TASK_WEAK": 70,
+      "NODE_ID_MISSING": 3278,
+      "SQL_ANALYSIS_ELIGIBLE": 541,
+      "SQL_BLOCKED_BY_IDENTITY": 3278,
+      "SQL_BLOCKED_BY_TYPE": 838
+    },
+    "types": {
+      "NODE_ID_MISSING": "node_identity",
+      "INFORMAL_TASK_STRONG": "informal_task",
+      "INFORMAL_TASK_WEAK": "informal_task",
+      "CONTENT_PRESENT": "content_state",
+      "CONTENT_GAP_NOT_REQUIRED": "content_state",
+      "CONTENT_GAP_REQUIRED": "content_state",
+      "CONTENT_EXPECTATION_UNKNOWN": "content_state",
+      "SQL_BLOCKED_BY_IDENTITY": "sql_eligibility",
+      "SQL_BLOCKED_BY_INFORMAL": "sql_eligibility",
+      "SQL_BLOCKED_BY_TYPE": "sql_eligibility",
+      "SQL_BLOCKED_BY_CONTENT": "sql_eligibility",
+      "SQL_ANALYSIS_ELIGIBLE": "sql_eligibility"
+    },
+    "descriptions": {
+      "NODE_ID_MISSING": "NodeId 缺失（None 或空白字符串），无法定位已提交的调度节点。",
+      "INFORMAL_TASK_STRONG": "文件名整体命中 informal token，判定为明确的测试 / 临时 / 演示任务。",
+      "INFORMAL_TASK_WEAK": "文件名 token 命中 informal 词但名称仍含业务结构，标记为待确认。",
+      "CONTENT_PRESENT": "Content 在 Snapshot 中可读且非空白。",
+      "CONTENT_GAP_NOT_REQUIRED": "Content 缺失，但该节点类型不要求 Content（虚拟 / 控制流节点属正常形态）。",
+      "CONTENT_GAP_REQUIRED": "Content 缺失，但该节点类型预期需要 Content，记录内容缺失原因。",
+      "CONTENT_EXPECTATION_UNKNOWN": "Content 缺失且节点类型的内容期望未知，保持 unknown，不猜测。",
+      "SQL_BLOCKED_BY_IDENTITY": "节点身份不成立，不适合作为 SQL 分析输入。",
+      "SQL_BLOCKED_BY_INFORMAL": "明确的非正式任务不进入正式业务 SQL 分析。",
+      "SQL_BLOCKED_BY_TYPE": "节点类型 / content_format 不适用 SQL 分析（不代表不适用于其他分析）。",
+      "SQL_BLOCKED_BY_CONTENT": "格式适用 SQL，但 Content 当前不可用，无法作为 SQL 分析输入。",
+      "SQL_ANALYSIS_ELIGIBLE": "节点身份有效、非非正式任务、content_format 适用 SQL 且 Content 可用。"
+    }
+  },
+  "findings": {
+    "status": "not_implemented",
+    "count": 0,
+    "note": "Scope 规则发现（scope/findings/）尚未实现：当前规则只做资格分类与审核标记，不产出整改问题，因此不生成发现产物。"
+  },
+  "inputs": {
+    "sql_candidates": "scope/inputs/sql-candidates.json",
+    "excluded_tasks": "scope/inputs/excluded-tasks.json",
+    "review_tasks": "scope/review-tasks.json"
+  }
+}

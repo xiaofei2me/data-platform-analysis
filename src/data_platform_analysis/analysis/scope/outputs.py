@@ -18,8 +18,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from ... import config
 from .decision import FileScope
 
 SCOPE_RELATIVE_DIR = "scope"
@@ -48,11 +50,25 @@ FINDINGS_STATUS_NOT_IMPLEMENTED = "not_implemented"
 """
 
 
+def _display_path(path: Path | str) -> str:
+    """产物中展示的路径：项目根内用相对路径，其余保持绝对。
+
+    ``summary.json`` 与三份清单会随代码一起入库，写绝对路径会让产物
+    在每台机器上都产生无意义的差异（还暴露本机用户名）。
+    """
+
+    try:
+        return str(Path(path).resolve().relative_to(config.PROJECT_ROOT))
+
+    except ValueError:
+        return str(path)
+
+
 def _payload(scope: FileScope, records: list[Any], note: str) -> dict[str, Any]:
     return {
         "count": len(records),
         "rules_version": scope.rules_version,
-        "rules_path": scope.rules_path,
+        "rules_path": _display_path(scope.rules_path),
         "note": note,
         "tasks": [item.to_dict() for item in records],
     }
@@ -124,7 +140,7 @@ def scope_summary_payload(scope: FileScope) -> dict[str, Any]:
 
     return {
         "rules_version": stats.rules_version,
-        "rules_path": scope.rules_path,
+        "rules_path": _display_path(scope.rules_path),
         "totals": {
             "evaluated_count": stats.total_count,
             "sql_candidates_count": stats.sql_eligible_count,

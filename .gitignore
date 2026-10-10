@@ -43,6 +43,14 @@ __pycache__/
 /analysis/*
 !/analysis/.gitkeep
 !/analysis/README.md
+# 两份 Summary（Inventory / Scope 报告）随代码入库，其余重跑产物仍忽略
+!/analysis/inventory/
+!/analysis/scope/
+/analysis/inventory/*
+!/analysis/inventory/summary.md
+/analysis/scope/*
+!/analysis/scope/summary.md
+!/analysis/scope/summary.json
 
 /output/*
 !/output/.gitkeep
