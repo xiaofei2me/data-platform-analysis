@@ -31,7 +31,7 @@
 | Stage | 名称 | Milestone | 命令 | 产物目录（相对 `analysis/`，采集为 `source/`） | 代码 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | **00** | Raw Snapshot | M1 | `export` / `dataworks` / `maxcompute` / `summary` | `dataworks/**`、`maxcompute/**`、`manifest.json`、`Summary.md` | `export.py`、`dataworks.py`、`maxcompute.py`、`summary.py` | 已实现 |
-| **01** | Inventory + Scope | M2.1 | `analyze --stage inventory` | `inventory/`（资产索引）+ `scope/`（资格清单与 Scope Summary） | `analysis/pipeline.py` + `analysis/inventory/` + `analysis/scope/` + `config/analysis-scope-rules.yaml` | 已实现 |
+| **01** | Inventory + Scope | M2.1 | `analyze --stage inventory` | `inventory/`（资产索引）+ `scope/`（资格清单与 Scope Summary） | `analysis/pipeline.py` + `analysis/inventory/` + `analysis/scope/` + `config/analysis-scope-rules.yaml` | 已冻结 |
 | **02** | Layer Assessment | M2.2 | `analyze --stage evidence` | `evidence/layer/` | `analysis/evidence/layer/layer_assessment.py` + `config/layer-rules.yaml` | 已实现 |
 | **03** | SQL Analysis | M2.3 | `analyze --stage evidence` | `evidence/sql/` | `analysis/evidence/sql/` | 已实现 |
 | **04** | Lineage | M2.4 | `analyze --stage evidence` | `evidence/lineage/` | `analysis/evidence/lineage/` | 已实现 |
@@ -53,6 +53,10 @@
 | **20** | Target Semantic Layer | M4+ | 未实现 | **不存在** | — | 规划 |
 
 四阶段目录已落地：Stage 01 → `analysis/inventory/`（资产索引）+ `analysis/scope/`（资格清单与 Scope Summary，M2.1 的 Scope 职责），Stage 02–05 → `analysis/evidence/{layer,sql,lineage,profiling}/`，Stage 06–10 → `analysis/understanding/business/`，Stage 11 → `analysis/understanding/modeling/`，Stage 12–14 → `analysis/review/`（M3.6 的 `current-state-model*` 也在 `review/`），根目录 `analysis/summary.md` 是 12 节入口报告（旧 `Summary.md` 已废弃；本仓库没有 analysis 级 `manifest.json`）。旧布局残留在 `business/` / `model/` / `layer/` 等目录的文件由重跑对应命令时的 legacy 清理逻辑（`io_utils.relocate_legacy_artifacts`）删除 / 搬迁；旧 `inventory/{sql-candidates,excluded-tasks,review-tasks}.json` 随 `inventory/` 整目录清场消失，不再作为权威来源。
+
+Stage 01 Scope 已冻结：`identity_eligible`、`overall_eligible` 与 `sql_eligible` 语义分离，SQL 输入统一来自 `sql_eligible`；资格规则与输入边界有针对性测试。历史报告中的资格描述债务不阻断 Stage 02–05 Evidence 验收。
+
+业务事实接入入口：[收集模板](business-context/FACT-TEMPLATE.md) 与 [已知事实清单](business-context/KNOWN-FACTS.md)。Understanding 当前只消费业务候选规则配置与 M2 技术产物，不直接消费一份已确认业务事实配置。
 
 ### 2.1 Stage 判定规则（用于未来追加）
 

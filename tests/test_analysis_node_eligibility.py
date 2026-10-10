@@ -1,9 +1,9 @@
-"""Analysis NodeId Eligibility（Analysis Scope Filter）的黑盒测试。
+"""Analysis Scope 对 NodeId 与 SQL Evidence 范围的黑盒测试。
 
 原则：
 
 1. Collection / Snapshot 保留全部 File，NodeId 为空也不删除。
-2. 只有 NodeId 有效的 File 才进入 SQL / Table Reference / Lineage Analysis。
+2. NodeId 有效只是 SQL 资格的必要条件；所有 SQL Evidence 只来自 sql_eligible File。
 3. NodeId 为空是 Analysis Scope Filter，不是 Analysis Error。
 """
 
@@ -25,7 +25,7 @@ def test_valid_node_id_is_analyzed(
     cli_env: Any,
     run_cli: Any,
 ) -> None:
-    """NodeId 有效的 File 正常进入 SQL Analysis。"""
+    """NodeId 有效且通过其他 Scope 规则的 File 正常进入 SQL Analysis。"""
 
     write_snapshot(
         Path("source"),
@@ -163,7 +163,7 @@ def test_excluded_file_produces_no_evidence(
     cli_env: Any,
     run_cli: Any,
 ) -> None:
-    """statements / references / lineage 都只来自 NodeId 有效的 File。"""
+    """statements / references / lineage 都只来自 SQL 资格通过的 File。"""
 
     write_snapshot(
         Path("source"),

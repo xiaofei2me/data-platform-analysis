@@ -118,7 +118,7 @@ source/
 
 1. index 导航、raw 优先：`raw` 与 `index` 冲突时以 raw 为准（约定 2）。
 2. 身份与排序：workspaces 按 `workspace_id`；files 按 `(workspace_id, file_id)`；tables 按 workspace + table_key；columns 按 workspace + 表 + 序号，全部用 `numeric_id_sort_key`（数字 id 数值排序、字符串 id 其后字典序）。
-3. **Analysis Scope Rules（`analysis/scope/` + `config/analysis-scope-rules.yaml`，旧 `inventory/scope.py` 只是兼容层）**：对全量 File 做一次规则化分类，给出三个互不等价的口径——`identity_eligible`（节点身份维度）、`overall_eligible`（整体分析资格 = 身份且非非正式任务）、`sql_eligible`（M2.3 输入维度：身份 + 非正式任务 + 格式适用 SQL + Content 可用）（M2.3 输入维度：身份 + 非正式任务 + `content_format` 适用 SQL + Content 可用）。Node ID 缺失、明确的非正式任务、类型不适用 SQL、Content 不可用都只被分类，File 保留在 Inventory，**不产生证据、也不记错误**（`CONTENT_FILE_MISSING` 这类 Snapshot 完整性问题归 inventory stage 记账）。Content 是否读取由 `content_check.enabled` / `content_check.enabled_formats` 控制，未启用的格式状态恒为 `not_checked`：既不计内容可用、不计内容缺口，也不阻断 `sql_eligible`。Node ID 状态只有 `missing` / `valid` 两值，没有「格式无效」。正式产物写入 `analysis/scope/`：`scope/inputs/sql-candidates.json`（`sql_eligible = true`）与 `scope/inputs/excluded-tasks.json`（`sql_eligible = false`），两者互斥且合计 = 登记文件；`scope/review-tasks.json` 是弱证据待确认的独立维度——三份清单都是分析范围判定的产物，**不是删除清单**，`cleanup_candidate` 概念已全量删除。路径常量唯一来源是 `scope/outputs.py`（见 ADR-0005）。
+3. **Analysis Scope Rules（`analysis/scope/` + `config/analysis-scope-rules.yaml`，旧 `inventory/scope.py` 只是兼容层）**：对全量 File 做一次规则化分类，给出三个互不等价的口径——`identity_eligible`（节点身份维度）、`overall_eligible`（身份有效且未被明确非正式任务规则排除）、`sql_eligible`（M2.3 输入维度：身份 + 非正式任务 + `content_format` 适用 SQL + Content 可用）。Node ID 缺失、明确的非正式任务、类型不适用 SQL、Content 不可用都只被分类，File 保留在 Inventory，不产生 SQL Evidence；Node ID 缺失、非正式任务和 SQL 类型不适用本身不是分析错误，Snapshot Content 缺失等完整性问题仍由 Inventory 阶段记入错误账本。Content 是否读取由 `content_check.enabled` / `content_check.enabled_formats` 控制，未启用的格式状态恒为 `not_checked`：既不计内容可用、不计内容缺口，也不阻断 `sql_eligible`。Node ID 状态只有 `missing` / `valid` 两值，没有「格式无效」。正式产物写入 `analysis/scope/`：`scope/inputs/sql-candidates.json`（`sql_eligible = true`）与 `scope/inputs/excluded-tasks.json`（`sql_eligible = false`），两者互斥且合计 = 登记文件；`scope/review-tasks.json` 是弱证据待确认的独立维度——三份清单都是分析范围判定的产物，**不是删除清单**，`cleanup_candidate` 概念已全量删除。路径常量唯一来源是 `scope/outputs.py`（见 ADR-0005）。
 4. 层级判定**不在** M2.1 范围（`layer_candidate` 字段已删除，见 ADR-0003），M2.1 回归纯清单。
 
 **产出字段（tables.json）**：`workspace_id / workspace_name / project / schema / table / table_key / comment / column_count / partition_count / size / is_virtual_view / lifecycle / creation_time / last_modified_time / raw_file`。
@@ -177,7 +177,7 @@ content（只取 NodeId 有效 File）
 - **CTAS Fallback**：AST 解析为 `unsupported`（Command）且具备 CTAS 特征时，交给 token scanner（`evidence/sql/fallback.py`，单向前扫描、游标必须严格前进）提取引用；提取成功记 `extraction_method=fallback`，失败保持 unsupported。与 Normalization 是两个独立阶段，互不混用。
 - **失败处理**：单条语句失败只影响该条，写入 `evidence/sql/parse-errors.json`，并记入跨阶段账本 `evidence/errors.json`，文件级与分析级继续。
 
-**当前实测**：1963 条语句全部 `success`（ast=1962、fallback=1），归一化生效 1 条，unsupported=0、error=0。
+**当前 Snapshot 的临时目录实测**：1917 条语句全部 `success`（ast=1916、fallback=1），归一化生效 1 条，unsupported=0、error=0。
 
 ### 3.4 M2.4 Table Reference / Lineage（`evidence/lineage/references.py` + `evidence/lineage/lineage.py`）
 
@@ -200,7 +200,7 @@ content（只取 NodeId 有效 File）
 
 - 唯一来源是 Inventory 元数据，`profile_status` 恒为 `metadata_only`。
 - `row_count / distinct_count / min / max / sample_values` 一律 `null`；`is_candidate_key` 恒为 false（缺唯一性证据）——**不伪造统计量**。
-- 当前产出：3719 张表级 profiling，其中分区表 2164；102603 字段级记录。
+- 当前 Snapshot 临时目录实测：3724 张表级 profiling；102703 字段级记录，全部 `metadata_only`，不含行级统计。
 
 ### 3.6 错误模型（`errors.py`）
 
@@ -420,13 +420,13 @@ content（只取 NodeId 有效 File）
 | `scope/inputs/sql-candidates.json`、`inputs/excluded-tasks.json`、`scope/review-tasks.json` | 541 / 4116 / 70 个 File | `sql_eligible = true` / `sql_eligible = false` / 弱证据待确认 | M2.3 SQL 输入、排除口径、人工待确认（**三者都不是删除清单**） |
 | `inventory/tables.json` | 3724 张表 | 身份 + 注释 + 分区/大小/生命周期 | 一切分析的输入 |
 | `inventory/columns.json` | 102703 字段 | 类型、注释、分区标记 | 字段级分析输入 |
-| `evidence/layer/assessments.json` | 3719 条层级判定 | workspace_layer / candidate_layer / status / evidence | **分层现状的唯一口径** |
+| `evidence/layer/assessments.json` | 3724 条层级判定 | workspace_layer / candidate_layer / status / evidence | **分层现状的唯一口径** |
 | `evidence/layer/summary.md` | 层级报告 | 状态分布、UNKNOWN 明细、跨层提示、CONFLICT 明细 | 现状分层评审 |
-| `evidence/sql/statements.json` | 1963 条语句 | sql 原文、parse_status、extraction_method | 业务逻辑反读的语料 |
-| `evidence/sql/table-references.json` | 1273 条引用 | source_tables / target_tables / content_file | 血缘的证据层 |
+| `evidence/sql/statements.json` | 1917 条语句 | sql 原文、parse_status、extraction_method | 业务逻辑反读的语料 |
+| `evidence/sql/table-references.json` | 1241 条引用 | source_tables / target_tables / content_file | 血缘的证据层 |
 | `evidence/sql/parse-errors.json` | 0 条 | — | 解析质量监控 |
-| `evidence/lineage/table-lineage.json` | 3442 条去重边 | 两端 key、workspace、layer_candidate、evidence[] | **加工链路的核心产物** |
-| `evidence/lineage/core-table-candidates.json` | 1789 个核心表候选 | upstream/downstream/evidence 计数 | 改造优先级参考 |
+| `evidence/lineage/table-lineage.json` | 3384 条去重边 | 两端 key、workspace、layer_candidate、evidence[] | **加工链路的核心产物** |
+| `evidence/lineage/core-table-candidates.json` | 1747 个核心表候选 | upstream/downstream/evidence 计数 | 改造优先级参考 |
 | `evidence/profiling/tables.json`、`columns.json` | 元数据画像 | metadata_only | 结构体检 |
 | `understanding/business/terms.json` | 6032 个业务术语候选 | term / normalized_term / count / sources[] | 业务词典评审、同义词归并 |
 | `understanding/business/tables.json` | 3719 张表的业务理解 | warehouse_layer / business_terms / domain_candidates / business_object_candidates / evidence | **业务候选的主产物** |
@@ -513,19 +513,21 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 
 ## 7. 当前 Snapshot 的数据画像（实测，反向识别的原料）
 
+本轮已刷新 M2 / Evidence 数字；本节 M3 与 Review 的细分候选分布未重新运行，仍是历史基线。当前 Review 汇总以 [CURRENT_STATE_EVIDENCE_MAP.md](CURRENT_STATE_EVIDENCE_MAP.md) 开头的只读核对为准。
+
 ### 7.1 规模
 
 | 维度 | 数值 |
 | --- | --- |
 | Workspace | 3（dme_cdm / dme_ods / dme_ads） |
 | DataWorks File（登记总量，2026-10-10 实测） | 4657（ODPS_SQL 2826、content_format=SQL 2826） |
-| ****整体分析资格（overall_eligible）** 或 **NodeId 有效（身份维度）**** | **1379**（身份不满足 3278） |
+| 整体分析资格（overall_eligible：身份有效且未被明确非正式任务规则排除） | **1379** |
 | **SQL 分析输入（sql_eligible）** | **541**（身份 + 任务 + 类型 + 内容四组规则全部通过） |
 | SQL 分析排除（`scope/inputs/excluded-tasks.json`） | 4116（与 541 份 SQL 候选互斥且合计 = 4657） |
 | 读取到内容并解析的 File | 541 |
 | MaxCompute Table / Column | 3724 / 102703 |
 | SQL 语句 | 1917（success 100%） |
-| 表引用 / 去重血缘边 | 1241 / 3384（跨 Workspace 1567） |
+| 表引用 / 去重血缘边 | 1241 / 3384（跨 Workspace 1534） |
 | 核心表候选 | 1747 |
 | 可恢复错误 | 0 |
 
@@ -533,8 +535,8 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 
 | 指标 | 数值 |
 | --- | --- |
-| MATCH / UNKNOWN / CONFLICT | 3658 / 61 / 0 |
-| candidate 分布 | ADS 1475、ODS 1175、DWD 898、DWS 61、DIM 49、未确定 61 |
+| MATCH / UNKNOWN / CONFLICT | 3663 / 61 / 0 |
+| candidate 分布 | ADS 1477、ODS 1175、DWD 901、DWS 61、DIM 49、未确定 61 |
 | 跨层命名提示 | 35（`dme_ads.dim_*`15、`dme_ods.dim_*`12、`dme_ods.dws_*`3、`dme_ads.dwd_*`4、`dme_ods.dwd_*`1） |
 | 未配置 workspace | 0 |
 
@@ -542,9 +544,9 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 
 | workspace | 主导命名 | 含层前缀比例* |
 | --- | --- | --- |
-| dme_ads（1475） | `tb_*` 1373（93.1%） | 4.5%（66 张） |
-| dme_ods（1175） | `s_*` 1136（96.7%） | 1.6%（19 张） |
-| dme_cdm（1069） | `dwd_`898 / `dws_`61 / `dim_`49 | 94.3%（1008 张） |
+| dme_ads（1477） | `tb_*` 1375（93.1%） | 4.5%（66 张） |
+| dme_ods（1175） | `s_*` 1137（96.8%） | 1.6%（19 张） |
+| dme_cdm（1072） | `dwd_`901 / `dws_`61 / `dim_`49 | 94.3%（1011 张） |
 
 \* 层前缀 = `ods_ / ads_ / dwd_ / dws_ / dim_`（大小写不敏感）；CDM 的 94.3% 全部来自 `dwd_/dws_/dim_`。
 
@@ -582,7 +584,7 @@ uv run pytest -q && uv run ruff check . && uv run mypy   # tests / lint / types
 | 哪些表是枢纽（改造优先级） | `core-table-candidates.json`（downstream 排序） |
 | 现在的分层是否名副其实 | `evidence/layer/assessments.json`（事实 vs 候选 vs 证据） |
 | 有没有放错层的表 | `evidence/layer/summary.md` 跨层命名提示（35 条） |
-| SQL 里用了哪些业务概念 | `evidence/sql/statements.json`（1963 条 raw SQL 语料） |
+| SQL 里用了哪些业务概念 | `evidence/sql/statements.json`（1917 条 raw SQL 语料） |
 | 这张表可能属于什么业务主题 | `understanding/business/tables.json`（Domain / Object 候选 + 证据链）、`understanding/business/terms.json`（6032 个术语候选） |
 | 哪些业务判断可以信任、哪些必须人工确认 | `understanding/business/quality-assessment.json`（UNKNOWN/AMBIGUOUS 主因、证据与 confidence 复核）、`understanding/business/review-checklist.md`（P1–P3 人工台账） |
 | Object 之间有哪些表级证据关联 | `understanding/business/objects-registry.json`（5 个 Object 口径）、`understanding/business/object-relationships.json`（10 对 candidate 关系 × 三类证据）、`understanding/business/object-graph.md`（8 节评审入口） |

@@ -23,10 +23,11 @@
 
 1. **`config/analysis-scope-rules.yaml` 是分析范围的唯一判定来源**：节点身份状态、内容状态与内容期望、非正式任务命名（强 / 弱证据）、`content_format` 是否适用 SQL、四个口径的资格结论，全部在该文件声明。配置缺失、字段非法、必需规则组为空 → 直接 Fatal Error（exit 1），**不回退默认规则、不静默忽略**。
 2. **分类在 M2.1 Inventory 内部执行一次**（`analysis/scope/` → `FileScope`；`inventory/scope.py` 只是兼容层 re-export）：对全量登记 File 逐个产出 `FileScopeDecision`，输出与输入同序、数量一致，`inventory/files.json` 不因分类减少任何记录。
-3. **两个资格口径分开、互不混用**：
-   - `overall_eligible` = 资产身份维度（Node ID 有效），供节点级分析范围与报告统计；
-   - `sql_eligible` = M2.3 输入维度（身份 + 非正式任务 + 类型适用 + Content 可用）。
-   `is_analysis_eligible()` 保留为身份维度的兼容入口，不再承担 SQL 范围判断。`node_id_state` 只有 `missing` / `valid` 两个取值（存在 = 非 None 且去除空白后非空），不存在「格式无效」这一状态。
+3. **三个资格口径分开、互不混用**：
+   - `identity_eligible` = 资产身份维度（Node ID 非空）；`is_analysis_eligible()` 是该维度的兼容入口；
+   - `overall_eligible` = 身份有效且未被明确非正式任务规则排除，供整体分析范围与报告统计；
+   - `sql_eligible` = M2.3 输入维度（身份有效 + 未被明确非正式任务规则排除 + 类型适用 + Content 可用）。
+   身份有效但命中明确非正式任务规则的 File，`identity_eligible = true`、`overall_eligible = false`、`sql_eligible = false`。`node_id_state` 只有 `missing` / `valid` 两个取值（存在 = 非 None 且去除空白后非空），不存在「格式无效」这一状态。
 4. **下游不再自行过滤**：`SqlAnalyzer.analyze_file()` 的 identity / 格式检查删除，SQL 输入统一由 `FileScope.sql_eligible_files()` 给出；SQL Analysis 只消费判定结果。
 5. **只有两个概念**：资产有效性（是否是可追溯资产）与分析资格（是否适合某项分析），另有「弱证据待确认」这一独立出口。**没有清理候选概念**：`cleanup_candidate` 与 YAML 里的清理候选字段已全量删除，配置里出现即被拒绝。命中任何规则都只记录与分类，**不调用任何 DataWorks 删除 / 禁用 / 修改接口**，也不删除 Snapshot 或 Inventory 记录。
 6. **Content 检查由 `content_check` 开关控制**：`config/analysis-scope-rules.yaml` 的 `content_check.enabled` / `content_check.enabled_formats` 决定哪些 `content_format` 读 Snapshot、匹配内容规则并可能产生缺口；未启用的格式状态恒为 `not_checked`，既不计入内容可用、不计入内容缺口，也不阻断 `sql_eligible`。`content_check` 是必需根键，缺失、类型错误、字段未登记、格式未在 `content_expectations` 登记都会被加载器拒绝。

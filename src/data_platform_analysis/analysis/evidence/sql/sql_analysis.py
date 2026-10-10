@@ -26,8 +26,9 @@ CTAS Fallback：
 
 输入范围：
 
-    只有 NodeId 有效的 File 才进入 SQL Analysis；
-    NodeId 为空的 File 直接跳过，不产生 statement / reference / parse error。
+    只有 Scope 判定为 sql_eligible 的 File 才进入 SQL Analysis；
+    NodeId 有效是必要条件但不充分，格式不适用、Content 不可用及明确非正式任务
+    都由 Scope 排除，不产生 SQL statement / reference / parse error。
 """
 
 from __future__ import annotations

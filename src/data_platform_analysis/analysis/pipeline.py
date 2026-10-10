@@ -22,8 +22,10 @@ Analysis 输入范围（Analysis Scope Rules，规则在 Scope 阶段内部执�
     SQL Analysis 只接受 sql_eligible = true 的 File；
     NodeId 缺失、明确的非正式任务、类型不适用 SQL、
     Content 不可用都会记录明确的原因代码，保留在 Inventory 全量清单中，
-    不产生 SQL Evidence，也不记录为 Analysis Error。
-    整体分析资格（identity）与 SQL 分析资格（sql_eligible）分别统计，
+    不产生 SQL Evidence。身份缺失、明确非正式任务与 SQL 类型不适用是范围分类，
+    不记为技术错误；Content 缺失等 Snapshot 完整性问题记入 Inventory 阶段错误账本。
+    整体分析资格（overall_eligible）与 SQL 分析资格（sql_eligible）分别统计；
+    overall_eligible 已包含身份与明确非正式任务规则，不等同于身份有效，
     分类规则配置在 config/analysis-scope-rules.yaml。
 """
 
@@ -128,8 +130,8 @@ class AnalysisResult:
     """一次 Analysis 运行的汇总结果。
 
     ``eligible_file_count`` / ``excluded_file_count`` 采用 Scope 的整体分析资格
-    口径（overall_eligible = 身份有效且非明确非正式任务），与 SQL 分析输入
-    （sql_eligible）是不同维度；SQL 实际输入数量见 statements / references 字段。
+    口径（overall_eligible = 身份有效且未被明确非正式任务规则排除），与 SQL
+    分析输入（sql_eligible）是不同维度；SQL 实际输入数量见 statements / references 字段。
     """
 
     analysis_dir: Path
