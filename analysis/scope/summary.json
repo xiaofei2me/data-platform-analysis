@@ -71,6 +71,7 @@
       "SQL_BLOCKED_BY_IDENTITY": 3278,
       "SQL_BLOCKED_BY_TYPE": 838
     },
+    "informal_absorbed_by_identity_count": 24,
     "types": {
       "NODE_ID_MISSING": "node_identity",
       "INFORMAL_TASK_STRONG": "informal_task",

@@ -56,10 +56,15 @@ FileScope.stats()，渲染层不重新执行资格判断。
 
 阻断优先级：identity → informal → node_type → content，同一文件只取首个阻断原因；SQL 候选与 SQL 分析排除互斥且合计 = 登记文件。
 
+SQL 资格原因分通过与阻断两类，互斥且合计 = 登记文件：
+
+| 口径 | 原因 | 数量 | 占比 |
+| --- | --- | ---: | ---: |
+| SQL 通过原因 | SQL_ANALYSIS_ELIGIBLE | 541 | 11.6% |
+
 | 口径 | 原因 | 数量 | 占比 |
 | --- | --- | ---: | ---: |
 | SQL 阻断原因 | NODE_ID_MISSING | 3,278 | 70.4% |
-| SQL 阻断原因 | SQL_ANALYSIS_ELIGIBLE | 541 | 11.6% |
 | SQL 阻断原因 | SQL_FORMAT_NOT_APPLICABLE | 838 | 18.0% |
 
 ## 4. 资格排除情况
@@ -69,6 +74,8 @@ FileScope.stats()，渲染层不重新执行资格判断。
 | 资格排除 | 身份不满足（NodeId 缺失） | 3,278 | 70.4% |
 
 排除分类描述的是整体分析资格（overall_eligible）的构成；SQL 层面的阻断原因见第 3 节，两者是不同维度，不能互相替代。
+
+三个口径互不相同：规则命中数（第 7 节，可重叠）、最终排除分类数（本节上方表格，互斥）、分类主因数（本节下方表格，互斥）。同一文件可能命中多条规则，但只属于一个排除分类、只有一个分类主因；本节数字不能由命中数相减推导，均直接来自文件级判定结果。
 
 排除 ≠ 删除：命中任何规则都只记录与分类，不调用 DataWorks 删除 / 禁用 / 修改接口，被排除的对象仍完整保留在 `inventory/files.json`。
 
@@ -123,6 +130,8 @@ FileScope.stats()，渲染层不重新执行资格判断。
 | SQL_ANALYSIS_ELIGIBLE | sql_eligibility | 节点身份有效、非非正式任务、content_format 适用 SQL 且 Content 可用。 | 541 |
 
 同一文件可能命中多条规则，命中数之和大于等于对象数；第 4 节的分类主因分布每个文件只计一次。
+
+其中 24 个命中会排除整体资格的 informal 规则（如 INFORMAL_TASK_STRONG）的文件同时被 identity 分类排除（exclusion_class = identity，身份排除优先），因此不出现在第 4 节的非正式任务排除行中。
 
 ## 8. 规则发现及实现状态
 
