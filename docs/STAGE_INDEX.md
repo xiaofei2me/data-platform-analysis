@@ -44,7 +44,7 @@
 | **11** | Business Model | M3.5 | `analyze --stage understanding` | `understanding/modeling/` | `analysis/understanding/modeling/business_model.py` | 已实现 |
 | **12** | Current-State Findings | M3.6a | `analyze --stage review` | `review/` | `analysis/review/findings.py` | 已实现 |
 | **13** | Current-State Problems | M3.6b | `analyze --stage review` | `review/` | `analysis/review/problems.py` | 已实现 |
-| **14** | Current-State Evidence | M3.6b | `analyze --stage review`（**同一次运行，无独立入口**） | `review/` | `analysis/review/problems.py`（与 13 原子写出） | 已实现 |
+| **14** | Cross-Stage Evidence Coverage | M3.6b | `analyze --stage review`（**同一次运行，无独立入口**） | `review/evidence-coverage.json` | `analysis/review/coverage.py`（Review 编排完成后写出） | 已实现 |
 | **15** | Human Adjudication | — | **无命令**：编辑两份 checklist → 重跑 `analyze --stage review`（人工三列原样带回） | 清单 `human_*` 三列 + `localStorage["m36-human-adjudication"]` | 无 Python 写入方 | 已实现（confirmed = 0） |
 | **16** | Confirmed Current-State Evidence | — | 未实现 | **不存在** | — | 规划 |
 | **17** | Refactoring Evidence | — | 未实现 | **不存在** | — | 规划 |
@@ -63,7 +63,7 @@ Stage 01 Scope 已冻结：`identity_eligible`、`overall_eligible` 与 `sql_eli
 一个 Stage 成立当且仅当满足**产物组独立 + 下游消费者独立 + 人工评审动作独立**三者；**不要求有独立命令**：
 
 - Stage 01–05 共享一条 `analyze`，但产物与消费者各自独立。
-- Stage 12/13/14 共享一条 `analyze --stage review`，且 13 与 14 是同一次运行的原子写出——Registry 的"命令"列如实暴露这一点，不假装它们有独立入口。
+- Stage 12/13/14 共享一条 `analyze --stage review`；Stage 13 的 Problem 产物与 Stage 14 的 Coverage Ledger 在同一次 Review 运行中先后写出，无独立入口。
 - 辅助文件（`manifest.json`、`*-index.json`、`analysis/summary.md`、`evidence/errors.json`、`evidence/sql/parse-errors.json`）只索引 / 汇总 / 记账，**不授予 Stage 号**。
 
 ### 2.2 阅读顺序（新人 30 分钟路径）
@@ -127,7 +127,7 @@ status = review_required    →     rejected             →   status = rejected
 ### 5.1 目录
 
 - **产物目录按语义四阶段划分**：`inventory/`（Stage 01 资产清单）、`scope/`（Stage 01 的 M2.1 资格清单与 Scope Summary，`inputs/` + `findings/` 子结构）、`evidence/{layer,sql,lineage,profiling}/`（Stage 02–05 技术证据）、`understanding/business/`（Stage 06–10 业务理解）、`understanding/modeling/`（Stage 11 与 Stage 12 的当前形态模型）、`review/`（Stage 12–14 评审发现与问题）；源码模块已随产物同步迁移为 `src/data_platform_analysis/analysis/{inventory,scope,evidence/{layer,sql,lineage,profiling},understanding/{business,modeling},review}/`，**产物目录与源码模块同构**（引用时仍须区分根目录 `analysis/` 产物与 `src/.../analysis/` 源码；`analysis/scope/` 产物与 `src/.../analysis/scope/` 源码同名，靠前缀区分）。Stage 15 无产物目录（回填工件与所属阶段同目录）。
-- **不给现有 64 个产物加 `NN-` 前缀**：全仓字面 `analysis/` 引用数百处，换不到顺序信息（`analysis/` 本身被 gitignore，真正入口是 §2.2 的阅读链）。
+- **不给现有产物加 `NN-` 前缀**：全仓字面 `analysis/` 引用数百处，换不到顺序信息（`analysis/` 本身被 gitignore，真正入口是 §2.2 的阅读链）。
 - **新增阶段**：新目录可带 Stage 号（如 `analysis/16-confirmed/`），**旧文件不补号**——避免混合风格蔓延。
 
 ### 5.2 文件名
@@ -152,7 +152,7 @@ status = review_required    →     rejected             →   status = rejected
 ### 5.3 明确不做的三件事
 
 1. 不给 `src/` 源码加数字前缀（按职责组织是正确设计）。
-2. 不给现有 64 个产物 basename 加 `NN-`（540 处引用，零算法收益）。
+2. 不给现有产物 basename 加 `NN-`（540 处引用，零算法收益）。
 3. 不预建 Stage 16–20 的目录或空文件（会把规划伪装成已实现）。
 
 ## 6. 已知不一致与待办

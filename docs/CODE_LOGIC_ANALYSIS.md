@@ -409,6 +409,16 @@ content（只取 NodeId 有效 File）
 
 **边界（必须记住）**：problem candidate ≠ 已确认问题（`confirmed` 恒为 0，只有回填才变）；Finding Count ≠ Problem Count ≠ Confirmed Problem Count；不设计 Target DWD / DWS / Semantic Layer、不出 DDL、不合并 / 不删表 / 不改表、不自动裁决粒度、权威表与收敛顺序；UNKNOWN / 覆盖缺口只说明证据不足，不等于「表不该存在」；finding 与 problem 的未决状态互不替代（回填两个清单各自独立）。
 
+### 3.15 M3.6 Cross-Stage Evidence Coverage（`review/coverage.py`，Review 编排）
+
+**入口**：`pipeline.run_stage_review()` 在 Finding / Problem 产物写出后调用，无独立命令；产物为 `analysis/review/evidence-coverage.json`。
+
+**职责**：连接 Inventory / Scope / Evidence / Understanding / Review 的已有产物，输出逐 File 的 Scope 与 SQL 状态，以及逐 Table 的 Layer、SQL Table Reference、表级 Lineage、metadata-only Profiling、Understanding 候选、Finding / Problem 身份与状态。Coverage 是导航和覆盖账本，不产生 Finding，也不把候选升级为确认。
+
+**输入缺失规则**：Inventory Tables、Layer、Lineage、Understanding Model、Review 结果为必需输入；Files / Scope、SQL、Profiling 和 Understanding Business 文件是可选阶段产物，但缺失时分别标成 `unavailable_missing_inputs` / `missing_optional_input`。已存在但 JSON 结构非法的文件显式失败。`no_finding_under_implemented_rules` 只用于关键信息完整且规则未发出 Finding / Problem 的表，不表示模型正确。
+
+**关键限制**：逐表引用保留 `(workspace_id, file_id, statement_id)`；未匹配 Inventory 的 Table Reference 作为未解析引用及原因保留；跨 Project 引用和未知血缘端点单独计数。没有 File 身份的全局技术错误单列为未归属错误，不分摊到任意 File。Profiling 固定声明 `row_level_data_analyzed=false`。Coverage 不构成字段级 SQL 血缘或 DataWorks 调度 DAG。
+
 ---
 
 ## 4. 产物地图（`analysis/`）

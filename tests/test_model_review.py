@@ -51,6 +51,7 @@ from data_platform_analysis.analysis.models import (
     REVIEW_GROUP_TITLE,
     REVIEW_REPORT_ROW_LIMIT,
 )
+from data_platform_analysis.analysis.review.coverage import COVERAGE_FILE
 from data_platform_analysis.analysis.review.findings import (
     ARRAY_INPUT_FILES,
     CARRYOVER_CHECKLIST_INPUT_FILE,
@@ -1267,7 +1268,7 @@ def test_analyze_current_state_model_command(
     tmp_path: Any,
     monkeypatch: Any,
 ) -> None:
-    """analyze --stage review 产出 5 个 M3.6 文件，两次运行一致且不改上游。"""
+    """analyze --stage review 产出 M3.6 及 Coverage 文件，两次运行一致且不改上游。"""
 
     from test_business_objects import _write_m2 as write_m2  # noqa: PLC0415
     from test_business_processes import (  # noqa: PLC0415
@@ -1295,14 +1296,16 @@ def test_analyze_current_state_model_command(
     for name in OUTPUT_FILES:
         assert (review_dir / name).exists(), name
         assert not (business_dir / name).exists(), name
+    assert (review_dir / COVERAGE_FILE).exists()
 
     for name, content in before.items():
         assert (business_dir / name).read_bytes() == content, name
 
-    first = {name: (review_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)}
+    names = (*OUTPUT_FILES, COVERAGE_FILE)
+    first = {name: (review_dir / name).read_bytes() for name in sorted(names)}
 
     assert run_cli("analyze", "--stage", "review") == 0
-    assert {name: (review_dir / name).read_bytes() for name in sorted(OUTPUT_FILES)} == first
+    assert {name: (review_dir / name).read_bytes() for name in sorted(names)} == first
 
 
 def test_analyze_current_state_model_command_fails_without_inputs(

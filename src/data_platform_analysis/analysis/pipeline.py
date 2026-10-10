@@ -595,6 +595,7 @@ class AnalysisPipeline:
 
         # 执行 M3.6 Review
         try:
+            from .review.coverage import run_review_coverage_analysis
             from .review.findings import run_current_state_model_analysis
         except ImportError as exc:
             raise AnalysisFatalError(f"导入 Review 模块失败：{exc}") from exc
@@ -603,6 +604,11 @@ class AnalysisPipeline:
             run_current_state_model_analysis(
                 analysis_dir=self.analysis_dir,
                 output_dir=self.analysis_dir / "review",
+            )
+            run_review_coverage_analysis(
+                analysis_dir=self.analysis_dir,
+                output_dir=self.analysis_dir / "review",
+                review_output_dir=self.analysis_dir / "review",
             )
         except Exception as exc:
             raise AnalysisFatalError(f"M3.6 Review 无法继续：{exc}") from exc

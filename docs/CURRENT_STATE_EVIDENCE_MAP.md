@@ -1060,6 +1060,16 @@ fact 已成立、被拒者不是事实表、strong = 可信、关系是业务关
 
 **Used By**：Workbench 的 Evidence Explorer（必需输入）、人工裁决时的回溯路径、重构证据矩阵的取材来源。
 
+### 12.3.1 Stage 14 — Cross-Stage Evidence Coverage
+
+`review/evidence-coverage.json` 由 `analyze --stage review` 在 Findings 和 Problems 写出后生成，逐 File / 逐 Table 串联当前可用的 Inventory、Scope、Evidence、Understanding 和 Review 记录。它用于说明检查覆盖和跳转证据，不替代原始产物，也不改变机器 Finding / Problem 的确认状态。
+
+- File 身份为 `(workspace_id, file_id)`；SQL 状态区别 `not_eligible`、`analyzed`、`analyzed_no_statements`、`failed` 和 `unavailable_missing_inputs`。
+- Table Reference 保留 `(workspace_id, file_id, statement_id)` 与 source / target 角色；未匹配 Inventory 的引用、跨 Project 引用、未知 Lineage endpoint 以独立状态或统计保留。
+- Table Review 状态区别候选、人工确认 / 驳回、证据不足、尚未 Review，以及在实现规则范围内无 Finding。`no_finding_under_implemented_rules` 不代表模型正确。
+- Files / Scope、SQL、Profiling、Understanding Business 可选产物缺失时，Ledger 显式记为不可用；不能把缺失输入当作 0 或已检查。必需输入缺失或现存文件结构非法则显式失败。
+- `profiling.row_level_data_analyzed` 固定为 `false`：该产物不是行级数据质量画像。
+
 ### 12.4 一条真实 trace（代表一个 problem 的完整证据链）
 
 以 `dme_ods.s_tpm_activity_conclusion_item_split_sku`（活动门店拆分表）为例，全部数据为本轮实测：

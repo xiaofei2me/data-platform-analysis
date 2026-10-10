@@ -146,13 +146,13 @@ Stage 号与 Milestone 的完整映射（含每阶段的代码模块、产物目
 | 1 | 00 | M1 DataWorks 采集 | `dataworks`（或 `export`） | `source/dataworks/workspaces/<id>/**`、`source/dataworks/workspaces/<id>/files-index.json`、`source/dataworks/workspaces-index.json` | — | 机器事实（Snapshot） |
 | 2 | 00 | M1 MaxCompute 采集 | `maxcompute`（或 `export`） | `source/maxcompute/workspaces/<id>/**`、`source/maxcompute/workspaces/<id>/tables-index.json`；全量 `export` 另写 `source/manifest.json` | — | 机器事实（Snapshot）+ 辅助（`manifest.json`） |
 | 3 | 00 | M1 Snapshot Summary | `summary` | `source/Summary.md` | 1 | 辅助（生成报告，含时间戳） |
-| 4 | 01–14 | M2–M3.6 完整 Analysis Chain | `analyze` | `inventory/{workspaces,files,tables,columns}.json`、`inventory/summary.md`、`scope/{inputs/sql-candidates,inputs/excluded-tasks,review-tasks}.json`、`scope/summary.{json,md}`、`evidence/{layer,sql,lineage,profiling}/*`、`evidence/errors.json`、`understanding/business/*`、`understanding/modeling/*`、`review/*`、`summary.md` | **64** | 机器事实（inventory / sql / profiling）+ 规则推导（layer / lineage / scope 统计）+ 机器候选（business / modeling）+ 辅助（summary / errors） |
+| 4 | 01–14 | M2–M3.6 完整 Analysis Chain | `analyze` | `inventory/{workspaces,files,tables,columns}.json`、`inventory/summary.md`、`scope/{inputs/sql-candidates,inputs/excluded-tasks,review-tasks}.json`、`scope/summary.{json,md}`、`evidence/{layer,sql,lineage,profiling}/*`、`evidence/errors.json`、`understanding/business/*`、`understanding/modeling/*`、`review/*`（含 `evidence-coverage.json`）、`summary.md` | **65** | 机器事实（inventory / sql / profiling）+ 规则推导（layer / lineage / scope 统计）+ 机器候选（business / modeling）+ 辅助（summary / errors / coverage） |
 | 5 | 01 | Inventory + Scope 单独重跑 | `analyze --stage inventory` | `inventory/**`（5）+ `scope/**`（5）+ 根 `summary.md` | **11** | 机器事实（inventory）+ 规则推导（scope） |
 | 6 | 02–05 | Evidence 单独重跑 | `analyze --stage evidence` | 上一行全部 + `evidence/{layer,sql,lineage,profiling}/*` + `evidence/errors.json` | **23** | 机器事实（sql / profiling）+ 规则推导（layer / lineage） |
 | 7 | 06–11 | Understanding 单独重跑 | `analyze --stage understanding` | `understanding/business/*` + `understanding/modeling/*`（不清场） | **32** | 机器候选（business / modeling）+ 辅助 |
-| 8 | 12–14 | Review 单独重跑 | `analyze --stage review` | `review/*` + 重跑 Stage 06–11 刷新 `understanding/**`（不清场、不写根 `summary.md`） | **41** | 机器候选（finding / problem）+ 证据 + 辅助 |
+| 8 | 12–14 | Review 单独重跑 | `analyze --stage review` | `review/*`（含 `evidence-coverage.json`）+ 重跑 Stage 06–11 刷新 `understanding/**`（不清场、不写根 `summary.md`） | **42** | 机器候选（finding / problem）+ 证据 + 覆盖账本 |
 
-`64 = 10 + 12 + 32 + 9 + 1`（inventory+scope + evidence + understanding + review + 根 `summary.md`），即新契约下 `analysis/` 的 64 个产物文件；「数量」= 该命令本次写出的文件数。
+`65 = 10 + 12 + 32 + 10 + 1`（inventory+scope + evidence + understanding + review + 根 `summary.md`），即当前契约下 `analysis/` 的 65 个产物文件；「数量」= 该命令本次写出的文件数。
 
 ### Evidence Stage Contract
 
@@ -176,7 +176,7 @@ Stage 号与 Milestone 的完整映射（含每阶段的代码模块、产物目
 | `analyze --stage inventory` | `source/**` + `config/{layer-rules,analysis-scope-rules}.yaml`（清场重建，不读已有 `analysis/`） | — |
 | `analyze --stage evidence` | `source/**` + `config/{layer-rules,analysis-scope-rules}.yaml`（清场后自行重建 `inventory/`，不读已有 `inventory/`） | — |
 | `analyze --stage understanding` | `inventory/{tables,columns}.json` + `evidence/{sql/statements,sql/table-references,lineage/table-lineage,lineage/core-table-candidates,layer/assessments}.json` + `config/{business-rules,process-rules}.yaml`；`evidence/layer/assessments.json` 缺失时流水线先自动补跑 evidence（此时改需 `source/**` + `config/layer-rules.yaml`） | `understanding/business/{process-review-checklist,grain-review-checklist}.md`、`understanding/modeling/model-review-checklist.md` |
-| `analyze --stage review` | 上一行的全部输入 + `understanding/modeling/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables}.json`（共 13 个必需 JSON，定义见 `review/findings.py::INPUT_FILES`） | `review/{current-state-review-checklist.md,current-state-problem-review-checklist.md}` |
+| `analyze --stage review` | 上一行的全部输入 + `understanding/modeling/{fact-candidates,dimension-candidates,fact-dimension-relationships,fact-tables,dimension-tables}.json`（共 13 个必需 JSON，定义见 `review/findings.py::INPUT_FILES`）；Coverage Ledger 额外读取 Inventory、Layer、Lineage、Understanding Model 与本次 Review 产物（必需）；Files / Scope、SQL、Profiling 和 Understanding Business 产物缺失时逐项标记为不可用，不填作零或已检查 | `review/{current-state-review-checklist.md,current-state-problem-review-checklist.md,evidence-coverage.json}` |
 
 ## Recommended Execution Order
 
@@ -190,7 +190,7 @@ uv run data-platform-analysis config        # 核对生效配置（不含密钥�
 uv run data-platform-analysis export        # 或分开跑 dataworks / maxcompute
 uv run data-platform-analysis summary       # 可选：重生成 source/Summary.md
 
-# 2) M2–M3.6 完整 Analysis Chain（64 个产物）
+# 2) M2–M3.6 完整 Analysis Chain（65 个产物）
 uv run data-platform-analysis analyze
 ```
 
@@ -204,7 +204,7 @@ uv run data-platform-analysis analyze
 
 | 命令 | 是否清场 | 实际覆盖 |
 | --- | --- | --- |
-| `analyze` | 清空 `inventory/ scope/ evidence/ understanding/ review/ summary.md`（5 份人工清单除外） | 全部 64 个产物 |
+| `analyze` | 清空 `inventory/ scope/ evidence/ understanding/ review/ summary.md`（5 份人工清单除外） | 全部 65 个产物 |
 | `analyze --stage inventory` | **同样清空**（连 `understanding/`、`review/` 一起删，5 份人工清单除外） | `inventory/**`（5）+ `scope/**`（5）+ 根 `summary.md` |
 | `analyze --stage evidence` | **同样清空**（同上） | `inventory/**` + `scope/**` + `evidence/**` + 根 `summary.md`（23） |
 | `analyze --stage understanding` | 不清场 | `understanding/**` |
